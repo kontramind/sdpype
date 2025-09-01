@@ -1,0 +1,34 @@
+# SDPype Pipeline Definition
+stages:
+  preprocess:
+    cmd: python -m sdpype.preprocess
+    deps:
+      - sdpype/preprocess.py
+      - data/raw/
+      - config/
+    outs:
+      - data/processed/data.csv
+    metrics:
+      - metrics/preprocess.json
+
+  train_sdg:
+    cmd: python -m sdpype.training
+    deps:
+      - sdpype/training.py
+      - data/processed/data.csv
+      - config/
+    outs:
+      - models/sdg_model.pkl
+    metrics:
+      - metrics/training.json
+
+  generate_synthetic:
+    cmd: python -m sdpype.generation
+    deps:
+      - sdpype/generation.py
+      - models/sdg_model.pkl
+      - config/
+    outs:
+      - data/synthetic/synthetic_data.csv
+    metrics:
+      - metrics/generation.json

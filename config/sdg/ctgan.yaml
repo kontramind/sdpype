@@ -1,0 +1,5 @@
+library: "sdv"  # Add library specification
+model_type: "ctgan"
+parameters:
+  epochs: 300
+  batch_size: 500

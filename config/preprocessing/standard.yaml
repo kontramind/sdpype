@@ -1,0 +1,6 @@
+# config/preprocessing/standard.yaml  
+enabled: true
+steps:
+  - handle_missing: "mean"
+  - remove_outliers: true
+  - scale_numeric: "standard"

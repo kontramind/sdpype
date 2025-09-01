@@ -1,0 +1,5 @@
+library: "synthcity"
+model_type: "ddpm"
+parameters:
+  n_iter: 1000
+  batch_size: 128
