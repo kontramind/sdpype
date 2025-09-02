@@ -1,34 +1,42 @@
-# SDPype Pipeline Definition
+# Simplified dvc.yaml - Using params.yaml for DVC experiments
 stages:
   preprocess:
     cmd: python -m sdpype.preprocess
     deps:
       - sdpype/preprocess.py
-      - data/raw/
-      - config/
+      - experiments/data/raw/
+      - config/preprocessing/
+    params:
+      - experiment.seed
     outs:
-      - data/processed/data.csv
+      - experiments/data/processed/data.csv
     metrics:
-      - metrics/preprocess.json
+      - experiments/metrics/preprocess.json
 
   train_sdg:
     cmd: python -m sdpype.training
     deps:
       - sdpype/training.py
-      - data/processed/data.csv
-      - config/
+      - experiments/data/processed/data.csv
+      - config/sdg/
+    params:
+      - sdg
+      - experiment.seed
     outs:
-      - models/sdg_model.pkl
+      - experiments/models/sdg_model.pkl
     metrics:
-      - metrics/training.json
+      - experiments/metrics/training.json
 
   generate_synthetic:
     cmd: python -m sdpype.generation
     deps:
       - sdpype/generation.py
-      - models/sdg_model.pkl
+      - experiments/models/sdg_model.pkl
       - config/
+    params:
+      - generation
+      - experiment.seed
     outs:
-      - data/synthetic/synthetic_data.csv
+      - experiments/data/synthetic/synthetic_data.csv
     metrics:
-      - metrics/generation.json
+      - experiments/metrics/generation.json

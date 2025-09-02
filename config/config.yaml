@@ -1,20 +1,31 @@
-# config/config.yaml - Main config
+# Enhanced config.yaml - Monolithic structure with experiment versioning
 defaults:
   - preprocessing: standard
   - sdg: gaussian
   - _self_
 
+# Experiment metadata - enhanced for versioning
 experiment:
-  name: "sdpype_experiment"
+  name: "${now:%Y%m%d_%H%M%S}_${sdg.model_type}_seed${experiment.seed}"
   seed: 42
+  description: "SDPype experiment"
+  researcher: "anonymous"
+  tags: []
 
+# Data configuration - updated paths for monolithic structure
 data:
-  input_file: "data/raw/sample_data.csv"
-  
+  input_file: "experiments/data/raw/sample_data.csv"
+
+# Generation settings
 generation:
   n_samples: 1000
 
-# Hydra settings
+# Hydra settings - enhanced for experiment management
 hydra:
   job:
     chdir: false
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}

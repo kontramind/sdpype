@@ -1,0 +1,14 @@
+# params.yaml - Simple parameters for DVC experiments
+experiment:
+  seed: 123
+
+sdg:
+  library: sdv
+  model_type: gaussian_copula
+  parameters: {}
+
+generation:
+  n_samples: 1000
+
+preprocessing:
+  enabled: true

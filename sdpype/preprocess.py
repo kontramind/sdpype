@@ -1,23 +1,29 @@
 """
-Minimal preprocessing module for SDPype
+Enhanced preprocessing module for monolithic SDPype with experiment versioning
 """
 
 import json
 from pathlib import Path
+from datetime import datetime
 
 import hydra
 import pandas as pd
+import numpy as np
 from omegaconf import DictConfig
 from sklearn.preprocessing import StandardScaler
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="config")
 def main(cfg: DictConfig) -> None:
-    """Preprocess data"""
+    """Preprocess data with experiment versioning"""
+    
+    # Set random seed for reproducibility
+    np.random.seed(cfg.experiment.seed)
     
     print("🔄 Starting preprocessing...")
-    
-    # Load data
+    print(f"🎲 Experiment seed: {cfg.experiment.seed}")
+
+    # Load data (updated path for monolithic structure)
     data = pd.read_csv(cfg.data.input_file)
     print(f"Loaded data: {data.shape}")
     
@@ -48,21 +54,29 @@ def main(cfg: DictConfig) -> None:
     else:
         print("Preprocessing disabled - using raw data")
     
-    # Save processed data
-    Path("data/processed").mkdir(exist_ok=True)
-    data.to_csv("data/processed/data.csv", index=False)
+    # Save processed data (updated path + experiment versioning)
+    Path("experiments/data/processed").mkdir(parents=True, exist_ok=True)
+    output_file = "experiments/data/processed/data.csv"
+    data.to_csv(output_file, index=False)
+    print(f"📁 Saved: {output_file}")
     
-    # Save metrics
+    # Save metrics (updated path + experiment versioning + enhanced metadata)
     metrics = {
+        "experiment_seed": cfg.experiment.seed,
+        "experiment_name": cfg.experiment.name,
+        "timestamp": datetime.now().isoformat(),
         "original_rows": len(pd.read_csv(cfg.data.input_file)),
         "processed_rows": len(data),
-        "preprocessing_enabled": cfg.preprocessing.enabled
+        "preprocessing_enabled": cfg.preprocessing.enabled,
+        "output_file": output_file
     }
     
-    Path("metrics").mkdir(exist_ok=True)
-    with open("metrics/preprocess.json", "w") as f:
-        json.dump(metrics, f)
+    Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
+    metrics_file = f"experiments/metrics/preprocess.json"
+    with open(metrics_file, "w") as f:
+        json.dump(metrics, f, indent=2)
     
+    print(f"📊 Metrics saved: {metrics_file}")
     print("✅ Preprocessing completed")
 
 
