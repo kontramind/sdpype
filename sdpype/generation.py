@@ -14,7 +14,7 @@ import numpy as np
 from omegaconf import DictConfig
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="config")
+@hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
     """Generate synthetic data with experiment versioning"""
 
@@ -25,7 +25,7 @@ def main(cfg: DictConfig) -> None:
     print(f"🎲 Experiment seed: {cfg.experiment.seed}")
     
     # Load trained model (monolithic path + seed-specific)
-    model_filename = f"experiments/models/sdg_model.pkl"
+    model_filename = f"experiments/models/sdg_model_{cfg.experiment.seed}.pkl"
 
     if not Path(model_filename).exists():
         print(f"❌ Model file not found: {model_filename}")
@@ -69,7 +69,7 @@ def main(cfg: DictConfig) -> None:
 
     # Save synthetic data (monolithic path + experiment versioning)
     Path("experiments/data/synthetic").mkdir(parents=True, exist_ok=True)
-    synthetic_filename = f"experiments/data/synthetic/synthetic_data.csv"
+    synthetic_filename = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.seed}.csv"
     synthetic_data.to_csv(synthetic_filename, index=False)
     print(f"📁 Synthetic data saved: {synthetic_filename}")
     
@@ -99,7 +99,7 @@ def main(cfg: DictConfig) -> None:
         })
 
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    metrics_filename = f"experiments/metrics/generation.json"
+    metrics_filename = f"experiments/metrics/generation_{cfg.experiment.seed}.json"
     with open(metrics_filename, "w") as f:
         json.dump(metrics, f, indent=2)
 

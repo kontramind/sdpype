@@ -1,4 +1,4 @@
-# Simplified dvc.yaml - Using params.yaml for DVC experiments
+# Enhanced dvc.yaml - Parameter templating for experiment versioning
 stages:
   preprocess:
     cmd: python -m sdpype.preprocess
@@ -9,34 +9,34 @@ stages:
     params:
       - experiment.seed
     outs:
-      - experiments/data/processed/data.csv
+      - experiments/data/processed/data_${experiment.seed}.csv
     metrics:
-      - experiments/metrics/preprocess.json
+      - experiments/metrics/preprocess_${experiment.seed}.json
 
   train_sdg:
     cmd: python -m sdpype.training
     deps:
       - sdpype/training.py
-      - experiments/data/processed/data.csv
+      - experiments/data/processed/data_${experiment.seed}.csv
       - config/sdg/
     params:
       - sdg
       - experiment.seed
     outs:
-      - experiments/models/sdg_model.pkl
+      - experiments/models/sdg_model_${experiment.seed}.pkl
     metrics:
-      - experiments/metrics/training.json
+      - experiments/metrics/training_${experiment.seed}.json
 
   generate_synthetic:
     cmd: python -m sdpype.generation
     deps:
       - sdpype/generation.py
-      - experiments/models/sdg_model.pkl
+      - experiments/models/sdg_model_${experiment.seed}.pkl
       - config/
     params:
       - generation
       - experiment.seed
     outs:
-      - experiments/data/synthetic/synthetic_data.csv
+      - experiments/data/synthetic/synthetic_data_${experiment.seed}.csv
     metrics:
-      - experiments/metrics/generation.json
+      - experiments/metrics/generation_${experiment.seed}.json

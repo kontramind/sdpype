@@ -1,14 +1,36 @@
-# params.yaml - Simple parameters for DVC experiments
+# Complete standalone params.yaml - No defaults needed
 experiment:
-  seed: 123
+  seed: 100
+  name: sdpype_experiment
+  description: SDPype experiment
+  researcher: anonymous
+  tags: []
 
+# Data configuration
+data:
+  input_file: experiments/data/raw/sample_data.csv
+
+# Preprocessing configuration (inline, no defaults)
+preprocessing:
+  enabled: true
+  steps:
+    handle_missing: mean
+    remove_outliers: true
+    scale_numeric: standard
+
+# SDG configuration (inline, no defaults)
 sdg:
   library: sdv
-  model_type: gaussian_copula
-  parameters: {}
+  model_type: ctgan
+  parameters:
+    epochs: 300     # Add default epochs parameter
+    batch_size: 500 # Add default batch_size parameter
 
+# Generation configuration
 generation:
   n_samples: 1000
 
-preprocessing:
-  enabled: true
+# Hydra settings
+hydra:
+  job:
+    chdir: false

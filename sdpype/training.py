@@ -71,7 +71,7 @@ def create_experiment_hash(cfg: DictConfig) -> str:
     return hashlib.md5(hash_str.encode()).hexdigest()[:8]
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="config")
+@hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
     """Train synthetic data generator with experiment versioning"""
     
@@ -87,7 +87,7 @@ def main(cfg: DictConfig) -> None:
     print(f"🎲 Seed: {cfg.experiment.seed}")
 
     # Load processed data (monolithic path + experiment versioning)
-    data_file = f"experiments/data/processed/data.csv"
+    data_file = f"experiments/data/processed/data_{cfg.experiment.seed}.csv"
     if not Path(data_file).exists():
         print(f"❌ Processed data not found: {data_file}")
         print("💡 Run preprocessing first: dvc repro -s preprocess")
@@ -138,7 +138,7 @@ def main(cfg: DictConfig) -> None:
 
     # Use monolithic path + seed-specific filename
     Path("experiments/models").mkdir(parents=True, exist_ok=True)
-    model_filename = f"experiments/models/sdg_model.pkl"
+    model_filename = f"experiments/models/sdg_model_{cfg.experiment.seed}.pkl"
     with open(model_filename, "wb") as f:
         pickle.dump(model_data, f)
 
@@ -160,7 +160,7 @@ def main(cfg: DictConfig) -> None:
     }
 
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    metrics_filename = f"experiments/metrics/training.json"
+    metrics_filename = f"experiments/metrics/training_{cfg.experiment.seed}.json"
     with open(metrics_filename, "w") as f:
         json.dump(metrics, f, indent=2)
 

@@ -13,7 +13,7 @@ from omegaconf import DictConfig
 from sklearn.preprocessing import StandardScaler
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="config")
+@hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
     """Preprocess data with experiment versioning"""
     
@@ -56,7 +56,7 @@ def main(cfg: DictConfig) -> None:
     
     # Save processed data (updated path + experiment versioning)
     Path("experiments/data/processed").mkdir(parents=True, exist_ok=True)
-    output_file = "experiments/data/processed/data.csv"
+    output_file = f"experiments/data/processed/data_{cfg.experiment.seed}.csv"
     data.to_csv(output_file, index=False)
     print(f"📁 Saved: {output_file}")
     
@@ -72,7 +72,7 @@ def main(cfg: DictConfig) -> None:
     }
     
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    metrics_file = f"experiments/metrics/preprocess.json"
+    metrics_file = f"experiments/metrics/preprocess_{cfg.experiment.seed}.json"
     with open(metrics_file, "w") as f:
         json.dump(metrics, f, indent=2)
     
