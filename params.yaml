@@ -19,14 +19,7 @@ preprocessing:
     scale_numeric: standard
 
 # SDG configuration (inline, no defaults)
-sdg:
-  library: sdv
-  model_type: ctgan
-  parameters:
-    epochs: 300     # Add default epochs parameter
-    batch_size: 500 # Add default batch_size parameter
-
-# Generation configuration
+sdg: synthcity_tvae
 generation:
   n_samples: 1000
 
@@ -36,7 +29,7 @@ evaluation:
     evaluate_synthetic: true
     comparative_analysis: true
   statistical_similarity:
-    enabled: false
+    enabled: true
   downstream_tasks:
     enabled: false
 

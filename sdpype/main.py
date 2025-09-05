@@ -222,6 +222,7 @@ def experiment_run(
     seed: Optional[int] = typer.Option(None, "--seed", help="Random seed"),
     config: Optional[str] = typer.Option(None, "--config", help="Config overrides"),
     queue: bool = typer.Option(False, "--queue", help="Queue experiment"),
+    skip_statistical: bool = typer.Option(False, "--skip-statistical", help="Skip statistical similarity evaluation")  # ✨ NEW
 ):
     """🔬 Run experiment with versioning"""
 
@@ -235,6 +236,14 @@ def experiment_run(
         cmd.extend(["--set-param", config])
     if queue:
         cmd.append("--queue")
+
+    # ✨ NEW: Handle statistical similarity flag
+    if skip_statistical:
+        cmd.extend(["--set-param", "evaluation.statistical_similarity.enabled=false"])
+        console.print("⚠️  Skipping statistical similarity evaluation")
+    else:
+        cmd.extend(["--set-param", "evaluation.statistical_similarity.enabled=true"])
+        console.print("📈 Including statistical similarity evaluation")
 
     console.print(f"🚀 Running experiment...")
     console.print(f"Command: {' '.join(cmd)}")

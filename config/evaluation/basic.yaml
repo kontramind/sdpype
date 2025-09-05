@@ -1,15 +1,15 @@
-# Basic evaluation configuration
+# Enhanced evaluation configuration with statistical similarity
 intrinsic_quality:
   evaluate_original: true
   evaluate_synthetic: true
   comparative_analysis: true
 
 statistical_similarity:
-  enabled: false  # Will add in next phase
+  enabled: true  # 🎯 NOW ENABLED for Type 2 evaluation
 
 downstream_tasks:
-  enabled: false  # Will add in next phase
+  enabled: false  # Future extension
 
 # Output settings
-save_plots: false  # Will add in next phase
+save_plots: false  # Future extension
 report_format: "json"
