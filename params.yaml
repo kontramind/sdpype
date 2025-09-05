@@ -30,6 +30,16 @@ sdg:
 generation:
   n_samples: 1000
 
+evaluation:
+  intrinsic_quality:
+    evaluate_original: true
+    evaluate_synthetic: true
+    comparative_analysis: true
+  statistical_similarity:
+    enabled: false
+  downstream_tasks:
+    enabled: false
+
 # Hydra settings
 hydra:
   job:

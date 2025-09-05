@@ -40,3 +40,40 @@ stages:
       - experiments/data/synthetic/synthetic_data_${experiment.seed}.csv
     metrics:
       - experiments/metrics/generation_${experiment.seed}.json
+
+  evaluate_original:
+    cmd: python -m sdpype.evaluate +evaluation_data_type=original
+    deps:
+      - sdpype/evaluate.py
+      - sdpype/evaluation/
+      - experiments/data/processed/data_${experiment.seed}.csv
+    params:
+      - evaluation
+      - experiment.seed
+    metrics:
+      - experiments/metrics/quality_original_${experiment.seed}.json
+
+  evaluate_synthetic:
+    cmd: python -m sdpype.evaluate +evaluation_data_type=synthetic
+    deps:
+      - sdpype/evaluate.py
+      - sdpype/evaluation/
+      - experiments/data/synthetic/synthetic_data_${experiment.seed}.csv
+    params:
+      - evaluation
+      - experiment.seed
+    metrics:
+      - experiments/metrics/quality_synthetic_${experiment.seed}.json
+
+  compare_quality:
+    cmd: python -m sdpype.evaluate +evaluation_data_type=both
+    deps:
+      - sdpype/evaluate.py
+      - sdpype/evaluation/
+      - experiments/metrics/quality_original_${experiment.seed}.json
+      - experiments/metrics/quality_synthetic_${experiment.seed}.json
+    params:
+      - evaluation
+      - experiment.seed
+    metrics:
+      - experiments/metrics/quality_comparison_${experiment.seed}.json
