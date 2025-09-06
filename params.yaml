@@ -15,8 +15,9 @@ experiment:
 # =============================================================================
 sdg:
   library: synthcity
-  model_type: tvae
-  parameters: {}
+  model_type: ctgan
+  parameters:
+    n_iter: 300
 
 # =============================================================================
 # PREPROCESSING CONFIGURATION
@@ -27,79 +28,6 @@ preprocessing:
     handle_missing: mean
     remove_outliers: true
     scale_numeric: standard
-
-# =============================================================================
-# MODEL LIBRARY - Reference configurations for easy switching
-# =============================================================================
-model_presets:
-  # SDV Models
-  gaussian:
-    library: sdv
-    model_type: gaussian_copula
-    parameters: {}
-  ctgan:
-    library: sdv
-    model_type: ctgan
-    parameters:
-      epochs: 300
-      batch_size: 500
-      verbose: false
-
-  # Synthcity Models  
-  tvae:
-    library: synthcity
-    model_type: tvae
-    parameters:
-      n_epochs: 300
-      batch_size: 128
-
-  ddpm:
-    library: synthcity
-    model_type: ddpm
-    parameters:
-      n_iter: 1000
-      batch_size: 128
-
-  nflow:
-    library: synthcity
-    model_type: nflow
-    parameters:
-      n_iter: 500
-      batch_size: 128
-
-  marginal_coupling:
-    library: synthcity
-    model_type: marginal_coupling
-    parameters:
-      n_iter: 500
-
-  synthcity_ctgan:
-    library: synthcity
-    model_type: ctgan
-    parameters:
-      n_iter: 1000
-      batch_size: 500
-      lr: 2e-4
-
-# =============================================================================
-# PREPROCESSING PRESETS
-# =============================================================================
-preprocessing_presets:
-  none:
-    enabled: false
-    steps: {}
-  standard:
-    enabled: true
-    steps:
-      handle_missing: mean
-      remove_outliers: true
-      scale_numeric: standard
-  minimal:
-    enabled: true
-    steps:
-      handle_missing: mean
-      remove_outliers: false
-      scale_numeric: none
 
 # =============================================================================
 # DATA CONFIGURATION
@@ -125,10 +53,3 @@ evaluation:
     enabled: true
   downstream_tasks:
     enabled: false
-
-# =============================================================================
-# HYDRA SETTINGS (Simplified for DVC compatibility)
-# =============================================================================
-hydra:
-  job:
-    chdir: false
