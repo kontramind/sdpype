@@ -1,6 +1,6 @@
-# Enhanced sdpype/training.py - Monolithic structure with experiment versioning
+# Enhanced sdpype/training.py - Unified model saving for SDV + Synthcity
 """
-Enhanced SDG training module for monolithic SDPype with experiment tracking
+Enhanced SDG training module with unified model saving for all libraries
 """
 
 import json
@@ -18,8 +18,9 @@ from omegaconf import DictConfig, OmegaConf
 # SDV models
 from sdv.single_table import GaussianCopulaSynthesizer, CTGANSynthesizer
 
-# Synthcity models  
+# Synthcity models and serialization
 from synthcity.plugins import Plugins
+from synthcity.utils.serialization import save as synthcity_save
 
 
 def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
@@ -57,6 +58,40 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
         raise ValueError(f"Failed to create Synthcity model '{model_name}': {e}")
 
 
+def save_model_unified(model, metadata: dict, library: str, experiment_seed: int):
+    """Save any model to .pkl with library-specific internal handling"""
+
+    Path("experiments/models").mkdir(parents=True, exist_ok=True)
+    model_filename = f"experiments/models/sdg_model_{experiment_seed}.pkl"
+
+    if library == "sdv":
+        # SDV models can be stored directly
+        model_data = {
+            "model": model,        # Store model object directly
+            "library": library,
+            **metadata
+        }
+
+    elif library == "synthcity":
+        # Synthcity models: serialize to bytes, then pack in .pkl
+        model_bytes = synthcity_save(model)
+        model_data = {
+            "model_bytes": model_bytes,  # Store serialized bytes
+            "library": library,
+            **metadata
+        }
+
+    else:
+        raise ValueError(f"Unknown library: {library}")
+
+    # Always save as .pkl regardless of library
+    with open(model_filename, "wb") as f:
+        pickle.dump(model_data, f)
+
+    print(f"📁 Model saved: {model_filename} ({library} format)")
+    return model_filename
+
+
 def create_experiment_hash(cfg: DictConfig) -> str:
     """Create unique hash for experiment configuration"""
     # Include key config elements in hash
@@ -73,7 +108,7 @@ def create_experiment_hash(cfg: DictConfig) -> str:
 
 @hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
-    """Train synthetic data generator with experiment versioning"""
+    """Train synthetic data generator with unified .pkl output"""
     
     # Set random seed for reproducibility
     np.random.seed(cfg.experiment.seed)
@@ -97,31 +132,27 @@ def main(cfg: DictConfig) -> None:
     print(f"📊 Training data: {data.shape}")
 
     # Create model based on library
-    library = cfg.sdg.get("library", "sdv")  # Default to SDV for backward compatibility
+    library = cfg.sdg.library
 
     if library == "sdv":
+        print(f"🔧 Creating SDV {cfg.sdg.model_type} model...")
         model = create_sdv_model(cfg, data)
-        # Train SDV model
-        start_time = time.time()
-        model.fit(data)
-        training_time = time.time() - start_time
-
     elif library == "synthcity":
+        print(f"🔧 Creating Synthcity {cfg.sdg.model_type} model...")
         model = create_synthcity_model(cfg, data.shape)
-        # Train Synthcity model
-        start_time = time.time()
-        model.fit(data)
-        training_time = time.time() - start_time
-
     else:
         raise ValueError(f"Unknown library: {library}")
 
+    # Train model
+    print(f"⏳ Training {library} {cfg.sdg.model_type} model...")
+    start_time = time.time()
+    model.fit(data)
+    training_time = time.time() - start_time
+
     print(f"⏱️  Training completed in {training_time:.1f}s")
 
-    # Save model with experiment metadata (monolithic path + versioning)
-    model_data = {
-        "model": model,
-        "library": library,
+    # Prepare metadata (without model object)
+    metadata = {
         "model_type": cfg.sdg.model_type,
         "experiment": {
             "id": experiment_id,
@@ -132,19 +163,18 @@ def main(cfg: DictConfig) -> None:
             "researcher": cfg.experiment.get("researcher", "anonymous")
         },
         "config": OmegaConf.to_container(cfg, resolve=True),
-        "training_data_shape": data.shape,
-        "training_time": training_time
+        "training_data_shape": list(data.shape),  # Convert to list for JSON serialization
+        "training_time": training_time,
+        "training_data_columns": list(data.columns),
+        "parameters": dict(cfg.sdg.parameters) if cfg.sdg.parameters else {}
     }
 
-    # Use monolithic path + seed-specific filename
-    Path("experiments/models").mkdir(parents=True, exist_ok=True)
-    model_filename = f"experiments/models/sdg_model_{cfg.experiment.seed}.pkl"
-    with open(model_filename, "wb") as f:
-        pickle.dump(model_data, f)
+    # Save model using unified method
+    model_filename = save_model_unified(
+        model, metadata, library, cfg.experiment.seed
+    )
 
-    print(f"📁 Model saved: {model_filename}")
-
-    # Save detailed metrics (monolithic path + experiment versioning)
+    # Save training metrics (same as before)
     metrics = {
         "experiment_id": experiment_id,
         "experiment_hash": experiment_hash,
@@ -156,7 +186,8 @@ def main(cfg: DictConfig) -> None:
         "training_columns": len(data.columns),
         "timestamp": datetime.now().isoformat(),
         "data_source": data_file,
-        "model_output": model_filename
+        "model_output": model_filename,
+        "model_parameters": dict(cfg.sdg.parameters) if cfg.sdg.parameters else {}
     }
 
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
@@ -166,6 +197,14 @@ def main(cfg: DictConfig) -> None:
 
     print(f"📊 Metrics saved: {metrics_filename}")
     print("✅ Model training completed")
+
+    # Print training summary
+    print(f"\n📈 Training Summary:")
+    print(f"  Library: {library}")
+    print(f"  Model: {cfg.sdg.model_type}")
+    print(f"  Training time: {training_time:.1f}s")
+    print(f"  Training data: {len(data):,} rows × {len(data.columns)} columns")
+    print(f"  Model file: {model_filename}")
 
 
 if __name__ == "__main__":
