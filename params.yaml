@@ -1,16 +1,28 @@
-# Complete standalone params.yaml - No defaults needed
+# DVC-Compatible params.yaml - No Hydra interpolation, works with DVC experiments
+
+# =============================================================================
+# EXPERIMENT CONFIGURATION
+# =============================================================================
 experiment:
-  seed: 100
+  seed: 43
   name: sdpype_experiment
-  description: SDPype experiment
+  description: SDPype synthetic data generation experiment
   researcher: anonymous
   tags: []
+  active_model: ctgan       # Change this or override with DVC experiments
+  active_preprocessing: standard
 
-# Data configuration
-data:
-  input_file: experiments/data/raw/sample_data.csv
+# =============================================================================
+# ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
+# =============================================================================
+sdg:
+  library: sdv
+  model_type: gaussian_copula
+  parameters: {}
 
-# Preprocessing configuration (inline, no defaults)
+# =============================================================================
+# PREPROCESSING CONFIGURATION
+# =============================================================================
 preprocessing:
   enabled: true
   steps:
@@ -18,11 +30,94 @@ preprocessing:
     remove_outliers: true
     scale_numeric: standard
 
-# SDG configuration (inline, no defaults)
-sdg: synthcity_tvae
+# =============================================================================
+# MODEL LIBRARY - Reference configurations for easy switching
+# =============================================================================
+model_presets:
+  # SDV Models
+  gaussian:
+    library: sdv
+    model_type: gaussian_copula
+    parameters: {}
+  ctgan:
+    library: sdv
+    model_type: ctgan
+    parameters:
+      epochs: 300
+      batch_size: 500
+      verbose: false
+
+  # Synthcity Models  
+  tvae:
+    library: synthcity
+    model_type: tvae
+    parameters:
+      n_epochs: 300
+      batch_size: 128
+
+  ddpm:
+    library: synthcity
+    model_type: ddpm
+    parameters:
+      n_iter: 1000
+      batch_size: 128
+
+  nflow:
+    library: synthcity
+    model_type: nflow
+    parameters:
+      n_iter: 500
+      batch_size: 128
+
+  marginal_coupling:
+    library: synthcity
+    model_type: marginal_coupling
+    parameters:
+      n_iter: 500
+
+  synthcity_ctgan:
+    library: synthcity
+    model_type: ctgan
+    parameters:
+      n_iter: 1000
+      batch_size: 500
+      lr: 2e-4
+
+# =============================================================================
+# PREPROCESSING PRESETS
+# =============================================================================
+preprocessing_presets:
+  none:
+    enabled: false
+    steps: {}
+  standard:
+    enabled: true
+    steps:
+      handle_missing: mean
+      remove_outliers: true
+      scale_numeric: standard
+  minimal:
+    enabled: true
+    steps:
+      handle_missing: mean
+      remove_outliers: false
+      scale_numeric: none
+
+# =============================================================================
+# DATA CONFIGURATION
+# =============================================================================
+data:
+  input_file: experiments/data/raw/sample_data.csv
+
+# =============================================================================
+# GENERATION SETTINGS
+# =============================================================================
 generation:
   n_samples: 1000
 
+# =============================================================================
+# EVALUATION CONFIGURATION
+# =============================================================================
 evaluation:
   intrinsic_quality:
     evaluate_original: true
@@ -33,7 +128,9 @@ evaluation:
   downstream_tasks:
     enabled: false
 
-# Hydra settings
+# =============================================================================
+# HYDRA SETTINGS (Simplified for DVC compatibility)
+# =============================================================================
 hydra:
   job:
     chdir: false
