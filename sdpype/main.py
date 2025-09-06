@@ -49,7 +49,6 @@ def setup_repository():
         "experiments/data/synthetic",
         "experiments/models",
         "experiments/metrics",
-        "experiments/configs",
         "pipelines"
     ]
 

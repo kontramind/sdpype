@@ -43,10 +43,6 @@ sdpype status
 2. **train_sdg**: Train synthetic data generator
 3. **generate_synthetic**: Generate synthetic data
 
-## Configuration
-
-- `config/preprocessing/`: `none`, `standard`  
-- `config/sdg/`: `gaussian`, `ctgan`
 
 ## Project Structure
 
@@ -58,5 +54,4 @@ my-experiment/
 │   └── synthetic/     # Generated data
 ├── models/            # Trained models
 ├── metrics/           # Pipeline metrics
-└── config/            # Configurations
 ```
