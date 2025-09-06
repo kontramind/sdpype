@@ -1,10 +1,9 @@
-# Enhanced sdpype/generation.py - Unified model loading for SDV + Synthcity
+# Enhanced sdpype/generation.py - Using new serialization module
 """
-Enhanced synthetic data generation with unified model loading for all libraries
+Enhanced synthetic data generation using centralized serialization
 """
 
 import json
-import pickle
 import time
 from pathlib import Path
 from datetime import datetime
@@ -14,43 +13,8 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-# Synthcity import for loading
-from synthcity.utils.serialization import load as synthcity_load
-
-
-def load_model_unified(experiment_seed: int):
-    """Load any model from .pkl with library-specific internal handling"""
-
-    model_filename = f"experiments/models/sdg_model_{experiment_seed}.pkl"
-
-    if not Path(model_filename).exists():
-        raise FileNotFoundError(f"Model file not found: {model_filename}")
-
-    # Load the .pkl file
-    with open(model_filename, "rb") as f:
-        model_data = pickle.load(f)
-
-    # Handle different formats
-    if isinstance(model_data, dict):
-        library = model_data.get("library", "sdv")  # Default to SDV for legacy
-
-        if library == "sdv":
-            # SDV: model object stored directly
-            model = model_data["model"]
-
-        elif library == "synthcity":
-            # Synthcity: reconstruct from bytes
-            model_bytes = model_data["model_bytes"]
-            model = synthcity_load(model_bytes)
-
-        else:
-            raise ValueError(f"Unknown library: {library}")
-
-        return model, model_data
-
-    else:
-        # Legacy format - assume SDV model object stored directly
-        return model_data, {"library": "sdv", "model_type": "unknown"}
+# Import new serialization module
+from sdpype.serialization import load_model
 
 
 @hydra.main(version_base=None, config_path="../", config_name="params")
@@ -65,7 +29,7 @@ def main(cfg: DictConfig) -> None:
     
     # Load model using unified method
     try:
-        model, model_data = load_model_unified(cfg.experiment.seed)
+        model, model_data = load_model(cfg.experiment.seed)
         library = model_data.get("library", "sdv")
         model_type = model_data.get("model_type", "unknown")
         experiment_info = model_data.get("experiment", {})

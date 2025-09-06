@@ -15,6 +15,13 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 
+# Import serialization module for model info
+from sdpype.serialization import (
+    get_model_info, list_saved_models, validate_model, delete_model, copy_model,
+    get_supported_libraries, SerializationError, ModelNotFoundError
+)
+
+
 app = typer.Typer(
     name="sdpype",
     help="🚀 Synthetic Data Pipeline - Monolithic Repository with Experiment Versioning",
@@ -28,6 +35,16 @@ exp_app = typer.Typer(
     rich_markup_mode="rich"
 )
 app.add_typer(exp_app, name="exp")
+
+
+# Create model management sub-app
+model_app = typer.Typer(
+    name="model",
+    help="🤖 Model management commands",
+    rich_markup_mode="rich"
+)
+app.add_typer(model_app, name="model")
+
 
 console = Console()
 
@@ -431,7 +448,7 @@ def status():
         console.print(result.stdout)
 
     # Show experiments overview
-    console.print("\n🔬 Experiments Overview:")
+    console.print("\n🔬 Experiments & Models Overview:")
     _show_experiments_summary()
 
 
@@ -505,6 +522,447 @@ def list_synthcity_models():
         console.print("Install with: uv add synthcity", style="yellow")
     except Exception as e:
         console.print(f"❌ Error listing Synthcity models: {e}", style="red")
+
+
+# MODEL MANAGEMENT COMMANDS
+
+@model_app.command("list")
+def model_list(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information"),
+    sort_by: str = typer.Option("seed", "--sort", help="Sort by: seed, timestamp, size, library")
+):
+    """📋 List all saved models"""
+
+    try:
+        models = list_saved_models()
+
+        if not models:
+            console.print("📋 No saved models found", style="yellow")
+            console.print("💡 Run training first: dvc repro -s train_sdg")
+            return
+
+        # Sort models
+        sort_keys = {
+            "seed": lambda x: x.get("experiment_seed", 0),
+            "timestamp": lambda x: x.get("saved_at", ""),
+            "size": lambda x: x.get("file_size_mb", 0),
+            "library": lambda x: x.get("library", "")
+        }
+
+        if sort_by in sort_keys:
+            models.sort(key=sort_keys[sort_by])
+
+        # Create table
+        if verbose:
+            table = Table(title="📋 All Saved Models (Detailed)")
+            table.add_column("Seed", style="cyan")
+            table.add_column("Model Type", style="magenta")
+            table.add_column("Library", style="yellow")
+            table.add_column("Size (MB)", style="blue", justify="right")
+            table.add_column("Training Time", style="green", justify="right")
+            table.add_column("Saved At", style="white")
+            table.add_column("Experiment", style="cyan")
+
+            for model in models:
+                experiment_info = model.get("experiment", {})
+                table.add_row(
+                    str(model.get("experiment_seed", "?")),
+                    model.get("model_type", "unknown"),
+                    model.get("library", "unknown"),
+                    f"{model.get('file_size_mb', 0):.1f}",
+                    f"{model.get('training_time', 0):.1f}s",
+                    model.get("saved_at", "unknown")[:19] if model.get("saved_at") else "unknown",
+                    experiment_info.get("name", experiment_info.get("id", "unknown"))
+                )
+        else:
+            table = Table(title="📋 All Saved Models")
+            table.add_column("Seed", style="cyan")
+            table.add_column("Model", style="magenta")
+            table.add_column("Library", style="yellow")
+            table.add_column("Size (MB)", style="blue", justify="right")
+            table.add_column("Status", style="green")
+
+            for model in models:
+                table.add_row(
+                    str(model.get("experiment_seed", "?")),
+                    model.get("model_type", "unknown"),
+                    model.get("library", "unknown"),
+                    f"{model.get('file_size_mb', 0):.1f}",
+                    "✅ Available"
+                )
+
+        console.print(table)
+
+        # Summary
+        total_size = sum(model.get('file_size_mb', 0) for model in models)
+        console.print(f"\n📊 Total: {len(models)} models, {total_size:.1f} MB storage")
+
+    except Exception as e:
+        console.print(f"❌ Error listing models: {e}", style="red")
+
+
+@model_app.command("info")
+def model_info(
+    seed: int = typer.Argument(..., help="Experiment seed of the model"),
+    show_config: bool = typer.Option(False, "--config", help="Show full configuration")
+):
+    """📊 Show detailed information about a specific model"""
+
+    try:
+        info = get_model_info(seed)
+
+        # Create info panel
+        experiment_info = info.get("experiment", {})
+
+        details = f"""[bold cyan]Model Information[/bold cyan]
+
+🎲 [bold]Experiment Seed:[/bold] {seed}
+🤖 [bold]Model Type:[/bold] {info.get('model_type', 'unknown')}
+📚 [bold]Library:[/bold] {info.get('library', 'unknown')}
+💾 [bold]File Size:[/bold] {info.get('file_size_mb', 0):.1f} MB
+⏱️  [bold]Training Time:[/bold] {info.get('training_time', 0):.1f} seconds
+📅 [bold]Saved At:[/bold] {info.get('saved_at', 'unknown')}
+📂 [bold]File Path:[/bold] {info.get('file_path', 'unknown')}
+
+[bold yellow]Experiment Details[/bold yellow]
+🔬 [bold]Experiment ID:[/bold] {experiment_info.get('id', 'unknown')}
+📋 [bold]Name:[/bold] {experiment_info.get('name', 'unknown')}
+👤 [bold]Researcher:[/bold] {experiment_info.get('researcher', 'unknown')}
+📊 [bold]Training Data Shape:[/bold] {info.get('training_data_shape', 'unknown')}
+🗓️  [bold]Timestamp:[/bold] {experiment_info.get('timestamp', 'unknown')}"""
+        console.print(Panel(details, title=f"Model {seed}", border_style="cyan"))
+
+        # Show configuration if requested
+        if show_config and "config" in info:
+            console.print(f"\n📋 Full Configuration:")
+            console.print(json.dumps(info["config"], indent=2))
+
+    except ModelNotFoundError:
+        console.print(f"❌ Model with seed {seed} not found", style="red")
+        console.print("💡 Use 'sdpype model list' to see available models")
+    except Exception as e:
+        console.print(f"❌ Error getting model info: {e}", style="red")
+
+
+@model_app.command("validate")
+def model_validate(
+    seed: int = typer.Argument(..., help="Experiment seed of the model"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed validation info")
+):
+    """🔍 Validate model integrity and check if it can be loaded"""
+
+    try:
+        console.print(f"🔍 Validating model {seed}...")
+
+        validation_result = validate_model(seed)
+
+        if validation_result["valid"]:
+            console.print("✅ Model file is valid", style="green")
+
+            if validation_result["loadable"]:
+                console.print("✅ Model can be loaded successfully", style="green")
+
+                # Show library-specific validation
+                info = validation_result.get("info", {})
+                library = info.get("library", "unknown")
+
+                if library == "sdv" and validation_result.get("has_sample_method"):
+                    console.print("✅ SDV model has sample() method", style="green")
+                elif library == "synthcity" and validation_result.get("has_generate_method"):
+                    console.print("✅ Synthcity model has generate() method", style="green")
+
+            else:
+                console.print("❌ Model file exists but cannot be loaded", style="red")
+
+        else:
+            console.print("❌ Model validation failed", style="red")
+
+        # Show detailed info if requested
+        if verbose:
+            console.print(f"\n📋 Validation Details:")
+            for key, value in validation_result.items():
+                if key != "info":  # Don't duplicate info
+                    console.print(f"  {key}: {value}")
+
+        # Show error if any
+        if validation_result.get("error"):
+            console.print(f"\n❌ Error: {validation_result['error']}", style="red")
+
+    except ModelNotFoundError:
+        console.print(f"❌ Model with seed {seed} not found", style="red")
+        console.print("💡 Use 'sdpype model list' to see available models")
+    except Exception as e:
+        console.print(f"❌ Error validating model: {e}", style="red")
+
+
+@model_app.command("delete")
+def model_delete(
+    seed: int = typer.Argument(..., help="Experiment seed of the model to delete"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt")
+):
+    """🗑️ Delete a saved model"""
+
+    try:
+        # Check if model exists first
+        try:
+            info = get_model_info(seed)
+            model_type = info.get('model_type', 'unknown')
+            library = info.get('library', 'unknown')
+            size_mb = info.get('file_size_mb', 0)
+        except ModelNotFoundError:
+            console.print(f"❌ Model with seed {seed} not found", style="red")
+            return
+
+        # Confirmation prompt
+        if not force:
+            console.print(f"⚠️  About to delete model:", style="yellow")
+            console.print(f"  Seed: {seed}")
+            console.print(f"  Type: {model_type} ({library})")
+            console.print(f"  Size: {size_mb:.1f} MB")
+
+            confirm = typer.confirm("Are you sure you want to delete this model?")
+            if not confirm:
+                console.print("❌ Deletion cancelled")
+                return
+
+        # Delete the model
+        success = delete_model(seed)
+
+        if success:
+            console.print(f"✅ Model {seed} deleted successfully", style="green")
+        else:
+            console.print(f"❌ Model {seed} was already deleted", style="yellow")
+
+    except Exception as e:
+        console.print(f"❌ Error deleting model: {e}", style="red")
+
+
+@model_app.command("copy")
+def model_copy(
+    source_seed: int = typer.Argument(..., help="Source experiment seed"),
+    target_seed: int = typer.Argument(..., help="Target experiment seed"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite if target exists"),
+    update_metadata: bool = typer.Option(True, "--update-metadata/--keep-metadata", help="Update metadata with new seed")
+):
+    """📋 Copy a model from one experiment seed to another"""
+
+    try:
+        # Check if source exists
+        try:
+            source_info = get_model_info(source_seed)
+        except ModelNotFoundError:
+            console.print(f"❌ Source model with seed {source_seed} not found", style="red")
+            console.print("💡 Use 'sdpype model list' to see available models")
+            return
+
+        # Check if target exists
+        target_exists = False
+        try:
+            get_model_info(target_seed)
+            target_exists = True
+        except ModelNotFoundError:
+            pass
+
+        if target_exists and not force:
+            console.print(f"❌ Target model with seed {target_seed} already exists", style="red")
+            console.print("💡 Use --force to overwrite, or choose a different target seed")
+            return
+
+        # Show copy details
+        console.print(f"📋 Copying model:")
+        console.print(f"  From: {source_seed} ({source_info.get('model_type', 'unknown')})")
+        console.print(f"  To: {target_seed}")
+        console.print(f"  Size: {source_info.get('file_size_mb', 0):.1f} MB")
+
+        # Perform copy
+        target_file = copy_model(source_seed, target_seed, update_metadata=update_metadata)
+
+        console.print(f"✅ Model copied successfully to {target_file}", style="green")
+
+        if update_metadata:
+            console.print("📝 Metadata updated with new seed and timestamp")
+        else:
+            console.print("📝 Original metadata preserved")
+
+    except Exception as e:
+        console.print(f"❌ Error copying model: {e}", style="red")
+
+
+@model_app.command("clean")
+def model_clean(
+    older_than_days: Optional[int] = typer.Option(None, "--older-than", help="Delete models older than N days"),
+    keep_latest: Optional[int] = typer.Option(None, "--keep-latest", help="Keep only the N most recent models"),
+    library: Optional[str] = typer.Option(None, "--library", help="Only clean models from specific library"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be deleted without deleting"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompts")
+):
+    """🧹 Clean up old or unwanted models"""
+
+    try:
+        models = list_saved_models()
+
+        if not models:
+            console.print("📋 No models found to clean", style="yellow")
+            return
+
+        # Filter models based on criteria
+        models_to_delete = []
+
+        # Filter by library
+        if library:
+            models = [m for m in models if m.get('library') == library]
+
+        # Filter by age
+        if older_than_days:
+            from datetime import datetime, timedelta
+            cutoff_date = datetime.now() - timedelta(days=older_than_days)
+
+            for model in models:
+                try:
+                    saved_at = datetime.fromisoformat(model.get('saved_at', ''))
+                    if saved_at < cutoff_date:
+                        models_to_delete.append(model)
+                except (ValueError, TypeError):
+                    # Skip models with invalid timestamps
+                    continue
+
+        # Keep only latest N models
+        if keep_latest and not older_than_days:
+            # Sort by timestamp, newest first
+            models_sorted = sorted(models, 
+                                 key=lambda x: x.get('saved_at', ''), 
+                                 reverse=True)
+            models_to_delete = models_sorted[keep_latest:]
+
+        if not models_to_delete:
+            console.print("✅ No models match cleanup criteria", style="green")
+            return
+
+        # Show what will be deleted
+        console.print(f"🧹 Models to {'DELETE' if not dry_run else 'be deleted'}:")
+
+        table = Table()
+        table.add_column("Seed", style="cyan")
+        table.add_column("Model", style="magenta")
+        table.add_column("Library", style="yellow")
+        table.add_column("Size (MB)", style="blue", justify="right")
+        table.add_column("Saved At", style="white")
+
+        total_size = 0
+        for model in models_to_delete:
+            seed = model.get('experiment_seed', '?')
+            size_mb = model.get('file_size_mb', 0)
+            total_size += size_mb
+
+            table.add_row(
+                str(seed),
+                model.get('model_type', 'unknown'),
+                model.get('library', 'unknown'),
+                f"{size_mb:.1f}",
+                model.get('saved_at', 'unknown')[:19] if model.get('saved_at') else 'unknown'
+            )
+
+        console.print(table)
+        console.print(f"💾 Total storage to free: {total_size:.1f} MB")
+
+        if dry_run:
+            console.print(f"🔍 Dry run complete. Use without --dry-run to actually delete.", style="yellow")
+            return
+
+        # Confirmation
+        if not force:
+            confirm = typer.confirm(f"Delete {len(models_to_delete)} models?")
+            if not confirm:
+                console.print("❌ Cleanup cancelled")
+                return
+
+        # Delete models
+        deleted_count = 0
+        for model in models_to_delete:
+            seed = model.get('experiment_seed')
+            try:
+                if delete_model(seed):
+                    deleted_count += 1
+            except Exception as e:
+                console.print(f"❌ Failed to delete model {seed}: {e}", style="red")
+
+        console.print(f"✅ Deleted {deleted_count}/{len(models_to_delete)} models", style="green")
+        console.print(f"💾 Freed {total_size:.1f} MB of storage")
+
+    except Exception as e:
+        console.print(f"❌ Error during cleanup: {e}", style="red")
+
+
+@model_app.command("status")
+def model_status():
+    """📊 Show overall model storage status and library support"""
+
+    try:
+        # Get library support info
+        supported_libs = get_supported_libraries()
+
+        console.print("📚 Library Support Status:")
+        for lib, available in supported_libs.items():
+            status = "✅ Available" if available else "❌ Not installed"
+            style = "green" if available else "red"
+            console.print(f"  • {lib}: {status}", style=style)
+
+        # Get models summary
+        models = list_saved_models()
+
+        if not models:
+            console.print("\n📋 No models found")
+            return
+
+        # Calculate statistics
+        total_models = len(models)
+        total_size_mb = sum(model.get('file_size_mb', 0) for model in models)
+
+        # Group by library
+        by_library = {}
+        for model in models:
+            lib = model.get('library', 'unknown')
+            if lib not in by_library:
+                by_library[lib] = {'count': 0, 'size_mb': 0}
+            by_library[lib]['count'] += 1
+            by_library[lib]['size_mb'] += model.get('file_size_mb', 0)
+
+        # Group by model type
+        by_type = {}
+        for model in models:
+            model_type = model.get('model_type', 'unknown')
+            if model_type not in by_type:
+                by_type[model_type] = {'count': 0, 'size_mb': 0}
+            by_type[model_type]['count'] += 1
+            by_type[model_type]['size_mb'] += model.get('file_size_mb', 0)
+
+        console.print(f"\n📊 Model Storage Summary:")
+        console.print(f"  • Total models: {total_models}")
+        console.print(f"  • Total storage: {total_size_mb:.1f} MB")
+        console.print(f"  • Average size: {total_size_mb/total_models:.1f} MB per model")
+
+        # Show breakdown by library
+        console.print(f"\n📚 By Library:")
+        for lib, stats in by_library.items():
+            console.print(f"  • {lib}: {stats['count']} models, {stats['size_mb']:.1f} MB")
+
+        # Show breakdown by model type
+        console.print(f"\n🤖 By Model Type:")
+        for model_type, stats in by_type.items():
+            console.print(f"  • {model_type}: {stats['count']} models, {stats['size_mb']:.1f} MB")
+
+        # Storage recommendations
+        console.print(f"\n💡 Storage Recommendations:")
+        if total_size_mb > 1000:  # > 1GB
+            console.print(f"  • Consider cleaning old models: sdpype model clean --older-than 30")
+        if len(models) > 10:
+            console.print(f"  • Keep only recent models: sdpype model clean --keep-latest 5")
+        if total_size_mb < 100:  # < 100MB
+            console.print(f"  • Storage usage is efficient ✅")
+
+    except Exception as e:
+        console.print(f"❌ Error getting model status: {e}", style="red")
+
 
 
 # EXPERIMENT MANAGEMENT COMMANDS
@@ -600,7 +1058,7 @@ def _create_sample_data():
 
 
 def _show_experiments_summary():
-    """Show summary of completed experiments"""
+    """Show summary of completed experiments with model status"""
 
     metrics_dir = Path("experiments/metrics")
     if not metrics_dir.exists():
@@ -628,6 +1086,21 @@ def _show_experiments_summary():
                 "timestamp": training_data.get("timestamp", "unknown")
             }
 
+            # Add model status information using serialization module
+            try:
+                model_info = get_model_info(seed)
+                exp_data.update({
+                    "model_status": "✅ Available",
+                    "model_size_mb": f"{model_info.get('file_size_mb', 0):.1f}",
+                    "model_library": model_info.get('library', 'unknown'),
+                })
+            except SerializationError:
+                exp_data.update({
+                    "model_status": "❌ Missing",
+                    "model_size_mb": "0.0",
+                    "model_library": "unknown",
+                })
+
             if generation_file.exists():
                 with open(generation_file) as f:
                     gen_data = json.load(f)
@@ -648,26 +1121,48 @@ def _show_experiments_summary():
         return
 
     # Display summary table
-    table = Table(title="Experiment Summary")
+    table = Table(title="Experiments & Models Summary")
     table.add_column("Seed", style="cyan")
     table.add_column("Model", style="magenta")
     table.add_column("Library", style="yellow")
+    table.add_column("Model Status", style="white")
+    table.add_column("Size (MB)", style="blue", justify="right")
     table.add_column("Train Time", style="green")
-    table.add_column("Gen Time", style="blue")
-    table.add_column("Samples", style="white")
+    table.add_column("Gen Time", style="green")
+    table.add_column("Samples", style="white", justify="right")
 
     for exp in sorted(experiments, key=lambda x: str(x["seed"])):
         table.add_row(
             str(exp["seed"]),
             exp["model"],
-            exp["library"],
+            exp.get("model_library", exp["library"]),
+            exp.get("model_status", "Unknown"),
+            exp.get("model_size_mb", "0.0"),
             f"{exp['train_time']:.1f}s",
             f"{exp['gen_time']:.1f}s",
             str(exp["samples"])
         )
 
     console.print(table)
-    console.print(f"\n📊 Total experiments: {len(experiments)}")
+
+    # Add summary statistics
+    total_experiments = len(experiments)
+    available_models = len([exp for exp in experiments if exp.get("model_status") == "✅ Available"])
+    missing_models = total_experiments - available_models
+    total_size_mb = sum(float(exp.get("model_size_mb", 0)) for exp in experiments)
+
+    console.print(f"\n📊 Summary:")
+    console.print(f"  • Total experiments: {total_experiments}")
+    console.print(f"  • Available models: {available_models}")
+    if missing_models > 0:
+        console.print(f"  • Missing models: {missing_models}", style="yellow")
+    console.print(f"  • Total model storage: {total_size_mb:.1f} MB")
+
+    # Show hint about missing models
+    if missing_models > 0:
+        console.print(f"\n💡 Some models are missing. Run training again:", style="yellow")
+        missing_seeds = [str(exp["seed"]) for exp in experiments if exp.get("model_status") == "❌ Missing"]
+        console.print(f"  dvc repro --set-param experiment.seed={missing_seeds[0]}")
 
 
 if __name__ == "__main__":

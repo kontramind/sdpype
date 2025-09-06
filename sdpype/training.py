@@ -1,10 +1,9 @@
-# Enhanced sdpype/training.py - Unified model saving for SDV + Synthcity
+# Enhanced sdpype/training.py - Using new serialization module
 """
-Enhanced SDG training module with unified model saving for all libraries
+Enhanced SDG training module using centralized serialization
 """
 
 import json
-import pickle
 import time
 import hashlib
 from pathlib import Path
@@ -20,7 +19,9 @@ from sdv.single_table import GaussianCopulaSynthesizer, CTGANSynthesizer
 
 # Synthcity models and serialization
 from synthcity.plugins import Plugins
-from synthcity.utils.serialization import save as synthcity_save
+
+# Import new serialization module
+from sdpype.serialization import save_model, create_model_metadata
 
 
 def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
@@ -56,40 +57,6 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
         return model
     except Exception as e:
         raise ValueError(f"Failed to create Synthcity model '{model_name}': {e}")
-
-
-def save_model_unified(model, metadata: dict, library: str, experiment_seed: int):
-    """Save any model to .pkl with library-specific internal handling"""
-
-    Path("experiments/models").mkdir(parents=True, exist_ok=True)
-    model_filename = f"experiments/models/sdg_model_{experiment_seed}.pkl"
-
-    if library == "sdv":
-        # SDV models can be stored directly
-        model_data = {
-            "model": model,        # Store model object directly
-            "library": library,
-            **metadata
-        }
-
-    elif library == "synthcity":
-        # Synthcity models: serialize to bytes, then pack in .pkl
-        model_bytes = synthcity_save(model)
-        model_data = {
-            "model_bytes": model_bytes,  # Store serialized bytes
-            "library": library,
-            **metadata
-        }
-
-    else:
-        raise ValueError(f"Unknown library: {library}")
-
-    # Always save as .pkl regardless of library
-    with open(model_filename, "wb") as f:
-        pickle.dump(model_data, f)
-
-    print(f"📁 Model saved: {model_filename} ({library} format)")
-    return model_filename
 
 
 def create_experiment_hash(cfg: DictConfig) -> str:
@@ -151,26 +118,14 @@ def main(cfg: DictConfig) -> None:
 
     print(f"⏱️  Training completed in {training_time:.1f}s")
 
-    # Prepare metadata (without model object)
-    metadata = {
-        "model_type": cfg.sdg.model_type,
-        "experiment": {
-            "id": experiment_id,
-            "seed": cfg.experiment.seed,
-            "hash": experiment_hash,
-            "timestamp": datetime.now().isoformat(),
-            "name": cfg.experiment.name,
-            "researcher": cfg.experiment.get("researcher", "anonymous")
-        },
-        "config": OmegaConf.to_container(cfg, resolve=True),
-        "training_data_shape": list(data.shape),  # Convert to list for JSON serialization
-        "training_time": training_time,
-        "training_data_columns": list(data.columns),
-        "parameters": dict(cfg.sdg.parameters) if cfg.sdg.parameters else {}
-    }
+    # Create standardized metadata using serialization module
+    metadata = create_model_metadata(
+        cfg, cfg.sdg.model_type, library, cfg.experiment.seed,
+        training_time, data, experiment_id, experiment_hash
+    )
 
-    # Save model using unified method
-    model_filename = save_model_unified(
+    # Save model using new serialization module
+    model_filename = save_model(
         model, metadata, library, cfg.experiment.seed
     )
 
