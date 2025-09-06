@@ -9,15 +9,13 @@ experiment:
   description: SDPype synthetic data generation experiment
   researcher: anonymous
   tags: []
-  active_model: ctgan       # Change this or override with DVC experiments
-  active_preprocessing: standard
 
 # =============================================================================
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: sdv
-  model_type: gaussian_copula
+  library: synthcity
+  model_type: tvae
   parameters: {}
 
 # =============================================================================
