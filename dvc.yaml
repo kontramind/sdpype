@@ -5,7 +5,6 @@ stages:
     deps:
       - sdpype/preprocess.py
       - experiments/data/raw/
-      - config/preprocessing/
     params:
       - experiment.seed
     outs:
@@ -18,7 +17,6 @@ stages:
     deps:
       - sdpype/training.py
       - experiments/data/processed/data_${experiment.seed}.csv
-      - config/sdg/
     params:
       - sdg
       - experiment.seed
@@ -32,7 +30,6 @@ stages:
     deps:
       - sdpype/generation.py
       - experiments/models/sdg_model_${experiment.seed}.pkl
-      - config/
     params:
       - generation
       - experiment.seed

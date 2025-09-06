@@ -1,7 +1,0 @@
-# config/sdg/synthcity_ctgan.yaml
-library: "synthcity"
-model_type: "ctgan" 
-parameters:
-  n_iter: 1000
-  batch_size: 500
-  lr: 2e-4

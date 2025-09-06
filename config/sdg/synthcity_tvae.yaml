@@ -1,6 +1,0 @@
-# config/sdg/synthcity_tvae.yaml  
-library: "synthcity"
-model_type: "tvae"
-parameters:
-  n_epochs: 300
-  batch_size: 128

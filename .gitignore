@@ -48,10 +48,6 @@ experiments/models/            # Large model files (manual transfer)
 !experiments/metrics/          # Small JSON metrics (commit these)
 !experiments/configs/          # Experiment configs (commit these)
 
-# Hydra
-outputs/
-.hydra/
-
 # Testing
 .pytest_cache/
 .coverage

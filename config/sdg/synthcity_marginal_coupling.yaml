@@ -1,4 +1,0 @@
-library: "synthcity" 
-model_type: "marginal_coupling"
-parameters:
-  n_iter: 500

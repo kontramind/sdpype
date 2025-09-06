@@ -1,4 +1,0 @@
-# config/sdg/gaussian.yaml
-library: "sdv"  # Add library specification
-model_type: "gaussian_copula"
-parameters: {}
