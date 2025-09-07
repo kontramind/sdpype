@@ -31,13 +31,20 @@ def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
     metadata = SingleTableMetadata()
     metadata.detect_from_dataframe(data)
 
+    # Get model parameters from config, filtering for SDV-compatible params  
+    all_params = dict(cfg.sdg.parameters) if cfg.sdg.parameters else {}
+    
+    # Filter out Synthcity-specific parameters that SDV doesn't understand
+    synthcity_only_params = {'n_iter'}  # Add more Synthcity-only params as needed
+    model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
+
     if cfg.sdg.model_type == "gaussian_copula":
         return GaussianCopulaSynthesizer(metadata)
     elif cfg.sdg.model_type == "ctgan":
         return CTGANSynthesizer(
             metadata,
-            epochs=cfg.sdg.parameters.get("epochs", 300),
-            batch_size=cfg.sdg.parameters.get("batch_size", 500),
+            epochs=model_params.get("epochs", 300),
+            batch_size=model_params.get("batch_size", 500),
             verbose=False
         )
     else:
@@ -48,8 +55,12 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
     """Create Synthcity model"""
     model_name = cfg.sdg.model_type
     
-    # Get model parameters from config
-    model_params = dict(cfg.sdg.parameters) if cfg.sdg.parameters else {}
+    # Get model parameters from config, filtering for Synthcity-compatible params
+    all_params = dict(cfg.sdg.parameters) if cfg.sdg.parameters else {}
+    
+    # Filter out SDV-specific parameters that Synthcity doesn't understand
+    sdv_only_params = {'epochs', 'verbose'}  # Add more SDV-only params as needed
+    model_params = {k: v for k, v in all_params.items() if k not in sdv_only_params}
     
     # Create synthcity plugin
     try:

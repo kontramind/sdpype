@@ -4,7 +4,7 @@
 # EXPERIMENT CONFIGURATION
 # =============================================================================
 experiment:
-  seed: 43
+  seed: 44
   name: sdpype_experiment
   description: SDPype synthetic data generation experiment
   researcher: anonymous
@@ -18,10 +18,12 @@ sdg:
   model_type: ctgan
   parameters:
     n_iter: 300
-
+    epochs: 300
+    batch_size: 500
 # =============================================================================
 # PREPROCESSING CONFIGURATION
 # =============================================================================
+
 preprocessing:
   enabled: true
   steps:
@@ -52,4 +54,12 @@ evaluation:
   statistical_similarity:
     enabled: true
   downstream_tasks:
-    enabled: false
+    enabled: true
+    target_column: category  # Column to predict (auto-detect task type)
+    task_type:               # 'classification', 'regression', or null for auto-detect
+    models:                  # ML models to evaluate
+    - RandomForest
+    - LogisticRegression
+    - SVM
+    - MLP
+    random_state:            # Use experiment.seed if null
