@@ -4,8 +4,8 @@
 # EXPERIMENT CONFIGURATION
 # =============================================================================
 experiment:
-  seed: 44
-  name: sdpype_experiment
+  seed: 46
+  name: different_name_test
   description: SDPype synthetic data generation experiment
   researcher: anonymous
   tags: []
@@ -14,12 +14,11 @@ experiment:
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: synthcity
+  library: sdv
   model_type: ctgan
   parameters:
-    n_iter: 300
-    epochs: 300
-    batch_size: 500
+    epochs: 500
+    bact_size: 100
 # =============================================================================
 # PREPROCESSING CONFIGURATION
 # =============================================================================

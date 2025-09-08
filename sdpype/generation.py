@@ -29,7 +29,7 @@ def main(cfg: DictConfig) -> None:
     
     # Load model using unified method
     try:
-        model, model_data = load_model(cfg.experiment.seed)
+        model, model_data = load_model(cfg.experiment.seed, cfg.experiment.name)
         library = model_data.get("library", "sdv")
         model_type = model_data.get("model_type", "unknown")
         experiment_info = model_data.get("experiment", {})
@@ -76,7 +76,7 @@ def main(cfg: DictConfig) -> None:
 
     # Save synthetic data (monolithic path + experiment versioning)
     Path("experiments/data/synthetic").mkdir(parents=True, exist_ok=True)
-    synthetic_filename = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.seed}.csv"
+    synthetic_filename = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
     synthetic_data.to_csv(synthetic_filename, index=False)
     print(f"📁 Synthetic data saved: {synthetic_filename}")
     
@@ -131,7 +131,7 @@ def main(cfg: DictConfig) -> None:
 
     # Save metrics
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    metrics_filename = f"experiments/metrics/generation_{cfg.experiment.seed}.json"
+    metrics_filename = f"experiments/metrics/generation_{cfg.experiment.name}_{cfg.experiment.seed}.json"
     with open(metrics_filename, "w") as f:
         json.dump(metrics, f, indent=2)
 

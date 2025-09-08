@@ -581,6 +581,7 @@ def model_list(
         else:
             table = Table(title="📋 All Saved Models")
             table.add_column("Seed", style="cyan")
+            table.add_column("Experiment", style="yellow")
             table.add_column("Model", style="magenta")
             table.add_column("Library", style="yellow")
             table.add_column("Size (MB)", style="blue", justify="right")
@@ -589,6 +590,7 @@ def model_list(
             for model in models:
                 table.add_row(
                     str(model.get("experiment_seed", "?")),
+                    model.get("experiment_name", "legacy") or "legacy",
                     model.get("model_type", "unknown"),
                     model.get("library", "unknown"),
                     f"{model.get('file_size_mb', 0):.1f}",
@@ -608,12 +610,17 @@ def model_list(
 @model_app.command("info")
 def model_info(
     seed: int = typer.Argument(..., help="Experiment seed of the model"),
+    experiment_name: Optional[str] = typer.Option(None, "--name", help="Experiment name (optional, auto-detect if not provided)"),
     show_config: bool = typer.Option(False, "--config", help="Show full configuration")
 ):
     """📊 Show detailed information about a specific model"""
 
     try:
-        info = get_model_info(seed)
+        # Use smart lookup - try with experiment name first, fallback to auto-detect
+        if experiment_name:
+            info = get_model_info(seed, experiment_name)
+        else:
+            info = get_model_info(seed)  # Will auto-detect using our smart fallback
 
         # Create info panel
         experiment_info = info.get("experiment", {})
@@ -623,6 +630,7 @@ def model_info(
 🎲 [bold]Experiment Seed:[/bold] {seed}
 🤖 [bold]Model Type:[/bold] {info.get('model_type', 'unknown')}
 📚 [bold]Library:[/bold] {info.get('library', 'unknown')}
+📝 [bold]Experiment Name:[/bold] {info.get('experiment_name', 'legacy') or 'legacy'}
 💾 [bold]File Size:[/bold] {info.get('file_size_mb', 0):.1f} MB
 ⏱️  [bold]Training Time:[/bold] {info.get('training_time', 0):.1f} seconds
 📅 [bold]Saved At:[/bold] {info.get('saved_at', 'unknown')}
@@ -651,14 +659,23 @@ def model_info(
 @model_app.command("validate")
 def model_validate(
     seed: int = typer.Argument(..., help="Experiment seed of the model"),
+    experiment_name: Optional[str] = typer.Option(None, "--name", help="Experiment name (optional, auto-detect if not provided)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed validation info")
 ):
     """🔍 Validate model integrity and check if it can be loaded"""
 
     try:
-        console.print(f"🔍 Validating model {seed}...")
+        if experiment_name:
+            console.print(f"🔍 Validating model {experiment_name}_{seed}...")
+        else:
+            console.print(f"🔍 Validating model {seed} (auto-detecting experiment name)...")
 
-        validation_result = validate_model(seed)
+
+        # Use smart lookup - try with experiment name first, fallback to auto-detect
+        if experiment_name:
+            validation_result = validate_model(seed, experiment_name)
+        else:
+            validation_result = validate_model(seed)  # Will auto-detect using our smart fallback
 
         if validation_result["valid"]:
             console.print("✅ Model file is valid", style="green")
@@ -702,6 +719,7 @@ def model_validate(
 @model_app.command("delete")
 def model_delete(
     seed: int = typer.Argument(..., help="Experiment seed of the model to delete"),
+    experiment_name: Optional[str] = typer.Option(None, "--name", help="Experiment name (optional, auto-detect if not provided)"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt")
 ):
     """🗑️ Delete a saved model"""
@@ -709,7 +727,11 @@ def model_delete(
     try:
         # Check if model exists first
         try:
-            info = get_model_info(seed)
+            # Use smart lookup - try with experiment name first, fallback to auto-detect
+            if experiment_name:
+                info = get_model_info(seed, experiment_name)
+            else:
+                info = get_model_info(seed)  # Will auto-detect using our smart fallback
             model_type = info.get('model_type', 'unknown')
             library = info.get('library', 'unknown')
             size_mb = info.get('file_size_mb', 0)
@@ -730,7 +752,10 @@ def model_delete(
                 return
 
         # Delete the model
-        success = delete_model(seed)
+        if experiment_name:
+            success = delete_model(seed, experiment_name)
+        else:
+            success = delete_model(seed)  # Will auto-detect using our smart fallback
 
         if success:
             console.print(f"✅ Model {seed} deleted successfully", style="green")
@@ -745,6 +770,8 @@ def model_delete(
 def model_copy(
     source_seed: int = typer.Argument(..., help="Source experiment seed"),
     target_seed: int = typer.Argument(..., help="Target experiment seed"),
+    source_name: Optional[str] = typer.Option(None, "--source-name", help="Source experiment name (optional, auto-detect if not provided)"),
+    target_name: Optional[str] = typer.Option(None, "--target-name", help="Target experiment name (optional, uses source name if not provided)"),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite if target exists"),
     update_metadata: bool = typer.Option(True, "--update-metadata/--keep-metadata", help="Update metadata with new seed")
 ):
@@ -753,7 +780,12 @@ def model_copy(
     try:
         # Check if source exists
         try:
-            source_info = get_model_info(source_seed)
+            # Use smart lookup for source
+            if source_name:
+                source_info = get_model_info(source_seed, source_name)
+            else:
+                source_info = get_model_info(source_seed)  # Auto-detect
+
         except ModelNotFoundError:
             console.print(f"❌ Source model with seed {source_seed} not found", style="red")
             console.print("💡 Use 'sdpype model list' to see available models")
@@ -762,8 +794,13 @@ def model_copy(
         # Check if target exists
         target_exists = False
         try:
-            get_model_info(target_seed)
+            # Use smart lookup for target (if target_name provided)
+            if target_name:
+                get_model_info(target_seed, target_name)
+            else:
+                get_model_info(target_seed)  # Check if any model with target seed exists
             target_exists = True
+
         except ModelNotFoundError:
             pass
 
@@ -774,12 +811,16 @@ def model_copy(
 
         # Show copy details
         console.print(f"📋 Copying model:")
-        console.print(f"  From: {source_seed} ({source_info.get('model_type', 'unknown')})")
-        console.print(f"  To: {target_seed}")
+        console.print(f"  From: {source_info.get('experiment_name', 'legacy') or 'legacy'}_{source_seed} ({source_info.get('model_type', 'unknown')})")
+        console.print(f"  To: {target_name or source_info.get('experiment_name', 'legacy')}_{target_seed}")
         console.print(f"  Size: {source_info.get('file_size_mb', 0):.1f} MB")
 
         # Perform copy
-        target_file = copy_model(source_seed, target_seed, update_metadata=update_metadata)
+        target_file = copy_model(
+            source_seed, target_seed,
+            source_name, target_name or source_info.get('experiment_name'),
+            update_metadata=update_metadata
+        )
 
         console.print(f"✅ Model copied successfully to {target_file}", style="green")
 
@@ -796,6 +837,7 @@ def model_copy(
 def model_clean(
     older_than_days: Optional[int] = typer.Option(None, "--older-than", help="Delete models older than N days"),
     keep_latest: Optional[int] = typer.Option(None, "--keep-latest", help="Keep only the N most recent models"),
+    experiment_name: Optional[str] = typer.Option(None, "--experiment", help="Only clean models from specific experiment"),
     library: Optional[str] = typer.Option(None, "--library", help="Only clean models from specific library"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be deleted without deleting"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompts")
@@ -811,6 +853,13 @@ def model_clean(
 
         # Filter models based on criteria
         models_to_delete = []
+
+        # Filter by experiment name
+        if experiment_name:
+            models = [m for m in models if m.get('experiment_name') == experiment_name]
+            if not models:
+                console.print(f"📋 No models found for experiment '{experiment_name}'", style="yellow")
+                return
 
         # Filter by library
         if library:
@@ -847,6 +896,7 @@ def model_clean(
 
         table = Table()
         table.add_column("Seed", style="cyan")
+        table.add_column("Experiment", style="yellow")
         table.add_column("Model", style="magenta")
         table.add_column("Library", style="yellow")
         table.add_column("Size (MB)", style="blue", justify="right")
@@ -860,6 +910,7 @@ def model_clean(
 
             table.add_row(
                 str(seed),
+                model.get('experiment_name', 'legacy') or 'legacy',
                 model.get('model_type', 'unknown'),
                 model.get('library', 'unknown'),
                 f"{size_mb:.1f}",
@@ -884,8 +935,9 @@ def model_clean(
         deleted_count = 0
         for model in models_to_delete:
             seed = model.get('experiment_seed')
+            exp_name = model.get('experiment_name')
             try:
-                if delete_model(seed):
+                if delete_model(seed, exp_name):
                     deleted_count += 1
             except Exception as e:
                 console.print(f"❌ Failed to delete model {seed}: {e}", style="red")
@@ -1073,9 +1125,27 @@ def eval_status():
         # Parse filename to extract seed and evaluation type
         name = metrics_file.stem
         if "_" in name:
-            eval_type = "_".join(name.split("_")[:-1])
+            filename_parts = name.split("_")
+
+            # Handle both old and new naming schemes
             try:
-                seed = int(name.split("_")[-1])
+                seed = int(filename_parts[-1])  # Last part is always seed
+
+                # Extract evaluation type (everything before experiment name and seed)
+                if len(filename_parts) >= 3:
+                    # Try to determine if this is new format by checking if second-to-last part could be experiment name
+                    # For new format: quality_comparison_baseline_46.json
+                    # For old format: quality_comparison_46.json
+
+                    # Check if second-to-last part is numeric (old format) or text (new format with experiment name)
+                    try:
+                        int(filename_parts[-2])  # If this succeeds, it's likely old format
+                        eval_type = "_".join(filename_parts[:-1])  # Take everything except seed
+                    except ValueError:
+                        # Second-to-last part is not numeric, so it's likely experiment name
+                        eval_type = "_".join(filename_parts[:-2])  # Take everything except name and seed
+                else:
+                    eval_type = "_".join(filename_parts[:-1])  # Fallback to old logic
                 
                 if seed not in seeds_status:
                     seeds_status[seed] = {}
@@ -1246,6 +1316,7 @@ def _show_experiments_summary():
     # Collect experiment results
     experiments = []
 
+    # Handle both old format (training_seed.json) and new format (training_name_seed.json)
     for training_file in metrics_dir.glob("training_*.json"):
         try:
             with open(training_file) as f:
@@ -1254,8 +1325,22 @@ def _show_experiments_summary():
             seed = training_data.get("seed", "unknown")
             generation_file = metrics_dir / f"generation_{seed}.json"
 
+            # Extract experiment name from filename if using new format
+            filename_stem = training_file.stem  # e.g., "training_baseline_46"
+            filename_parts = filename_stem.split("_")
+
+            if len(filename_parts) >= 3:  # training_name_seed format
+                experiment_name = "_".join(filename_parts[1:-1])  # everything between "training" and seed
+                generation_file = metrics_dir / f"generation_{experiment_name}_{seed}.json"
+                downstream_file = metrics_dir / f"downstream_performance_{experiment_name}_{seed}.json"
+            else:  # old training_seed format
+                experiment_name = None
+                generation_file = metrics_dir / f"generation_{seed}.json"
+                downstream_file = metrics_dir / f"downstream_performance_{seed}.json"
+
             exp_data = {
                 "seed": seed,
+                "experiment_name": experiment_name or "legacy",
                 "model": training_data.get("model_type", "unknown"),
                 "library": training_data.get("library", "unknown"),
                 "train_time": training_data.get("training_time", 0),
@@ -1266,7 +1351,11 @@ def _show_experiments_summary():
 
             # Add model status information using serialization module
             try:
-                model_info = get_model_info(seed)
+                # Use new naming scheme if experiment name available
+                if experiment_name:
+                    model_info = get_model_info(seed, experiment_name)
+                else:
+                    model_info = get_model_info(seed)  # Auto-detect for legacy models
                 exp_data.update({
                     "model_status": "✅ Available",
                     "model_size_mb": f"{model_info.get('file_size_mb', 0):.1f}",
@@ -1280,7 +1369,6 @@ def _show_experiments_summary():
                 })
 
             # Add downstream evaluation results if available
-            downstream_file = metrics_dir / f"downstream_performance_{seed}.json"
             if downstream_file.exists():
                 try:
                     with open(downstream_file) as f:
@@ -1316,6 +1404,7 @@ def _show_experiments_summary():
     # Display summary table
     table = Table(title="Experiments & Models Summary")
     table.add_column("Seed", style="cyan")
+    table.add_column("Experiment", style="yellow")
     table.add_column("Model", style="magenta")
     table.add_column("Library", style="yellow")
     table.add_column("Model Status", style="white")
@@ -1328,6 +1417,7 @@ def _show_experiments_summary():
     for exp in sorted(experiments, key=lambda x: str(x["seed"])):
         table.add_row(
             str(exp["seed"]),
+            exp.get("experiment_name", "legacy"),
             exp["model"],
             exp.get("model_library", exp["library"]),  # Prefer model info over training metrics
             exp.get("model_status", "Unknown"),
@@ -1378,7 +1468,9 @@ def _show_experiments_summary():
 
 def _show_downstream_summary(seed: Optional[int], show_report: bool = False):
     """Show summary of downstream evaluation results"""
-    
+
+    # Determine experiment name by looking for downstream files with this seed
+    experiment_name = None
     if seed is None:
         # Get seed from params.yaml
         import yaml
@@ -1386,54 +1478,79 @@ def _show_downstream_summary(seed: Optional[int], show_report: bool = False):
             with open("params.yaml") as f:
                 params = yaml.safe_load(f)
             seed = params.get("experiment", {}).get("seed", None)
+            experiment_name = params.get("experiment", {}).get("name", None)
         except:
             console.print("❌ Could not determine seed", style="red")
             return
-    
+    else:
+        # Try to find experiment name from existing files
+        metrics_dir = Path("experiments/metrics")
+        downstream_files = list(metrics_dir.glob(f"downstream_performance_*_{seed}.json"))
+        if downstream_files:
+            # Extract experiment name from filename: downstream_performance_name_seed.json
+            filename_parts = downstream_files[0].stem.split("_")
+            if len(filename_parts) >= 4:  # downstream_performance_name_seed
+                experiment_name = "_".join(filename_parts[2:-1])  # everything between "performance" and seed
+
     # Check if results exist
-    results_file = Path(f"experiments/metrics/downstream_performance_{seed}.json")
-    report_file = Path(f"experiments/metrics/downstream_report_{seed}.txt")
-    
+    if experiment_name:
+        results_file = Path(f"experiments/metrics/downstream_performance_{experiment_name}_{seed}.json")
+        report_file = Path(f"experiments/metrics/downstream_report_{experiment_name}_{seed}.txt")
+    else:
+        # Try old format first, then look for any file with this seed
+        results_file = Path(f"experiments/metrics/downstream_performance_{seed}.json")
+        report_file = Path(f"experiments/metrics/downstream_report_{seed}.txt")
+
+        if not results_file.exists():
+            # Look for new format files
+            metrics_dir = Path("experiments/metrics")
+            possible_files = list(metrics_dir.glob(f"downstream_performance_*_{seed}.json"))
+            if possible_files:
+                results_file = possible_files[0]
+                report_file = metrics_dir / f"downstream_report_{possible_files[0].stem.replace('downstream_performance_', '')}.txt"
+
     if not results_file.exists():
         console.print(f"❌ No downstream results found for seed {seed}", style="red")
+        if experiment_name:
+            console.print(f"💡 Looking for: downstream_performance_{experiment_name}_{seed}.json", style="yellow")
         console.print("💡 Run: sdpype eval downstream")
         return
-    
+
     try:
         with open(results_file) as f:
             results = json.load(f)
-        
+
         metadata = results["metadata"]
         overall_utility = results["overall_utility_score"]
-        
+
         console.print(f"\n🎯 Downstream Evaluation Results (Seed {seed})")
         console.print(f"Task: {metadata['task_type']} on '{metadata['target_column']}'")
         console.print(f"Overall Utility Score: {overall_utility:.3f}")
-        
+
         # Show model results
         table = Table(title="Model Performance Comparison")
         table.add_column("Model", style="cyan")
         table.add_column("Original", style="green")
         table.add_column("Synthetic", style="yellow")
         table.add_column("Utility", style="magenta")
-        
+
         task_type = metadata["task_type"]
         primary_metric = "accuracy" if task_type == "classification" else "r2"
-        
+
         for model_name in metadata["models_evaluated"]:
             orig_perf = results["original_performance"].get(model_name, {}).get(primary_metric, 0.0)
             synth_perf = results["synthetic_performance"].get(model_name, {}).get(primary_metric, 0.0)
             utility = results["utility_scores"].get(model_name, 0.0)
-            
+
             table.add_row(
                 model_name,
                 f"{orig_perf:.3f}",
                 f"{synth_perf:.3f}",
                 f"{utility:.3f}"
             )
-        
+
         console.print(table)
-        
+
         # Show interpretation
         if overall_utility >= 0.9:
             console.print("🎉 Excellent synthetic data quality!", style="green")
@@ -1443,52 +1560,70 @@ def _show_downstream_summary(seed: Optional[int], show_report: bool = False):
             console.print("⚠️  Moderate synthetic data quality", style="yellow")
         else:
             console.print("❌ Poor synthetic data quality", style="red")
-        
+
         # Show full report if requested
         if show_report and report_file.exists():
             console.print("\n📋 Full Report:")
             console.print("-" * 60)
             with open(report_file) as f:
                 console.print(f.read())
-                
+
     except Exception as e:
         console.print(f"❌ Error reading results: {e}", style="red")
 
 
 def _compare_downstream_results(seeds: List[int]):
     """Compare downstream results across multiple seeds"""
-    
+
     console.print(f"📊 Comparing Downstream Results Across Seeds: {seeds}")
-    
+
     all_results = {}
-    
+
     for seed in seeds:
+        # Try both old and new format files
         results_file = Path(f"experiments/metrics/downstream_performance_{seed}.json")
+        experiment_name = "legacy"  # Default for old format
+
+        if not results_file.exists():
+            # Look for new format files
+            metrics_dir = Path("experiments/metrics")
+            possible_files = list(metrics_dir.glob(f"downstream_performance_*_{seed}.json"))
+            if possible_files:
+                results_file = possible_files[0]
+                # Extract experiment name from filename: downstream_performance_name_seed.json
+                filename_parts = results_file.stem.split("_")
+                if len(filename_parts) >= 4:  # downstream_performance_name_seed
+                    experiment_name = "_".join(filename_parts[2:-1])  # everything between "performance" and seed
+
         if results_file.exists():
             try:
                 with open(results_file) as f:
-                    all_results[seed] = json.load(f)
+                    results_data = json.load(f)
+                    results_data["_experiment_name"] = experiment_name  # Store experiment name with results
+                    all_results[seed] = results_data
             except Exception as e:
                 console.print(f"⚠️  Error reading seed {seed}: {e}", style="yellow")
         else:
             console.print(f"⚠️  No results found for seed {seed}", style="yellow")
-    
+
     if not all_results:
         console.print("❌ No valid results found", style="red")
         return
-    
+
     # Create comparison table
     table = Table(title="Downstream Performance Comparison")
     table.add_column("Seed", style="cyan")
+    table.add_column("Experiment", style="yellow")
     table.add_column("Task Type", style="yellow")
     table.add_column("Overall Utility", style="green")
     table.add_column("Best Model", style="magenta")
     table.add_column("Status", style="white")
-    
+
     for seed, results in all_results.items():
         metadata = results["metadata"]
         overall_utility = results["overall_utility_score"]
-        
+        experiment_name = results.get("_experiment_name", "unknown")
+
         # Find best model
         if results["utility_scores"]:
             best_model = max(results["utility_scores"].items(), key=lambda x: x[1])
@@ -1497,7 +1632,7 @@ def _compare_downstream_results(seeds: List[int]):
         else:
             best_model_name = "None"
             best_utility = 0.0
-        
+
         # Status
         if overall_utility >= 0.8:
             status = "✅ Good"
@@ -1505,47 +1640,53 @@ def _compare_downstream_results(seeds: List[int]):
             status = "⚠️  OK"
         else:
             status = "❌ Poor"
-        
+
         table.add_row(
             str(seed),
+            experiment_name,
             metadata["task_type"],
             f"{overall_utility:.3f}",
             f"{best_model_name} ({best_utility:.3f})",
             status
         )
-    
+
     console.print(table)
 
 
 def _show_all_evaluation_results():
     """Show overview of all evaluation results"""
-    
+
     metrics_dir = Path("experiments/metrics")
     if not metrics_dir.exists():
         console.print("📋 No evaluation results found", style="yellow")
         return
-    
-    # Find all downstream results
+
+    # Find all downstream results (both old and new format)
     downstream_files = list(metrics_dir.glob("downstream_performance_*.json"))
-    
+
     if not downstream_files:
         console.print("📋 No downstream evaluation results found", style="yellow")
         console.print("💡 Run: sdpype eval downstream")
         return
-    
+
     console.print(f"📊 Found {len(downstream_files)} downstream evaluation results")
-    
+
     # Extract seeds and show comparison
     seeds = []
     for file in downstream_files:
         try:
-            seed = int(file.stem.split("_")[-1])
-            seeds.append(seed)
+            # Handle both old format (downstream_performance_seed.json) and new format (downstream_performance_name_seed.json)
+            filename_parts = file.stem.split("_")
+            if len(filename_parts) >= 3:  # At least downstream_performance_seed
+                seed = int(filename_parts[-1])  # Last part is always seed
+                seeds.append(seed)
         except ValueError:
             continue
-    
+
     if seeds:
-        _compare_downstream_results(sorted(seeds))
+        # Remove duplicates and sort
+        unique_seeds = sorted(list(set(seeds)))
+        _compare_downstream_results(unique_seeds)
 
 
 if __name__ == "__main__":

@@ -30,8 +30,8 @@ def main(cfg: DictConfig) -> None:
         return
     
     # Define data paths
-    original_data_path = f"experiments/data/processed/data_{cfg.experiment.seed}.csv"
-    synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.seed}.csv"
+    original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+    synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
     
     # Check if data files exist
     if not Path(original_data_path).exists():
@@ -102,7 +102,7 @@ def main(cfg: DictConfig) -> None:
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
     
     # Save results as JSON
-    results_filename = f"experiments/metrics/downstream_performance_{cfg.experiment.seed}.json"
+    results_filename = f"experiments/metrics/downstream_performance_{cfg.experiment.name}_{cfg.experiment.seed}.json"
     with open(results_filename, "w") as f:
         json.dump(results, f, indent=2)
     
@@ -110,7 +110,7 @@ def main(cfg: DictConfig) -> None:
     
     # Generate and save human-readable report
     report = generate_downstream_report(results)
-    report_filename = f"experiments/metrics/downstream_report_{cfg.experiment.seed}.txt"
+    report_filename = f"experiments/metrics/downstream_report_{cfg.experiment.name}_{cfg.experiment.seed}.txt"
     with open(report_filename, "w") as f:
         f.write(report)
     

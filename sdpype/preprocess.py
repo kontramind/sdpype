@@ -20,7 +20,7 @@ def main(cfg: DictConfig) -> None:
     # Set random seed for reproducibility
     np.random.seed(cfg.experiment.seed)
     
-    print("🔄 Starting preprocessing...")
+    print(f"🔄 Starting preprocessing for {cfg.experiment.name} (seed: {cfg.experiment.seed})")
     print(f"🎲 Experiment seed: {cfg.experiment.seed}")
 
     # Load data (updated path for monolithic structure)
@@ -56,7 +56,7 @@ def main(cfg: DictConfig) -> None:
     
     # Save processed data (updated path + experiment versioning)
     Path("experiments/data/processed").mkdir(parents=True, exist_ok=True)
-    output_file = f"experiments/data/processed/data_{cfg.experiment.seed}.csv"
+    output_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
     data.to_csv(output_file, index=False)
     print(f"📁 Saved: {output_file}")
     
@@ -72,7 +72,7 @@ def main(cfg: DictConfig) -> None:
     }
     
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    metrics_file = f"experiments/metrics/preprocess_{cfg.experiment.seed}.json"
+    metrics_file = f"experiments/metrics/preprocess_{cfg.experiment.name}_{cfg.experiment.seed}.json"
     with open(metrics_file, "w") as f:
         json.dump(metrics, f, indent=2)
     

@@ -100,7 +100,7 @@ def main(cfg: DictConfig) -> None:
     print(f"🎲 Seed: {cfg.experiment.seed}")
 
     # Load processed data (monolithic path + experiment versioning)
-    data_file = f"experiments/data/processed/data_{cfg.experiment.seed}.csv"
+    data_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
     if not Path(data_file).exists():
         print(f"❌ Processed data not found: {data_file}")
         print("💡 Run preprocessing first: dvc repro -s preprocess")
@@ -137,7 +137,7 @@ def main(cfg: DictConfig) -> None:
 
     # Save model using new serialization module
     model_filename = save_model(
-        model, metadata, library, cfg.experiment.seed
+        model, metadata, library, cfg.experiment.seed, cfg.experiment.name
     )
 
     # Save training metrics (same as before)
@@ -157,7 +157,7 @@ def main(cfg: DictConfig) -> None:
     }
 
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    metrics_filename = f"experiments/metrics/training_{cfg.experiment.seed}.json"
+    metrics_filename = f"experiments/metrics/training_{cfg.experiment.name}_{cfg.experiment.seed}.json"
     with open(metrics_filename, "w") as f:
         json.dump(metrics, f, indent=2)
 

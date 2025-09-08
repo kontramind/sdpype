@@ -7,60 +7,65 @@ stages:
       - experiments/data/raw/
     params:
       - experiment.seed
+      - experiment.name
     outs:
-      - experiments/data/processed/data_${experiment.seed}.csv
+      - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv
     metrics:
-      - experiments/metrics/preprocess_${experiment.seed}.json
+      - experiments/metrics/preprocess_${experiment.name}_${experiment.seed}.json
 
   train_sdg:
     cmd: python -m sdpype.training
     deps:
       - sdpype/training.py
-      - experiments/data/processed/data_${experiment.seed}.csv
+      - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv
     params:
       - sdg
       - experiment.seed
+      - experiment.name
     outs:
-      - experiments/models/sdg_model_${experiment.seed}.pkl
+      - experiments/models/sdg_model_${experiment.name}_${experiment.seed}.pkl
     metrics:
-      - experiments/metrics/training_${experiment.seed}.json
+      - experiments/metrics/training_${experiment.name}_${experiment.seed}.json
 
   generate_synthetic:
     cmd: python -m sdpype.generation
     deps:
       - sdpype/generation.py
-      - experiments/models/sdg_model_${experiment.seed}.pkl
+      - experiments/models/sdg_model_${experiment.name}_${experiment.seed}.pkl
     params:
       - generation
       - experiment.seed
+      - experiment.name
     outs:
-      - experiments/data/synthetic/synthetic_data_${experiment.seed}.csv
+      - experiments/data/synthetic/synthetic_data_${experiment.name}_${experiment.seed}.csv
     metrics:
-      - experiments/metrics/generation_${experiment.seed}.json
+      - experiments/metrics/generation_${experiment.name}_${experiment.seed}.json
 
   evaluate_original:
     cmd: python -m sdpype.evaluate +evaluation_data_type=original
     deps:
       - sdpype/evaluate.py
       - sdpype/evaluation/
-      - experiments/data/processed/data_${experiment.seed}.csv
+      - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv
     params:
       - evaluation
       - experiment.seed
+      - experiment.name
     metrics:
-      - experiments/metrics/quality_original_${experiment.seed}.json
+      - experiments/metrics/quality_original_${experiment.name}_${experiment.seed}.json
 
   evaluate_synthetic:
     cmd: python -m sdpype.evaluate +evaluation_data_type=synthetic
     deps:
       - sdpype/evaluate.py
       - sdpype/evaluation/
-      - experiments/data/synthetic/synthetic_data_${experiment.seed}.csv
+      - experiments/data/synthetic/synthetic_data_${experiment.name}_${experiment.seed}.csv
     params:
       - evaluation
       - experiment.seed
+      - experiment.name
     metrics:
-      - experiments/metrics/quality_synthetic_${experiment.seed}.json
+      - experiments/metrics/quality_synthetic_${experiment.name}_${experiment.seed}.json
 
   # 🔬 ENHANCED EVALUATION STAGE - Now includes statistical similarity
   compare_quality:
@@ -69,17 +74,18 @@ stages:
       - sdpype/evaluate.py
       - sdpype/evaluation/intrinsic.py
       - sdpype/evaluation/statistical.py        # ✨ NEW DEPENDENCY
-      - experiments/data/processed/data_${experiment.seed}.csv      # ✨ NEW - needed for statistical comparison
-      - experiments/data/synthetic/synthetic_data_${experiment.seed}.csv  # ✨ NEW - needed for statistical comparison
-      - experiments/metrics/quality_original_${experiment.seed}.json
-      - experiments/metrics/quality_synthetic_${experiment.seed}.json
+      - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv      # ✨ NEW - needed for statistical comparison
+      - experiments/data/synthetic/synthetic_data_${experiment.name}_${experiment.seed}.csv  # ✨ NEW - needed for statistical comparison
+      - experiments/metrics/quality_original_${experiment.name}_${experiment.seed}.json
+      - experiments/metrics/quality_synthetic_${experiment.name}_${experiment.seed}.json
     params:
       - evaluation
       - experiment.seed
+      - experiment.name
     metrics:
-      - experiments/metrics/quality_comparison_${experiment.seed}.json
-      - experiments/metrics/statistical_similarity_${experiment.seed}.json  # ✨ NEW OUTPUT
-      - experiments/metrics/statistical_report_${experiment.seed}.txt       # ✨ NEW OUTPUT
+      - experiments/metrics/quality_comparison_${experiment.name}_${experiment.seed}.json
+      - experiments/metrics/statistical_similarity_${experiment.name}_${experiment.seed}.json  # ✨ NEW OUTPUT
+      - experiments/metrics/statistical_report_${experiment.name}_${experiment.seed}.txt
 
   # 🎯 NEW STAGE - Downstream Task Evaluation (ML Performance Comparison)
   evaluate_downstream:
@@ -87,11 +93,12 @@ stages:
     deps:
       - sdpype/evaluate_downstream.py
       - sdpype/evaluation/downstream.py
-      - experiments/data/processed/data_${experiment.seed}.csv
-      - experiments/data/synthetic/synthetic_data_${experiment.seed}.csv
+      - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv
+      - experiments/data/synthetic/synthetic_data_${experiment.name}_${experiment.seed}.csv
     params:
       - evaluation.downstream_tasks
       - experiment.seed
+      - experiment.name
     metrics:
-      - experiments/metrics/downstream_performance_${experiment.seed}.json
-      - experiments/metrics/downstream_report_${experiment.seed}.txt
+      - experiments/metrics/downstream_performance_${experiment.name}_${experiment.seed}.json
+      - experiments/metrics/downstream_report_${experiment.name}_${experiment.seed}.txt

@@ -30,7 +30,7 @@ def main(cfg: DictConfig) -> None:
 
     # Evaluate original data
     if data_type in ["original", "both"]:
-        original_data_path = f"experiments/data/processed/data_{cfg.experiment.seed}.csv"
+        original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
         
         if Path(original_data_path).exists():
             print(f"Evaluating original data: {original_data_path}")
@@ -44,17 +44,17 @@ def main(cfg: DictConfig) -> None:
             
             # Save original data quality metrics
             Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-            with open(f"experiments/metrics/quality_original_{cfg.experiment.seed}.json", "w") as f:
+            with open(f"experiments/metrics/quality_original_{cfg.experiment.name}_{cfg.experiment.seed}.json", "w") as f:
                 json.dump(original_results, f, indent=2)
             
-            print(f"Original data quality saved: experiments/metrics/quality_original_{cfg.experiment.seed}.json")
+            print(f"Original data quality saved: experiments/metrics/quality_original_{cfg.experiment.name}_{cfg.experiment.seed}.json")
         else:
             print(f"Original data not found: {original_data_path}")
     
     # Evaluate synthetic data  
     if data_type in ["synthetic", "both"]:
-        synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.seed}.csv"
-        
+        synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{cfg.experiment.seed}.csv" 
+
         if Path(synthetic_data_path).exists():
             print(f"Evaluating synthetic data: {synthetic_data_path}")
             synthetic_data = pd.read_csv(synthetic_data_path)
@@ -66,10 +66,10 @@ def main(cfg: DictConfig) -> None:
             results["synthetic"] = synthetic_results
             
             # Save synthetic data quality metrics
-            with open(f"experiments/metrics/quality_synthetic_{cfg.experiment.seed}.json", "w") as f:
+            with open(f"experiments/metrics/quality_synthetic_{cfg.experiment.name}_{cfg.experiment.seed}.json", "w") as f:
                 json.dump(synthetic_results, f, indent=2)
             
-            print(f"Synthetic data quality saved: experiments/metrics/quality_synthetic_{cfg.experiment.seed}.json")
+            print(f"Synthetic data quality saved: experiments/metrics/quality_synthetic_{cfg.experiment.name}_{cfg.experiment.seed}.json")
         else:
             print(f"Synthetic data not found: {synthetic_data_path}")
     
@@ -80,10 +80,10 @@ def main(cfg: DictConfig) -> None:
         comparison = compare_quality_metrics(results["original"], results["synthetic"])
         
         # Save comparison results
-        with open(f"experiments/metrics/quality_comparison_{cfg.experiment.seed}.json", "w") as f:
+        with open(f"experiments/metrics/quality_comparison_{cfg.experiment.name}_{cfg.experiment.seed}.json", "w") as f:
             json.dump(comparison, f, indent=2)
         
-        print(f"Quality comparison saved: experiments/metrics/quality_comparison_{cfg.experiment.seed}.json")
+        print(f"Quality comparison saved: experiments/metrics/quality_comparison_{cfg.experiment.name}_{cfg.experiment.seed}.json")
         
         # Print summary
         score_diff = comparison["overall_score_comparison"]["score_difference"]
@@ -115,9 +115,8 @@ def main(cfg: DictConfig) -> None:
         print(f"\n📈 Running Statistical Similarity Evaluation...")
 
         # Load original and synthetic data for comparison
-        original_data_path = f"experiments/data/processed/data_{cfg.experiment.seed}.csv"
-        synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.seed}.csv"
-
+        original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+        synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
         original_data = pd.read_csv(original_data_path)
         synthetic_data = pd.read_csv(synthetic_data_path)
 
@@ -125,21 +124,21 @@ def main(cfg: DictConfig) -> None:
         statistical_results = evaluate_statistical_similarity(
             original_data,
             synthetic_data,
-            experiment_name=f"{cfg.experiment.get('name', 'experiment')}_seed_{cfg.experiment.seed}"
+            experiment_name=f"{cfg.experiment.name}_seed_{cfg.experiment.seed}"
         )
 
         # Save statistical similarity results
-        with open(f"experiments/metrics/statistical_similarity_{cfg.experiment.seed}.json", "w") as f:
+        with open(f"experiments/metrics/statistical_similarity_{cfg.experiment.name}_{cfg.experiment.seed}.json", "w") as f:
             json.dump(statistical_results, f, indent=2)
 
-        print(f"Statistical similarity results saved: experiments/metrics/statistical_similarity_{cfg.experiment.seed}.json")
+        print(f"Statistical similarity results saved: experiments/metrics/statistical_similarity_{cfg.experiment.name}_{cfg.experiment.seed}.json")
 
         # Generate and save human-readable report
         report = generate_statistical_report(statistical_results)
-        with open(f"experiments/metrics/statistical_report_{cfg.experiment.seed}.txt", "w") as f:
+        with open(f"experiments/metrics/statistical_report_{cfg.experiment.name}_{cfg.experiment.seed}.txt", "w") as f:
             f.write(report)
 
-        print(f"Statistical similarity report saved: experiments/metrics/statistical_report_{cfg.experiment.seed}.txt")
+        print(f"Statistical similarity report saved: experiments/metrics/statistical_report_{cfg.experiment.name}_{cfg.experiment.seed}.txt")
 
         # Print statistical summary
         similarity_score = statistical_results["overall_similarity_score"]
