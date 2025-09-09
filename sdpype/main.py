@@ -1099,38 +1099,33 @@ def eval_status():
         if "_" in name:
             filename_parts = name.split("_")
 
-            # Handle both old and new naming schemes
+            # Simplified parsing for new naming scheme
             try:
                 seed = int(filename_parts[-1])  # Last part is always seed
 
-                # Extract evaluation type (everything before experiment name and seed)
-                if len(filename_parts) >= 3:
-                    # Try to determine if this is new format by checking if second-to-last part could be experiment name
-                    # For new format: quality_comparison_baseline_46.json
-                    # For old format: quality_comparison_46.json
-
-                    # Check if second-to-last part is numeric (old format) or text (new format with experiment name)
-                    try:
-                        int(filename_parts[-2])  # If this succeeds, it's likely old format
-                        eval_type = "_".join(filename_parts[:-1])  # Take everything except seed
-                    except ValueError:
-                        # Second-to-last part is not numeric, so it's likely experiment name
-                        eval_type = "_".join(filename_parts[:-2])  # Take everything except name and seed
+                # Map specific file patterns to evaluation types
+                if name.startswith("quality_comparison_"):
+                    eval_type = "quality_comparison"
+                elif name.startswith("statistical_similarity_"):
+                    eval_type = "statistical_similarity"
+                elif name.startswith("downstream_performance_"):
+                    eval_type = "downstream_performance"
                 else:
-                    eval_type = "_".join(filename_parts[:-1])  # Fallback to old logic
-                
+                    # For other files, use old logic
+                    eval_type = "_".join(filename_parts[:-1])
+
                 if seed not in seeds_status:
                     seeds_status[seed] = {}
-                
+
                 seeds_status[seed][eval_type] = "✅"
-                
+
             except ValueError:
                 continue
-    
+
     if not seeds_status:
         console.print("📋 No evaluation results found", style="yellow")
         return
-    
+
     # Create status table
     table = Table(title="Evaluation Pipeline Status")
     table.add_column("Seed", style="cyan")
@@ -1138,14 +1133,14 @@ def eval_status():
     table.add_column("Statistical Similarity", style="magenta")
     table.add_column("Downstream Tasks", style="green")
     table.add_column("Status", style="white")
-    
+
     for seed in sorted(seeds_status.keys()):
         status = seeds_status[seed]
-        
+
         intrinsic = status.get("quality_comparison", "❌")
         statistical = status.get("statistical_similarity", "❌")
         downstream = status.get("downstream_performance", "❌")
-        
+
         # Overall status
         complete_count = sum(1 for s in [intrinsic, statistical, downstream] if s == "✅")
         if complete_count == 3:
@@ -1154,7 +1149,7 @@ def eval_status():
             overall = "⚠️  Partial"
         else:
             overall = "❌ Minimal"
-        
+
         table.add_row(
             str(seed),
             intrinsic,
@@ -1162,9 +1157,9 @@ def eval_status():
             downstream,
             overall
         )
-    
+
     console.print(table)
-    
+
     # Summary
     total_seeds = len(seeds_status)
     complete_seeds = sum(1 for status in seeds_status.values() 
@@ -1663,6 +1658,237 @@ def _show_all_evaluation_results():
         # Remove duplicates and sort
         unique_seeds = sorted(list(set(seeds)))
         _compare_downstream_results(unique_seeds)
+
+
+def _display_experiment_comparison_table(all_results: dict, focus_metric: str):
+    """Display formatted comparison table for named experiments"""
+
+    table = Table(title="Experiment Comparison")
+    table.add_column("Experiment", style="cyan", no_wrap=True)
+
+    # Add columns based on focus metric
+    if focus_metric in ["quality", "all"]:
+        table.add_column("Quality↑", style="green")
+    if focus_metric in ["statistical", "all"]:
+        table.add_column("Statistical↑", style="blue")
+    if focus_metric in ["downstream", "all"]:
+        table.add_column("Downstream↑", style="magenta")
+    if focus_metric == "all":
+        table.add_column("Combined↑", style="yellow")
+        table.add_column("Rank", style="red")
+
+    # Calculate scores for each experiment
+    experiment_scores = []
+
+    for exp_name, results in all_results.items():
+        if not results:  # Skip experiments with no data
+            continue
+
+        scores = {'experiment': exp_name}
+
+        # Quality score
+        if 'quality' in results and focus_metric in ["quality", "all"]:
+            scores['quality'] = results['quality']['overall_score_comparison']['quality_preservation_rate']
+
+        # Statistical score
+        if 'statistical' in results and focus_metric in ["statistical", "all"]:
+            scores['statistical'] = results['statistical']['overall_similarity_score']
+
+        # Downstream score
+        if 'downstream' in results and focus_metric in ["downstream", "all"]:
+            scores['downstream'] = results['downstream']['overall_utility_score']
+
+        # Combined score (weighted average)
+        if focus_metric == "all":
+            quality_score = scores.get('quality', 0)
+            statistical_score = scores.get('statistical', 0)
+            downstream_score = scores.get('downstream', 0)
+
+            # Weight: 30% quality, 30% statistical, 40% downstream
+            combined = (0.3 * quality_score + 0.3 * statistical_score + 0.4 * downstream_score)
+            scores['combined'] = combined
+
+        experiment_scores.append(scores)
+
+    # Sort by combined score or specific metric
+    if focus_metric == "all":
+        experiment_scores.sort(key=lambda x: x.get('combined', 0), reverse=True)
+    else:
+        experiment_scores.sort(key=lambda x: x.get(focus_metric, 0), reverse=True)
+
+    # Add rows to table
+    for i, exp_scores in enumerate(experiment_scores, 1):
+        row_data = [exp_scores['experiment']]
+
+        if focus_metric in ["quality", "all"] and 'quality' in exp_scores:
+            row_data.append(f"{exp_scores['quality']:.1%}")
+        if focus_metric in ["statistical", "all"] and 'statistical' in exp_scores:
+            row_data.append(f"{exp_scores['statistical']:.3f}")
+        if focus_metric in ["downstream", "all"] and 'downstream' in exp_scores:
+            row_data.append(f"{exp_scores['downstream']:.3f}")
+        if focus_metric == "all":
+            if 'combined' in exp_scores:
+                row_data.append(f"{exp_scores['combined']:.3f}")
+            rank_emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else str(i)
+            row_data.append(rank_emoji)
+
+        table.add_row(*row_data)
+
+    console.print(table)
+
+    # Show winner summary
+    if len(experiment_scores) >= 2:
+        winner = experiment_scores[0]
+        console.print(f"\n🏆 Overall Winner: {winner['experiment']}", style="bold green")
+
+        if focus_metric == "all" and 'combined' in winner:
+            console.print(f"Combined Score: {winner['combined']:.3f}")
+        elif focus_metric != "all" and focus_metric in winner:
+            console.print(f"{focus_metric.title()} Score: {winner[focus_metric]:.3f}")
+
+
+def _generate_experiment_comparison_report(all_results: dict) -> str:
+    """Generate detailed comparison report"""
+
+    report = []
+    report.append("# Experiment Comparison Report")
+    report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    report.append(f"Experiments compared: {', '.join(all_results.keys())}")
+    report.append("")
+
+    for exp_name, results in all_results.items():
+        if not results:  # Skip experiments with no data
+            continue
+
+        report.append(f"## {exp_name}")
+
+        if 'quality' in results:
+            qp = results['quality']['overall_score_comparison']['quality_preservation_rate']
+            report.append(f"- Quality Preservation: {qp:.1%}")
+
+        if 'statistical' in results:
+            ss = results['statistical']['overall_similarity_score']
+            report.append(f"- Statistical Similarity: {ss:.3f}")
+
+        if 'downstream' in results:
+            du = results['downstream']['overall_utility_score']
+            report.append(f"- Downstream Utility: {du:.3f}")
+
+            # Best model details
+            best_model = max(results['downstream']['model_results'].items(),
+                           key=lambda x: x[1]['performance_score'])
+            report.append(f"- Best ML Model: {best_model[0]} ({best_model[1]['performance_score']:.3f})")
+
+        report.append("")
+
+    return "\n".join(report)
+
+
+@eval_app.command("compare-experiments")
+def compare_named_experiments(
+    experiments: str = typer.Argument(..., help="Comma-separated experiment_name_seed pairs (e.g., 'ctgan_baseline_1,tvae_baseline_1')"),
+    metric: str = typer.Option("all", "--metric", "-m", help="Focus on specific metric (quality, statistical, downstream, all)"),
+    save_report: bool = typer.Option(False, "--save", help="Save comparison report")
+):
+    """🆚 Compare experiments using experiment_name_seed format"""
+
+    exp_list = [exp.strip() for exp in experiments.split(",")]
+
+    console.print(f"🔍 Comparing experiments: {', '.join(exp_list)}")
+
+    # Parse and validate experiment names
+    parsed_experiments = []
+    for exp in exp_list:
+        # Parse experiment_name_seed format
+        parts = exp.rsplit('_', 1)  # Split from right to get last part as seed
+        if len(parts) != 2:
+            console.print(f"❌ Invalid format: {exp}. Use format: experiment_name_seed", style="red")
+            continue
+
+        exp_name, seed = parts[0], parts[1]
+
+        try:
+            seed_int = int(seed)
+            parsed_experiments.append((exp, exp_name, seed_int))
+        except ValueError:
+            console.print(f"❌ Invalid seed in {exp}: {seed}", style="red")
+            continue
+
+    if not parsed_experiments:
+        console.print("❌ No valid experiments to compare!", style="red")
+        return
+
+    # Load results for each experiment
+    all_results = {}
+    metrics_dir = Path("experiments/metrics")
+
+    if not metrics_dir.exists():
+        console.print("❌ No metrics directory found!", style="red")
+        console.print("💡 Run evaluations first: uv run sdpype stage compare_quality")
+        return
+
+    for exp_full, exp_name, seed_int in parsed_experiments:
+        console.print(f"📊 Loading results for: {exp_full}")
+
+        # Load results
+        results = {}
+
+        # Quality comparison
+        quality_file = metrics_dir / f"quality_comparison_{exp_name}_{seed_int}.json"
+        if quality_file.exists():
+            with open(quality_file) as f:
+                results['quality'] = json.load(f)
+                console.print(f"  ✅ Quality data loaded")
+
+        # Statistical similarity
+        statistical_file = metrics_dir / f"statistical_similarity_{exp_name}_{seed_int}.json"
+        if statistical_file.exists():
+            with open(statistical_file) as f:
+                results['statistical'] = json.load(f)
+                console.print(f"  ✅ Statistical data loaded")
+
+        # Downstream performance
+        downstream_file = metrics_dir / f"downstream_performance_{exp_name}_{seed_int}.json"
+        if downstream_file.exists():
+            with open(downstream_file) as f:
+                results['downstream'] = json.load(f)
+                console.print(f"  ✅ Downstream data loaded")
+
+        if not results:
+            console.print(f"  ⚠️  No evaluation data found for {exp_full}")
+
+        all_results[exp_full] = results
+
+    # Validate that we have some results to compare
+    experiments_with_data = [exp for exp, results in all_results.items() if results]
+
+    if not experiments_with_data:
+        console.print("❌ No evaluation results found for any experiment!", style="red")
+        console.print("💡 Run evaluations first:")
+        console.print("  uv run sdpype stage compare_quality")
+        console.print("  uv run sdpype eval downstream --target <column>")
+        return
+
+    if len(experiments_with_data) == 1:
+        console.print("⚠️  Only one experiment has data - comparison needs at least 2", style="yellow")
+        console.print(f"Available: {experiments_with_data[0]}")
+        return
+
+    console.print(f"✅ Found data for {len(experiments_with_data)} experiments")
+
+    # Create comparison table
+    _display_experiment_comparison_table(all_results, metric)
+
+    # Save report if requested
+    if save_report:
+        report = _generate_experiment_comparison_report(all_results)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_path = f"experiments/comparison_report_{timestamp}.md"
+
+        with open(report_path, 'w') as f:
+            f.write(report)
+
+        console.print(f"📄 Comparison report saved: {report_path}")
 
 
 if __name__ == "__main__":
