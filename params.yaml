@@ -4,8 +4,8 @@
 # EXPERIMENT CONFIGURATION
 # =============================================================================
 experiment:
-  seed: 46
-  name: different_name_test
+  seed: 123
+  name: ctgan_test
   description: SDPype synthetic data generation experiment
   researcher: anonymous
   tags: []
@@ -16,9 +16,7 @@ experiment:
 sdg:
   library: sdv
   model_type: ctgan
-  parameters:
-    epochs: 500
-    bact_size: 100
+  parameters: {}
 # =============================================================================
 # PREPROCESSING CONFIGURATION
 # =============================================================================

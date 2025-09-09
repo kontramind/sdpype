@@ -15,7 +15,7 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf
 
 # SDV models
-from sdv.single_table import GaussianCopulaSynthesizer, CTGANSynthesizer
+from sdv.single_table import GaussianCopulaSynthesizer, CTGANSynthesizer, TVAESynthesizer
 
 # Synthcity models and serialization
 from synthcity.plugins import Plugins
@@ -38,17 +38,26 @@ def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
     synthcity_only_params = {'n_iter'}  # Add more Synthcity-only params as needed
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
-    if cfg.sdg.model_type == "gaussian_copula":
-        return GaussianCopulaSynthesizer(metadata)
-    elif cfg.sdg.model_type == "ctgan":
-        return CTGANSynthesizer(
-            metadata,
-            epochs=model_params.get("epochs", 300),
-            batch_size=model_params.get("batch_size", 500),
-            verbose=False
-        )
-    else:
-        raise ValueError(f"Unknown SDV model: {cfg.sdg.model_type}")
+    match cfg.sdg.model_type:
+        case "gaussian_copula":
+            return GaussianCopulaSynthesizer(metadata)
+
+        case "ctgan" | "tvae" as model_type:
+            # Common parameters for GAN-based models
+            synthesizer_class = {
+                "ctgan": CTGANSynthesizer,
+                "tvae": TVAESynthesizer
+            }[model_type]
+
+            return synthesizer_class(
+                metadata,
+                epochs=model_params.get("epochs", 300),
+                batch_size=model_params.get("batch_size", 500),
+                verbose=False
+            )
+
+        case _:
+            raise ValueError(f"Unknown SDV model: {cfg.sdg.model_type}")
 
 
 def create_synthcity_model(cfg: DictConfig, data_shape):

@@ -94,7 +94,7 @@ def main(cfg: DictConfig) -> None:
         "generation_time": generation_time,
         "samples_per_second": len(synthetic_data) / generation_time if generation_time > 0 else 0,
         "output_file": synthetic_filename,
-        "model_source": f"experiments/models/sdg_model_{cfg.experiment.seed}.pkl"
+        "model_source": f"experiments/models/sdg_model_{cfg.experiment.name}_{cfg.experiment.seed}.pkl"
     }
 
     # Add basic data quality metrics

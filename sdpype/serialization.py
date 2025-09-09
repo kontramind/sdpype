@@ -53,7 +53,7 @@ def save_model(
     metadata: Dict[str, Any],
     library: str,
     experiment_seed: int,
-    experiment_name: str = None,
+    experiment_name: str,
     model_dir: Optional[Path] = None
 ) -> str:
     """
@@ -64,7 +64,7 @@ def save_model(
         metadata: Experiment metadata (training time, config, etc.)
         library: Library name ('sdv', 'synthcity', etc.)
         experiment_seed: Experiment seed for filename
-        experiment_name: Experiment name for filename (optional for backward compatibility)
+        experiment_name: Experiment name for filename (required)
         model_dir: Custom model directory (default: experiments/models)
         
     Returns:
@@ -79,12 +79,8 @@ def save_model(
         model_dir = DEFAULT_MODEL_DIR
     
     model_dir.mkdir(parents=True, exist_ok=True)
-    # Use new naming scheme if experiment_name is provided
-    if experiment_name:
-        model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
-    else:
-        model_filename = model_dir / f"sdg_model_{experiment_seed}.pkl"  # Backward compatibility
-    
+    model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
+
     # Prepare base model data structure
     model_data = {
         "format_version": SERIALIZE_FORMAT_VERSION,
@@ -121,13 +117,13 @@ def save_model(
         raise SerializationError(f"Failed to save {library} model: {e}") from e
 
 
-def load_model(experiment_seed: int, experiment_name: str = None, model_dir: Optional[Path] = None) -> Tuple[Any, Dict[str, Any]]:
+def load_model(experiment_seed: int, experiment_name: str, model_dir: Optional[Path] = None) -> Tuple[Any, Dict[str, Any]]:
     """
     Load a trained model with unified interface across libraries
     
     Args:
         experiment_seed: Experiment seed for filename
-        experiment_name: Experiment name for filename (optional for backward compatibility)
+        experiment_name: Experiment name for filename (required)
         model_dir: Custom model directory (default: experiments/models)
         
     Returns:
@@ -141,21 +137,12 @@ def load_model(experiment_seed: int, experiment_name: str = None, model_dir: Opt
     
     if model_dir is None:
         model_dir = DEFAULT_MODEL_DIR
-        
-    # Use new naming scheme if experiment_name is provided
-    if experiment_name:
-        model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
-    else:
-        model_filename = model_dir / f"sdg_model_{experiment_seed}.pkl"  # Backward compatibility
-        # If old format doesn't exist, try to find any model with this seed
-        if not model_filename.exists():
-            possible_files = list(model_dir.glob(f"sdg_model_*_{experiment_seed}.pkl"))
-            if possible_files:
-                model_filename = possible_files[0]  # Use the first match
-    
+
+    model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
+
     if not model_filename.exists():
         raise ModelNotFoundError(f"Model file not found: {model_filename}")
-    
+
     try:
         with open(model_filename, "rb") as f:
             model_data = pickle.load(f)
@@ -188,31 +175,24 @@ def load_model(experiment_seed: int, experiment_name: str = None, model_dir: Opt
                 raise LibraryNotSupportedError(f"Library '{library}' not supported")
                 
             return model, model_data
-            
+
         else:
-            # Legacy format - assume SDV model stored directly
-            warnings.warn(
-                "Loading legacy model format. Consider re-training for better compatibility."
-            )
-            return model_data, {
-                "library": "sdv",
-                "model_type": "unknown",
-                "format_version": "legacy"
-            }
-            
+            # Invalid format
+            raise SerializationError("Invalid model file format - expected dict with metadata")
+
     except pickle.UnpicklingError as e:
         raise SerializationError(f"Failed to unpickle model file: {e}") from e
     except Exception as e:
         raise SerializationError(f"Failed to load model: {e}") from e
 
 
-def get_model_info(experiment_seed: int, experiment_name: str = None, model_dir: Optional[Path] = None) -> Dict[str, Any]:
+def get_model_info(experiment_seed: int, experiment_name: str, model_dir: Optional[Path] = None) -> Dict[str, Any]:
     """
     Get model metadata without loading the full model object
     
     Args:
         experiment_seed: Experiment seed for filename
-        experiment_name: Experiment name for filename (optional for backward compatibility)
+        experiment_name: Experiment name for filename
         model_dir: Custom model directory (default: experiments/models)
         
     Returns:
@@ -225,45 +205,30 @@ def get_model_info(experiment_seed: int, experiment_name: str = None, model_dir:
     
     if model_dir is None:
         model_dir = DEFAULT_MODEL_DIR
-        
-    # Use new naming scheme if experiment_name is provided
-    if experiment_name:
-        model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
-    else:
-        model_filename = model_dir / f"sdg_model_{experiment_seed}.pkl"  # Backward compatibility
-        # If old format doesn't exist, try to find any model with this seed
-        if not model_filename.exists():
-            possible_files = list(model_dir.glob(f"sdg_model_*_{experiment_seed}.pkl"))
-            if possible_files:
-                model_filename = possible_files[0]  # Use the first match
-    
+
+    model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
+
     if not model_filename.exists():
         raise ModelNotFoundError(f"Model file not found: {model_filename}")
-    
+
     try:
         with open(model_filename, "rb") as f:
             model_data = pickle.load(f)
-        
+
         if isinstance(model_data, dict):
             # Return metadata without the actual model
             info = {k: v for k, v in model_data.items() 
                    if k not in ["model", "model_bytes"]}
-            
+
             # Add file info
             info["file_size_mb"] = model_filename.stat().st_size / (1024 * 1024)
             info["file_path"] = str(model_filename)
-            
+
             return info
         else:
-            # Legacy format
-            return {
-                "library": "sdv",
-                "model_type": "unknown",
-                "format_version": "legacy",
-                "file_size_mb": model_filename.stat().st_size / (1024 * 1024),
-                "file_path": str(model_filename)
-            }
-            
+            # Invalid format
+            raise SerializationError("Invalid model file format - expected dict with metadata")
+
     except Exception as e:
         raise SerializationError(f"Failed to read model info: {e}") from e
 
@@ -289,14 +254,11 @@ def list_saved_models(model_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     
     for model_file in model_dir.glob("sdg_model_*.pkl"):
         try:
-            # Parse filename more robustly
-            # Expected formats:
-            # - sdg_model_46.pkl (old format: seed only)
-            # - sdg_model_baseline_46.pkl (new format: name_seed)
-            # - sdg_model_sdv_ctgan_variant2_46.pkl (complex name_seed)
+            # Parse filename: sdg_model_name_seed.pkl
+            # Expected format: sdg_model_experiment_name_seed.pkl
             filename_parts = model_file.stem.split("_")
             
-            if len(filename_parts) < 3:  # Less than sdg_model_X
+            if len(filename_parts) < 4:  # Less than sdg_model_name_seed
                 warnings.warn(f"Unexpected filename format: {model_file.name}")
                 continue
 
@@ -306,12 +268,10 @@ def list_saved_models(model_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
                 warnings.warn(f"Cannot extract seed from filename: {model_file.name}")
                 continue
 
-            if len(filename_parts) > 3:  # Has experiment name: sdg_model_name_seed
-                experiment_name = "_".join(filename_parts[2:-1])  # Everything between "model" and seed
-                info = get_model_info(seed, experiment_name, model_dir)
-            else:  # Old format: sdg_model_seed
-                experiment_name = None
-                info = get_model_info(seed, None, model_dir)
+            # Extract experiment name: everything between "sdg_model_" and "_seed"
+            experiment_name = "_".join(filename_parts[2:-1])
+
+            info = get_model_info(seed, experiment_name, model_dir)
 
             info["experiment_seed"] = seed
             info["experiment_name"] = experiment_name
@@ -329,13 +289,13 @@ def list_saved_models(model_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     return models
 
 
-def delete_model(experiment_seed: int, experiment_name: str = None, model_dir: Optional[Path] = None) -> bool:
+def delete_model(experiment_seed: int, experiment_name: str, model_dir: Optional[Path] = None) -> bool:
     """
     Delete a saved model file
     
     Args:
         experiment_seed: Experiment seed for filename
-        experiment_name: Experiment name for filename (optional for backward compatibility)
+        experiment_name: Experiment name for filename
         model_dir: Custom model directory (default: experiments/models)
         
     Returns:
@@ -347,17 +307,8 @@ def delete_model(experiment_seed: int, experiment_name: str = None, model_dir: O
     
     if model_dir is None:
         model_dir = DEFAULT_MODEL_DIR
-        
-    # Use new naming scheme if experiment_name is provided
-    if experiment_name:
-        model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
-    else:
-        model_filename = model_dir / f"sdg_model_{experiment_seed}.pkl"  # Backward compatibility
-        # If old format doesn't exist, try to find any model with this seed
-        if not model_filename.exists():
-            possible_files = list(model_dir.glob(f"sdg_model_*_{experiment_seed}.pkl"))
-            if possible_files:
-                model_filename = possible_files[0]  # Use the first match
+
+    model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
 
     if not model_filename.exists():
         return False
@@ -373,9 +324,9 @@ def delete_model(experiment_seed: int, experiment_name: str = None, model_dir: O
 def copy_model(
     source_seed: int,
     target_seed: int,
+    source_name: str,
+    target_name: str,    
     model_dir: Optional[Path] = None,
-    source_name: str = None,
-    target_name: str = None,
     update_metadata: bool = True
 ) -> str:
     """
@@ -384,8 +335,8 @@ def copy_model(
     Args:
         source_seed: Source experiment seed
         target_seed: Target experiment seed
-        source_name: Source experiment name (optional for backward compatibility)
-        target_name: Target experiment name (optional for backward compatibility)
+        source_name: Source experiment name
+        target_name: Target experiment name
         model_dir: Custom model directory (default: experiments/models)
         update_metadata: Whether to update timestamp and seed in metadata
         
@@ -399,18 +350,10 @@ def copy_model(
     
     if model_dir is None:
         model_dir = DEFAULT_MODEL_DIR
-        
-    # Use new naming scheme if names are provided
-    if source_name:
-        source_file = model_dir / f"sdg_model_{source_name}_{source_seed}.pkl"
-    else:
-        source_file = model_dir / f"sdg_model_{source_seed}.pkl"
 
-    if target_name:
-        target_file = model_dir / f"sdg_model_{target_name}_{target_seed}.pkl"
-    else:
-        target_file = model_dir / f"sdg_model_{target_seed}.pkl"
-    
+    source_file = model_dir / f"sdg_model_{source_name}_{source_seed}.pkl"
+    target_file = model_dir / f"sdg_model_{target_name}_{target_seed}.pkl"
+
     if not source_file.exists():
         raise ModelNotFoundError(f"Source model not found: {source_file}")
     
@@ -442,13 +385,13 @@ def copy_model(
         raise SerializationError(f"Failed to copy model: {e}") from e
 
 
-def validate_model(experiment_seed: int, experiment_name: str = None, model_dir: Optional[Path] = None) -> Dict[str, Any]:
+def validate_model(experiment_seed: int, experiment_name: str, model_dir: Optional[Path] = None) -> Dict[str, Any]:
     """
     Validate a saved model by attempting to load it
     
     Args:
         experiment_seed: Experiment seed for filename
-        experiment_name: Experiment name for filename (optional for backward compatibility)
+        experiment_name: Experiment name for filename
         model_dir: Custom model directory (default: experiments/models)
         
     Returns:
@@ -461,23 +404,17 @@ def validate_model(experiment_seed: int, experiment_name: str = None, model_dir:
         "info": None,
         "loadable": False
     }
-    
+
     try:
         # Check if file exists and get info
-        if experiment_name:
-            info = get_model_info(experiment_seed, experiment_name, model_dir)
-        else:
-            info = get_model_info(experiment_seed, None, model_dir)  # Auto-detect
+        info = get_model_info(experiment_seed, experiment_name, model_dir)
         validation_result["info"] = info
         validation_result["valid"] = True
-        
+
         # Try to load the actual model
-        if experiment_name:
-            model, metadata = load_model(experiment_seed, experiment_name, model_dir)
-        else:
-            model, metadata = load_model(experiment_seed, None, model_dir)
+        model, metadata = load_model(experiment_seed, experiment_name, model_dir)
         validation_result["loadable"] = True
-        
+
         # Add model-specific validation
         library = metadata.get("library", "unknown")
         if library == "sdv":
@@ -486,7 +423,7 @@ def validate_model(experiment_seed: int, experiment_name: str = None, model_dir:
         elif library == "synthcity":
             # Basic Synthcity model validation
             validation_result["has_generate_method"] = hasattr(model, "generate")
-        
+
     except Exception as e:
         validation_result["error"] = str(e)
     

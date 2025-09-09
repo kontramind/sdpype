@@ -610,17 +610,13 @@ def model_list(
 @model_app.command("info")
 def model_info(
     seed: int = typer.Argument(..., help="Experiment seed of the model"),
-    experiment_name: Optional[str] = typer.Option(None, "--name", help="Experiment name (optional, auto-detect if not provided)"),
+    experiment_name: str = typer.Option(..., "--name", help="Experiment name (required)"),
     show_config: bool = typer.Option(False, "--config", help="Show full configuration")
 ):
     """📊 Show detailed information about a specific model"""
 
     try:
-        # Use smart lookup - try with experiment name first, fallback to auto-detect
-        if experiment_name:
-            info = get_model_info(seed, experiment_name)
-        else:
-            info = get_model_info(seed)  # Will auto-detect using our smart fallback
+        info = get_model_info(seed, experiment_name)
 
         # Create info panel
         experiment_info = info.get("experiment", {})
@@ -659,23 +655,15 @@ def model_info(
 @model_app.command("validate")
 def model_validate(
     seed: int = typer.Argument(..., help="Experiment seed of the model"),
-    experiment_name: Optional[str] = typer.Option(None, "--name", help="Experiment name (optional, auto-detect if not provided)"),
+    experiment_name: str = typer.Option(..., "--name", help="Experiment name (required)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed validation info")
 ):
     """🔍 Validate model integrity and check if it can be loaded"""
 
     try:
-        if experiment_name:
-            console.print(f"🔍 Validating model {experiment_name}_{seed}...")
-        else:
-            console.print(f"🔍 Validating model {seed} (auto-detecting experiment name)...")
+        console.print(f"🔍 Validating model {experiment_name}_{seed}...")
 
-
-        # Use smart lookup - try with experiment name first, fallback to auto-detect
-        if experiment_name:
-            validation_result = validate_model(seed, experiment_name)
-        else:
-            validation_result = validate_model(seed)  # Will auto-detect using our smart fallback
+        validation_result = validate_model(seed, experiment_name)
 
         if validation_result["valid"]:
             console.print("✅ Model file is valid", style="green")
@@ -719,7 +707,7 @@ def model_validate(
 @model_app.command("delete")
 def model_delete(
     seed: int = typer.Argument(..., help="Experiment seed of the model to delete"),
-    experiment_name: Optional[str] = typer.Option(None, "--name", help="Experiment name (optional, auto-detect if not provided)"),
+    experiment_name: str = typer.Option(..., "--name", help="Experiment name (required)"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt")
 ):
     """🗑️ Delete a saved model"""
@@ -727,11 +715,7 @@ def model_delete(
     try:
         # Check if model exists first
         try:
-            # Use smart lookup - try with experiment name first, fallback to auto-detect
-            if experiment_name:
-                info = get_model_info(seed, experiment_name)
-            else:
-                info = get_model_info(seed)  # Will auto-detect using our smart fallback
+            info = get_model_info(seed, experiment_name)
             model_type = info.get('model_type', 'unknown')
             library = info.get('library', 'unknown')
             size_mb = info.get('file_size_mb', 0)
@@ -752,10 +736,7 @@ def model_delete(
                 return
 
         # Delete the model
-        if experiment_name:
-            success = delete_model(seed, experiment_name)
-        else:
-            success = delete_model(seed)  # Will auto-detect using our smart fallback
+        success = delete_model(seed, experiment_name)
 
         if success:
             console.print(f"✅ Model {seed} deleted successfully", style="green")
@@ -770,8 +751,8 @@ def model_delete(
 def model_copy(
     source_seed: int = typer.Argument(..., help="Source experiment seed"),
     target_seed: int = typer.Argument(..., help="Target experiment seed"),
-    source_name: Optional[str] = typer.Option(None, "--source-name", help="Source experiment name (optional, auto-detect if not provided)"),
-    target_name: Optional[str] = typer.Option(None, "--target-name", help="Target experiment name (optional, uses source name if not provided)"),
+    source_name: str = typer.Option(..., "--source-name", help="Source experiment name (required)"),
+    target_name: str = typer.Option(..., "--target-name", help="Target experiment name (required)"),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite if target exists"),
     update_metadata: bool = typer.Option(True, "--update-metadata/--keep-metadata", help="Update metadata with new seed")
 ):
@@ -780,11 +761,7 @@ def model_copy(
     try:
         # Check if source exists
         try:
-            # Use smart lookup for source
-            if source_name:
-                source_info = get_model_info(source_seed, source_name)
-            else:
-                source_info = get_model_info(source_seed)  # Auto-detect
+            source_info = get_model_info(source_seed, source_name)
 
         except ModelNotFoundError:
             console.print(f"❌ Source model with seed {source_seed} not found", style="red")
@@ -794,11 +771,7 @@ def model_copy(
         # Check if target exists
         target_exists = False
         try:
-            # Use smart lookup for target (if target_name provided)
-            if target_name:
-                get_model_info(target_seed, target_name)
-            else:
-                get_model_info(target_seed)  # Check if any model with target seed exists
+            get_model_info(target_seed, target_name)
             target_exists = True
 
         except ModelNotFoundError:
@@ -811,14 +784,13 @@ def model_copy(
 
         # Show copy details
         console.print(f"📋 Copying model:")
-        console.print(f"  From: {source_info.get('experiment_name', 'legacy') or 'legacy'}_{source_seed} ({source_info.get('model_type', 'unknown')})")
-        console.print(f"  To: {target_name or source_info.get('experiment_name', 'legacy')}_{target_seed}")
+        console.print(f"  From: {source_name}_{source_seed} ({source_info.get('model_type', 'unknown')})")
+        console.print(f"  To: {target_name}_{target_seed}")
         console.print(f"  Size: {source_info.get('file_size_mb', 0):.1f} MB")
 
         # Perform copy
         target_file = copy_model(
-            source_seed, target_seed,
-            source_name, target_name or source_info.get('experiment_name'),
+            source_seed, target_seed, source_name, target_name,
             update_metadata=update_metadata
         )
 
@@ -1351,17 +1323,21 @@ def _show_experiments_summary():
 
             # Add model status information using serialization module
             try:
-                # Use new naming scheme if experiment name available
-                if experiment_name:
+                # Only try to get model info if we have experiment name
+                if experiment_name and experiment_name != "legacy":
                     model_info = get_model_info(seed, experiment_name)
+                    exp_data.update({
+                        "model_status": "✅ Available",
+                        "model_size_mb": f"{model_info.get('file_size_mb', 0):.1f}",
+                        "model_library": model_info.get('library', 'unknown'),
+                    })
                 else:
-                    model_info = get_model_info(seed)  # Auto-detect for legacy models
-                exp_data.update({
-                    "model_status": "✅ Available",
-                    "model_size_mb": f"{model_info.get('file_size_mb', 0):.1f}",
-                    "model_library": model_info.get('library', 'unknown'),
-                })
-            except SerializationError:
+                    exp_data.update({
+                       "model_status": "❌ Legacy",
+                       "model_size_mb": "0.0",
+                       "model_library": "unknown",
+                    })
+            except (SerializationError, ModelNotFoundError):
                 exp_data.update({
                     "model_status": "❌ Missing",
                     "model_size_mb": "0.0",
