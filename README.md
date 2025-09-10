@@ -77,16 +77,6 @@ uv run sdpype model info 123 --name variant
 
 # Validate model integrity
 uv run sdpype model validate 42 --name baseline
-
-# Copy models between experiments
-uv run sdpype model copy 42 123 --source-name baseline --target-name baseline_copy
-
-# Delete specific models
-uv run sdpype model delete 42 --name baseline
-
-# Clean up old models
-uv run sdpype model clean --older-than 30
-uv run sdpype model clean --keep-latest 5
 ```
 
 ## Pipeline Stages
@@ -166,9 +156,6 @@ evaluation:
 ```bash
 # List all available SDG models
 uv run sdpype models
-
-# List all Synthcity models (if installed)
-uv run sdpype list-synthcity
 ```
 
 **SDV Models:**
