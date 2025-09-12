@@ -481,10 +481,6 @@ def models():
     table.add_row("synthcity_ddpm", "Synthcity", "Diffusion", "Diffusion model")
     
     console.print(table)
-    
-    console.print("\n💡 Usage examples:")
-    console.print("  dvc repro --set-param sdg=gaussian")
-    console.print("  sdpype exp run --name 'test' --config 'sdg=ctgan'")
 
 
 # MODEL MANAGEMENT COMMANDS
@@ -736,90 +732,6 @@ def model_status():
 
 # EVALUATION COMMANDS
 
-@eval_app.command("downstream")
-def eval_downstream(
-    seed: Optional[int] = typer.Option(None, "--seed", help="Experiment seed (default: from params.yaml)"),
-    target: Optional[str] = typer.Option(None, "--target", help="Target column for ML tasks"),
-    task_type: Optional[str] = typer.Option(None, "--task-type", help="'classification' or 'regression'"),
-    models: Optional[str] = typer.Option(None, "--models", help="Comma-separated list of models to test"),
-    force: bool = typer.Option(False, "--force", help="Force re-evaluation")
-):
-    """🎯 Run downstream task evaluation (ML performance comparison)"""
-    
-    console.print("🎯 Running Downstream Task Evaluation...")
-    
-    # Determine if we need parameter overrides
-    has_overrides = any([seed, target, task_type, models])
-    
-    if has_overrides:
-        # Use dvc exp run when we have parameter overrides
-        cmd = ["dvc", "exp", "run", "-s", "evaluate_downstream"]
-        console.print("📊 Using DVC experiments with parameter overrides...")
-    else:
-        # Use dvc repro when no parameter overrides
-        cmd = ["dvc", "repro", "-s", "evaluate_downstream"]
-        console.print("📊 Using DVC repro with current parameters...")
-    
-    if force:
-        cmd.append("--force")
-    
-    # Add parameter overrides (only works with dvc exp run)
-    if has_overrides:
-        if seed:
-            cmd.extend(["--set-param", f"experiment.seed={seed}"])
-        
-        if target:
-            cmd.extend(["--set-param", f"evaluation.downstream_tasks.target_column={target}"])
-        
-        if task_type:
-            cmd.extend(["--set-param", f"evaluation.downstream_tasks.task_type={task_type}"])
-        
-        if models:
-            model_list = [m.strip() for m in models.split(",")]
-            cmd.extend(["--set-param", f"evaluation.downstream_tasks.models={model_list}"])
-        
-        # Always enable downstream evaluation when using overrides
-        cmd.extend(["--set-param", "evaluation.downstream_tasks.enabled=true"])
-    
-    console.print(f"Command: {' '.join(cmd)}")
-    
-    result = subprocess.run(cmd)
-    
-    if result.returncode == 0:
-        console.print("✅ Downstream evaluation completed!", style="green")
-        
-        # Show results summary
-        _show_downstream_summary(seed)
-        
-    else:
-        console.print("❌ Downstream evaluation failed!", style="red")
-        console.print("\n💡 Troubleshooting tips:")
-        console.print("  • Make sure you have run the full pipeline first: dvc repro")
-        console.print("  • Check that synthetic data exists for the specified seed")
-        console.print("  • Verify the target column exists in your data")
-        raise typer.Exit(1)
-
-
-@eval_app.command("results")
-def eval_results(
-    seed: Optional[int] = typer.Option(None, "--seed", help="Experiment seed"),
-    show_report: bool = typer.Option(False, "--report", help="Show full text report"),
-    compare_seeds: Optional[str] = typer.Option(None, "--compare", help="Compare multiple seeds (comma-separated)")
-):
-    """📊 Show evaluation results"""
-    
-    if compare_seeds:
-        # Compare multiple experiments
-        seeds = [int(s.strip()) for s in compare_seeds.split(",")]
-        _compare_downstream_results(seeds)
-    elif seed:
-        # Show single experiment results
-        _show_downstream_summary(seed, show_report)
-    else:
-        # Show all available results
-        _show_all_evaluation_results()
-
-
 @eval_app.command("status")
 def eval_status():
     """📊 Show evaluation pipeline status"""
@@ -850,8 +762,6 @@ def eval_status():
                     eval_type = "quality_comparison"
                 elif name.startswith("statistical_similarity_"):
                     eval_type = "statistical_similarity"
-                elif name.startswith("downstream_performance_"):
-                    eval_type = "downstream_performance"
                 else:
                     # For other files, use old logic
                     eval_type = "_".join(filename_parts[:-1])
@@ -873,7 +783,6 @@ def eval_status():
     table.add_column("Seed", style="cyan")
     table.add_column("Intrinsic Quality", style="yellow")
     table.add_column("Statistical Similarity", style="magenta")
-    table.add_column("Downstream Tasks", style="green")
     table.add_column("Status", style="white")
 
     for seed in sorted(seeds_status.keys()):
@@ -881,10 +790,9 @@ def eval_status():
 
         intrinsic = status.get("quality_comparison", "❌")
         statistical = status.get("statistical_similarity", "❌")
-        downstream = status.get("downstream_performance", "❌")
 
         # Overall status
-        complete_count = sum(1 for s in [intrinsic, statistical, downstream] if s == "✅")
+        complete_count = sum(1 for s in [intrinsic, statistical] if s == "✅")
         if complete_count == 3:
             overall = "🎉 Complete"
         elif complete_count >= 2:
@@ -896,7 +804,6 @@ def eval_status():
             str(seed),
             intrinsic,
             statistical,
-            downstream,
             overall
         )
 
@@ -908,7 +815,6 @@ def eval_status():
                         if all(s == "✅" for s in [
                             status.get("quality_comparison", "❌"),
                             status.get("statistical_similarity", "❌"),
-                            status.get("downstream_performance", "❌")
                         ]))
     
     console.print(f"\n📊 Summary:")
@@ -918,7 +824,6 @@ def eval_status():
     
     if complete_seeds < total_seeds:
         console.print(f"\n💡 To complete missing evaluations:")
-        console.print(f"  sdpype eval downstream --seed <SEED>")
         console.print(f"  dvc repro -s compare_quality")
 
 
@@ -957,7 +862,7 @@ def _create_sample_data():
 
 
 def _show_experiments_summary():
-    """Show summary of completed experiments with model status and downstream results"""
+    """Show summary of completed experiments with model status"""
 
     metrics_dir = Path("experiments/metrics")
     if not metrics_dir.exists():
@@ -983,11 +888,9 @@ def _show_experiments_summary():
             if len(filename_parts) >= 3:  # training_name_seed format
                 experiment_name = "_".join(filename_parts[1:-1])  # everything between "training" and seed
                 generation_file = metrics_dir / f"generation_{experiment_name}_{seed}.json"
-                downstream_file = metrics_dir / f"downstream_performance_{experiment_name}_{seed}.json"
             else:  # old training_seed format
                 experiment_name = None
                 generation_file = metrics_dir / f"generation_{seed}.json"
-                downstream_file = metrics_dir / f"downstream_performance_{seed}.json"
 
             exp_data = {
                 "seed": seed,
@@ -1023,20 +926,6 @@ def _show_experiments_summary():
                     "model_library": "unknown",
                 })
 
-            # Add downstream evaluation results if available
-            if downstream_file.exists():
-                try:
-                    with open(downstream_file) as f:
-                        downstream_data = json.load(f)
-                    exp_data.update({
-                        "downstream_utility": f"{downstream_data.get('overall_utility_score', 0):.3f}",
-                        "downstream_status": "✅ Complete"
-                    })
-                except Exception:
-                    exp_data.update({"downstream_utility": "0.000", "downstream_status": "❌ Error"})
-            else:
-                exp_data.update({"downstream_utility": "-", "downstream_status": "⚠️  Missing"})
-
             if generation_file.exists():
                 with open(generation_file) as f:
                     gen_data = json.load(f)
@@ -1064,7 +953,6 @@ def _show_experiments_summary():
     table.add_column("Library", style="yellow")
     table.add_column("Model Status", style="white")
     table.add_column("Size (MB)", style="blue", justify="right")
-    table.add_column("ML Utility", style="magenta", justify="right")
     table.add_column("Train Time", style="green")
     table.add_column("Gen Time", style="green")
     table.add_column("Samples", style="white", justify="right")
@@ -1077,7 +965,6 @@ def _show_experiments_summary():
             exp.get("model_library", exp["library"]),  # Prefer model info over training metrics
             exp.get("model_status", "Unknown"),
             exp.get("model_size_mb", "0.0"),
-            exp.get("downstream_utility", "-"),
             f"{exp['train_time']:.1f}s",
             f"{exp['gen_time']:.1f}s",
             str(exp["samples"])
@@ -1088,23 +975,15 @@ def _show_experiments_summary():
     # Add summary statistics
     total_experiments = len(experiments)
     available_models = len([exp for exp in experiments if exp.get("model_status") == "✅ Available"])
-    completed_downstream = len([exp for exp in experiments if exp.get("downstream_status") == "✅ Complete"])
     missing_models = total_experiments - available_models
     total_size_mb = sum(float(exp.get("model_size_mb", 0)) for exp in experiments)
 
     console.print(f"\n📊 Summary:")
     console.print(f"  • Total experiments: {total_experiments}")
     console.print(f"  • Available models: {available_models}")
-    console.print(f"  • Downstream evaluations: {completed_downstream}")
     if missing_models > 0:
         console.print(f"  • Missing models: {missing_models}", style="yellow")
     console.print(f"  • Total model storage: {total_size_mb:.1f} MB")
-
-    # Show average utility score for completed downstream evaluations
-    completed_utilities = [float(exp.get("downstream_utility", 0)) for exp in experiments if exp.get("downstream_utility") != "-" and exp.get("downstream_utility") != "0.000"]
-    if completed_utilities:
-        avg_utility = sum(completed_utilities) / len(completed_utilities)
-        console.print(f"  • Average ML utility: {avg_utility:.3f}")
 
     # Show hint about missing models
     if missing_models > 0:
@@ -1112,237 +991,8 @@ def _show_experiments_summary():
         missing_seeds = [str(exp["seed"]) for exp in experiments if exp.get("model_status") == "❌ Missing"]
         console.print(f"  dvc repro --set-param experiment.seed={missing_seeds[0]}")
 
-    # Show hint about missing downstream evaluations
-    missing_downstream = total_experiments - completed_downstream
-    if missing_downstream > 0:
-        console.print(f"\n💡 Complete downstream evaluations:", style="yellow")
-        console.print(f"  sdpype eval downstream --seed <SEED>")
-
 
 # UTILITY FUNCTIONS FOR EVALUATION
-
-def _show_downstream_summary(seed: Optional[int], show_report: bool = False):
-    """Show summary of downstream evaluation results"""
-
-    # Determine experiment name by looking for downstream files with this seed
-    experiment_name = None
-    if seed is None:
-        # Get seed from params.yaml
-        import yaml
-        try:
-            with open("params.yaml") as f:
-                params = yaml.safe_load(f)
-            seed = params.get("experiment", {}).get("seed", None)
-            experiment_name = params.get("experiment", {}).get("name", None)
-        except:
-            console.print("❌ Could not determine seed", style="red")
-            return
-    else:
-        # Try to find experiment name from existing files
-        metrics_dir = Path("experiments/metrics")
-        downstream_files = list(metrics_dir.glob(f"downstream_performance_*_{seed}.json"))
-        if downstream_files:
-            # Extract experiment name from filename: downstream_performance_name_seed.json
-            filename_parts = downstream_files[0].stem.split("_")
-            if len(filename_parts) >= 4:  # downstream_performance_name_seed
-                experiment_name = "_".join(filename_parts[2:-1])  # everything between "performance" and seed
-
-    # Check if results exist
-    if experiment_name:
-        results_file = Path(f"experiments/metrics/downstream_performance_{experiment_name}_{seed}.json")
-        report_file = Path(f"experiments/metrics/downstream_report_{experiment_name}_{seed}.txt")
-    else:
-        # Try old format first, then look for any file with this seed
-        results_file = Path(f"experiments/metrics/downstream_performance_{seed}.json")
-        report_file = Path(f"experiments/metrics/downstream_report_{seed}.txt")
-
-        if not results_file.exists():
-            # Look for new format files
-            metrics_dir = Path("experiments/metrics")
-            possible_files = list(metrics_dir.glob(f"downstream_performance_*_{seed}.json"))
-            if possible_files:
-                results_file = possible_files[0]
-                report_file = metrics_dir / f"downstream_report_{possible_files[0].stem.replace('downstream_performance_', '')}.txt"
-
-    if not results_file.exists():
-        console.print(f"❌ No downstream results found for seed {seed}", style="red")
-        if experiment_name:
-            console.print(f"💡 Looking for: downstream_performance_{experiment_name}_{seed}.json", style="yellow")
-        console.print("💡 Run: sdpype eval downstream")
-        return
-
-    try:
-        with open(results_file) as f:
-            results = json.load(f)
-
-        metadata = results["metadata"]
-        overall_utility = results["overall_utility_score"]
-
-        console.print(f"\n🎯 Downstream Evaluation Results (Seed {seed})")
-        console.print(f"Task: {metadata['task_type']} on '{metadata['target_column']}'")
-        console.print(f"Overall Utility Score: {overall_utility:.3f}")
-
-        # Show model results
-        table = Table(title="Model Performance Comparison")
-        table.add_column("Model", style="cyan")
-        table.add_column("Original", style="green")
-        table.add_column("Synthetic", style="yellow")
-        table.add_column("Utility", style="magenta")
-
-        task_type = metadata["task_type"]
-        primary_metric = "accuracy" if task_type == "classification" else "r2"
-
-        for model_name in metadata["models_evaluated"]:
-            orig_perf = results["original_performance"].get(model_name, {}).get(primary_metric, 0.0)
-            synth_perf = results["synthetic_performance"].get(model_name, {}).get(primary_metric, 0.0)
-            utility = results["utility_scores"].get(model_name, 0.0)
-
-            table.add_row(
-                model_name,
-                f"{orig_perf:.3f}",
-                f"{synth_perf:.3f}",
-                f"{utility:.3f}"
-            )
-
-        console.print(table)
-
-        # Show interpretation
-        if overall_utility >= 0.9:
-            console.print("🎉 Excellent synthetic data quality!", style="green")
-        elif overall_utility >= 0.8:
-            console.print("✅ Good synthetic data quality", style="green")
-        elif overall_utility >= 0.7:
-            console.print("⚠️  Moderate synthetic data quality", style="yellow")
-        else:
-            console.print("❌ Poor synthetic data quality", style="red")
-
-        # Show full report if requested
-        if show_report and report_file.exists():
-            console.print("\n📋 Full Report:")
-            console.print("-" * 60)
-            with open(report_file) as f:
-                console.print(f.read())
-
-    except Exception as e:
-        console.print(f"❌ Error reading results: {e}", style="red")
-
-
-def _compare_downstream_results(seeds: List[int]):
-    """Compare downstream results across multiple seeds"""
-
-    console.print(f"📊 Comparing Downstream Results Across Seeds: {seeds}")
-
-    all_results = {}
-
-    for seed in seeds:
-        # Try both old and new format files
-        results_file = Path(f"experiments/metrics/downstream_performance_{seed}.json")
-        experiment_name = "legacy"  # Default for old format
-
-        if not results_file.exists():
-            # Look for new format files
-            metrics_dir = Path("experiments/metrics")
-            possible_files = list(metrics_dir.glob(f"downstream_performance_*_{seed}.json"))
-            if possible_files:
-                results_file = possible_files[0]
-                # Extract experiment name from filename: downstream_performance_name_seed.json
-                filename_parts = results_file.stem.split("_")
-                if len(filename_parts) >= 4:  # downstream_performance_name_seed
-                    experiment_name = "_".join(filename_parts[2:-1])  # everything between "performance" and seed
-
-        if results_file.exists():
-            try:
-                with open(results_file) as f:
-                    results_data = json.load(f)
-                    results_data["_experiment_name"] = experiment_name  # Store experiment name with results
-                    all_results[seed] = results_data
-            except Exception as e:
-                console.print(f"⚠️  Error reading seed {seed}: {e}", style="yellow")
-        else:
-            console.print(f"⚠️  No results found for seed {seed}", style="yellow")
-
-    if not all_results:
-        console.print("❌ No valid results found", style="red")
-        return
-
-    # Create comparison table
-    table = Table(title="Downstream Performance Comparison")
-    table.add_column("Seed", style="cyan")
-    table.add_column("Experiment", style="yellow")
-    table.add_column("Task Type", style="yellow")
-    table.add_column("Overall Utility", style="green")
-    table.add_column("Best Model", style="magenta")
-    table.add_column("Status", style="white")
-
-    for seed, results in all_results.items():
-        metadata = results["metadata"]
-        overall_utility = results["overall_utility_score"]
-        experiment_name = results.get("_experiment_name", "unknown")
-
-        # Find best model
-        if results["utility_scores"]:
-            best_model = max(results["utility_scores"].items(), key=lambda x: x[1])
-            best_model_name = best_model[0]
-            best_utility = best_model[1]
-        else:
-            best_model_name = "None"
-            best_utility = 0.0
-
-        # Status
-        if overall_utility >= 0.8:
-            status = "✅ Good"
-        elif overall_utility >= 0.7:
-            status = "⚠️  OK"
-        else:
-            status = "❌ Poor"
-
-        table.add_row(
-            str(seed),
-            experiment_name,
-            metadata["task_type"],
-            f"{overall_utility:.3f}",
-            f"{best_model_name} ({best_utility:.3f})",
-            status
-        )
-
-    console.print(table)
-
-
-def _show_all_evaluation_results():
-    """Show overview of all evaluation results"""
-
-    metrics_dir = Path("experiments/metrics")
-    if not metrics_dir.exists():
-        console.print("📋 No evaluation results found", style="yellow")
-        return
-
-    # Find all downstream results (both old and new format)
-    downstream_files = list(metrics_dir.glob("downstream_performance_*.json"))
-
-    if not downstream_files:
-        console.print("📋 No downstream evaluation results found", style="yellow")
-        console.print("💡 Run: sdpype eval downstream")
-        return
-
-    console.print(f"📊 Found {len(downstream_files)} downstream evaluation results")
-
-    # Extract seeds and show comparison
-    seeds = []
-    for file in downstream_files:
-        try:
-            # Handle both old format (downstream_performance_seed.json) and new format (downstream_performance_name_seed.json)
-            filename_parts = file.stem.split("_")
-            if len(filename_parts) >= 3:  # At least downstream_performance_seed
-                seed = int(filename_parts[-1])  # Last part is always seed
-                seeds.append(seed)
-        except ValueError:
-            continue
-
-    if seeds:
-        # Remove duplicates and sort
-        unique_seeds = sorted(list(set(seeds)))
-        _compare_downstream_results(unique_seeds)
-
 
 def _display_experiment_comparison_table(all_results: dict, focus_metric: str):
     """Display formatted comparison table for named experiments"""
@@ -1355,8 +1005,6 @@ def _display_experiment_comparison_table(all_results: dict, focus_metric: str):
         table.add_column("Quality↑", style="green")
     if focus_metric in ["statistical", "all"]:
         table.add_column("Statistical↑", style="blue")
-    if focus_metric in ["downstream", "all"]:
-        table.add_column("Downstream↑", style="magenta")
     if focus_metric == "all":
         table.add_column("Combined↑", style="yellow")
         table.add_column("Rank", style="red")
@@ -1378,18 +1026,13 @@ def _display_experiment_comparison_table(all_results: dict, focus_metric: str):
         if 'statistical' in results and focus_metric in ["statistical", "all"]:
             scores['statistical'] = results['statistical']['overall_similarity_score']
 
-        # Downstream score
-        if 'downstream' in results and focus_metric in ["downstream", "all"]:
-            scores['downstream'] = results['downstream']['overall_utility_score']
-
         # Combined score (weighted average)
         if focus_metric == "all":
             quality_score = scores.get('quality', 0)
             statistical_score = scores.get('statistical', 0)
-            downstream_score = scores.get('downstream', 0)
 
-            # Weight: 30% quality, 30% statistical, 40% downstream
-            combined = (0.3 * quality_score + 0.3 * statistical_score + 0.4 * downstream_score)
+            # Weight: 30% quality, 30% statistical
+            combined = (0.3 * quality_score + 0.3 * statistical_score)
             scores['combined'] = combined
 
         experiment_scores.append(scores)
@@ -1408,8 +1051,6 @@ def _display_experiment_comparison_table(all_results: dict, focus_metric: str):
             row_data.append(f"{exp_scores['quality']:.1%}")
         if focus_metric in ["statistical", "all"] and 'statistical' in exp_scores:
             row_data.append(f"{exp_scores['statistical']:.3f}")
-        if focus_metric in ["downstream", "all"] and 'downstream' in exp_scores:
-            row_data.append(f"{exp_scores['downstream']:.3f}")
         if focus_metric == "all":
             if 'combined' in exp_scores:
                 row_data.append(f"{exp_scores['combined']:.3f}")
@@ -1454,15 +1095,6 @@ def _generate_experiment_comparison_report(all_results: dict) -> str:
             ss = results['statistical']['overall_similarity_score']
             report.append(f"- Statistical Similarity: {ss:.3f}")
 
-        if 'downstream' in results:
-            du = results['downstream']['overall_utility_score']
-            report.append(f"- Downstream Utility: {du:.3f}")
-
-            # Best model details
-            best_model = max(results['downstream']['model_results'].items(),
-                           key=lambda x: x[1]['performance_score'])
-            report.append(f"- Best ML Model: {best_model[0]} ({best_model[1]['performance_score']:.3f})")
-
         report.append("")
 
     return "\n".join(report)
@@ -1471,7 +1103,7 @@ def _generate_experiment_comparison_report(all_results: dict) -> str:
 @eval_app.command("compare-experiments")
 def compare_named_experiments(
     experiments: str = typer.Argument(..., help="Comma-separated experiment_name_seed pairs (e.g., 'ctgan_baseline_1,tvae_baseline_1')"),
-    metric: str = typer.Option("all", "--metric", "-m", help="Focus on specific metric (quality, statistical, downstream, all)"),
+    metric: str = typer.Option("all", "--metric", "-m", help="Focus on specific metric (quality, statistical, all)"),
     save_report: bool = typer.Option(False, "--save", help="Save comparison report")
 ):
     """🆚 Compare experiments using experiment_name_seed format"""
@@ -1531,13 +1163,6 @@ def compare_named_experiments(
                 results['statistical'] = json.load(f)
                 console.print(f"  ✅ Statistical data loaded")
 
-        # Downstream performance
-        downstream_file = metrics_dir / f"downstream_performance_{exp_name}_{seed_int}.json"
-        if downstream_file.exists():
-            with open(downstream_file) as f:
-                results['downstream'] = json.load(f)
-                console.print(f"  ✅ Downstream data loaded")
-
         if not results:
             console.print(f"  ⚠️  No evaluation data found for {exp_full}")
 
@@ -1550,7 +1175,6 @@ def compare_named_experiments(
         console.print("❌ No evaluation results found for any experiment!", style="red")
         console.print("💡 Run evaluations first:")
         console.print("  uv run sdpype stage compare_quality")
-        console.print("  uv run sdpype eval downstream --target <column>")
         return
 
     if len(experiments_with_data) == 1:
