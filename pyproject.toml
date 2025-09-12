@@ -36,4 +36,4 @@ dependencies = [
 ]
 
 [project.scripts]
-sdpype = "sdpype.main:app"
+sdpype = "sdpype.__main__:app"
