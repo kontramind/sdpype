@@ -31,5 +31,29 @@ def purge(
     from sdpype.core.experiment import purge_repository
     purge_repository(confirm, keep_raw_data, keep_cache)
 
+@app.command()
+def pipeline(
+    force: bool = typer.Option(False, "--force", help="Force rerun all stages"),
+):
+    """🚀 Run the complete DVC pipeline"""
+    from sdpype.core.pipeline import run_pipeline_command
+    run_pipeline_command(force)
+
+@app.command()
+def stage(
+    stage_name: str = typer.Argument(..., help="Stage to run (e.g., train_sdg, preprocess)"),
+    force: bool = typer.Option(False, "--force", help="Force rerun this stage"),
+):
+    """🎯 Run a specific pipeline stage"""
+    from sdpype.core.pipeline import run_stage_command
+    run_stage_command(stage_name, force)
+
+@app.command()
+def status():
+    """📊 Show repository status and experiment summary"""
+    from sdpype.core.status import show_repository_status
+    show_repository_status()
+
+
 if __name__ == "__main__":
     app()
