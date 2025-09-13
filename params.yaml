@@ -50,13 +50,3 @@ evaluation:
     comparative_analysis: true
   statistical_similarity:
     enabled: true
-  downstream_tasks:
-    enabled: true
-    target_column: category  # Column to predict (auto-detect task type)
-    task_type:               # 'classification', 'regression', or null for auto-detect
-    models:                  # ML models to evaluate
-    - RandomForest
-    - LogisticRegression
-    - SVM
-    - MLP
-    random_state:            # Use experiment.seed if null

@@ -87,7 +87,6 @@ uv run sdpype model validate 42 --name baseline
 4. **evaluate_original**: Evaluate original data quality
 5. **evaluate_synthetic**: Evaluate synthetic data quality  
 6. **compare_quality**: Compare data quality metrics
-7. **evaluate_downstream**: ML performance comparison
 
 ### Running Individual Stages
 ```bash
@@ -115,16 +114,6 @@ uv run sdpype stage compare_quality
 uv run sdpype stage compare_quality
 ```
 
-### 3. Downstream Task Performance
-```bash
-# Run downstream evaluation (uses current params.yaml settings)
-uv run sdpype eval downstream --target category
-
-# Check results
-uv run sdpype eval results --seed 42 --report
-uv run sdpype eval status
-```
-
 ## Configuration
 
 Edit `params.yaml` to configure experiments:
@@ -142,13 +131,6 @@ sdg:
     epochs: 500
     batch_size: 100
 
-evaluation:
-  downstream_tasks:
-    enabled: true
-    target_column: category
-    models:
-    - RandomForest
-    - LogisticRegression
 ```
 
 ## Available Models
@@ -220,7 +202,6 @@ uv run sdpype pipeline
 
 # Check results
 uv run sdpype model list
-uv run sdpype eval downstream --target category
 ```
 
 ## Best Practices
