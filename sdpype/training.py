@@ -15,7 +15,7 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf
 
 # SDV models
-from sdv.single_table import GaussianCopulaSynthesizer, CTGANSynthesizer, TVAESynthesizer
+from sdv.single_table import GaussianCopulaSynthesizer, CTGANSynthesizer, TVAESynthesizer, CopulaGANSynthesizer
 
 # Synthcity models and serialization
 from synthcity.plugins import Plugins
@@ -27,12 +27,14 @@ from sdpype.serialization import save_model, create_model_metadata
 def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
     """Create SDV model with metadata"""
     # SDV v1+ requires metadata
+    from omegaconf import OmegaConf
     from sdv.metadata import SingleTableMetadata
     metadata = SingleTableMetadata()
     metadata.detect_from_dataframe(data)
 
     # Get model parameters from config, filtering for SDV-compatible params  
-    all_params = dict(cfg.sdg.parameters) if cfg.sdg.parameters else {}
+    # Use OmegaConf.to_container to properly convert nested structures
+    all_params = OmegaConf.to_container(cfg.sdg.parameters, resolve=True) if cfg.sdg.parameters else {}
     
     # Filter out Synthcity-specific parameters that SDV doesn't understand
     synthcity_only_params = {'n_iter'}  # Add more Synthcity-only params as needed
@@ -40,20 +42,74 @@ def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
 
     match cfg.sdg.model_type:
         case "gaussian_copula":
-            return GaussianCopulaSynthesizer(metadata)
-
-        case "ctgan" | "tvae" as model_type:
-            # Common parameters for GAN-based models
-            synthesizer_class = {
-                "ctgan": CTGANSynthesizer,
-                "tvae": TVAESynthesizer
-            }[model_type]
-
-            return synthesizer_class(
+            return GaussianCopulaSynthesizer(
                 metadata,
+                enforce_min_max_values=model_params.get("enforce_min_max_values", True),
+                enforce_rounding=model_params.get("enforce_rounding", True),
+                locales=model_params.get("locales", ['en_US']),
+                default_distribution=model_params.get("default_distribution", 'beta'),
+                numerical_distributions=model_params.get("numerical_distributions", {})
+            )
+        case "ctgan" as model_type:
+            return CTGANSynthesizer(
+                metadata,
+                enforce_min_max_values=model_params.get("enforce_min_max_values", True),
+                enforce_rounding=model_params.get("enforce_rounding", True),
+                locales=model_params.get("locales", ['en_US']),
                 epochs=model_params.get("epochs", 300),
                 batch_size=model_params.get("batch_size", 500),
-                verbose=False
+                verbose=model_params.get("verbose", False),
+                cuda=model_params.get("cuda", True),
+                discriminator_dim=model_params.get("discriminator_dim", (256, 256)),
+                discriminator_decay=model_params.get("discriminator_decay", 1e-06),
+                discriminator_lr=model_params.get("discriminator_lr", 0.0002),
+                discriminator_steps=model_params.get("discriminator_steps", 1),
+                generator_lr=model_params.get("generator_lr", 0.0002),
+                embedding_dim=model_params.get("embedding_dim", 128),
+                generator_decay=model_params.get("generator_decay", 1e-06),
+                generator_dim=model_params.get("generator_dim", (256, 256)),
+                log_frequency=model_params.get("log_frequency", True),
+                pac=model_params.get("pac", 10)
+            )
+
+        case "tvae" as model_type:
+            return TVAESynthesizer(
+                metadata,
+                enforce_min_max_values=model_params.get("enforce_min_max_values", True),
+                enforce_rounding=model_params.get("enforce_rounding", True),
+                epochs=model_params.get("epochs", 300),
+                batpch_size=model_params.get("batch_size", 500),
+                verbose=model_params.get("verbose", False),
+                cuda=model_params.get("cuda", True),
+                compress_dims=model_params.get("compress_dims", (128, 128)),
+                decompress_dims=model_params.get("decompress_dims", (128, 128)),
+                embedding_dim=model_params.get("embedding_dim", 128),
+                l2scale=model_params.get("l2scale", 1e-5),
+                loss_factor=model_params.get("loss_factor", 2)
+            )
+
+        case "copula_gan" as model_type:
+            return CopulaGANSynthesizer(
+                metadata,
+                enforce_min_max_values=model_params.get("enforce_min_max_values", True),
+                enforce_rounding=model_params.get("enforce_rounding", True),
+                locales=model_params.get("locales", ['en_US']),
+                default_distribution=model_params.get("default_distribution", 'beta'),
+                numerical_distributions=model_params.get("numerical_distributions", {}),
+                epochs=model_params.get("epochs", 300),
+                batch_size=model_params.get("batch_size", 500),
+                verbose=model_params.get("verbose", False),
+                cuda=model_params.get("cuda", True),
+                discriminator_dim=model_params.get("discriminator_dim", (256, 256)),
+                discriminator_decay=model_params.get("discriminator_decay", 1e-06),
+                discriminator_lr=model_params.get("discriminator_lr", 0.0002),
+                discriminator_steps=model_params.get("discriminator_steps", 1),
+                generator_lr=model_params.get("generator_lr", 0.0002),
+                embedding_dim=model_params.get("embedding_dim", 128),
+                generator_decay=model_params.get("generator_decay", 1e-06),
+                generator_dim=model_params.get("generator_dim", (256, 256)),
+                log_frequency=model_params.get("log_frequency", True),
+                pac=model_params.get("pac", 10)
             )
 
         case _:
@@ -162,7 +218,7 @@ def main(cfg: DictConfig) -> None:
         "timestamp": datetime.now().isoformat(),
         "data_source": data_file,
         "model_output": model_filename,
-        "model_parameters": dict(cfg.sdg.parameters) if cfg.sdg.parameters else {}
+        "model_parameters": OmegaConf.to_container(cfg.sdg.parameters, resolve=True) if cfg.sdg.parameters else {}
     }
 
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)

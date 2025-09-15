@@ -54,6 +54,15 @@ def status():
     from sdpype.core.status import show_repository_status
     show_repository_status()
 
+@app.command()
+def models(
+    library: Optional[str] = typer.Option(None, "--library", help="Filter by library (sdv, synthcity)"),
+    show_params: Optional[str] = typer.Option(None, "--params", help="Show hyperparameters for specific model (e.g., ctgan, sdv/ctgan)"),
+):
+    """🤖 Show available synthetic data generation models"""
+    from sdpype.core.models import show_available_models
+    show_available_models(library, show_params)
+
 
 if __name__ == "__main__":
     app()
