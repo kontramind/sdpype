@@ -1,4 +1,3 @@
-# sdpype/cli/main.py - Just setup + purge for testing
 """
 SDPype - Synthetic Data Pipeline CLI Entry Point
 """
@@ -14,6 +13,10 @@ app = typer.Typer(
     rich_markup_mode="rich",
     no_args_is_help=True
 )
+
+# Import and add model subcommands
+from sdpype.cli.model import model_app
+app.add_typer(model_app, name="model")
 
 @app.command()
 def setup():

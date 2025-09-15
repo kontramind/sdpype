@@ -387,7 +387,7 @@ def create_model_metadata(
             "name": cfg.experiment.get("name", f"exp_{experiment_seed}"),
             "researcher": cfg.experiment.get("researcher", "anonymous")
         },
-        "config": OmegaConf.to_container(cfg, resolve=True),
+        "params": OmegaConf.to_container(cfg, resolve=True),
         "training_data_shape": list(data.shape),
         "training_time": training_time,
         "training_data_columns": list(data.columns),
