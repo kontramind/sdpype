@@ -63,7 +63,7 @@ data:
 # GENERATION SETTINGS
 # =============================================================================
 generation:
-  n_samples: 1000
+  n_samples: null  # Number of synthetic samples to generate # Set to null to match original dataset size
 
 # =============================================================================
 # EVALUATION CONFIGURATION

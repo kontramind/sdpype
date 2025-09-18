@@ -48,7 +48,34 @@ def main(cfg: DictConfig) -> None:
 
     # Generate synthetic data
     n_samples = cfg.generation.n_samples
-    print(f"🔄 Generating {n_samples} samples using {library} {model_type}...")
+
+    # Handle null n_samples by using original dataset size
+    if n_samples is None:
+        print("🔍 Auto-determining sample count from original dataset...")
+        # Load processed data to get original sample count
+        processed_data_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+        if not Path(processed_data_file).exists():
+            print(f"❌ Cannot determine dataset size: {processed_data_file} not found")
+            print("💡 Run preprocessing first: dvc repro -s preprocess")
+            raise FileNotFoundError(f"Processed data file not found: {processed_data_file}")
+
+        original_data = pd.read_csv(processed_data_file)
+        n_samples = len(original_data)
+
+        # Validate that we got a reasonable sample count
+        if n_samples <= 0:
+            raise ValueError(f"Invalid original dataset size: {n_samples} samples")
+        if n_samples > 1_000_000:
+            print(f"⚠️  Large dataset detected: {n_samples:,} samples")
+            print("💡 Generation may take significant time and memory")
+
+        print(f"📊 Using original dataset size: {n_samples} samples")
+        print(f"🔄 Generating {n_samples:,} samples using {library} {model_type}...")
+    else:
+        # Validate explicit n_samples value
+        if n_samples <= 0:
+            raise ValueError(f"Invalid n_samples configuration: {n_samples}")
+        print(f"🔄 Generating {n_samples} samples using {library} {model_type}...")
 
     start_time = time.time()
 
@@ -71,8 +98,14 @@ def main(cfg: DictConfig) -> None:
     if len(synthetic_data) == 0:
         raise ValueError("Generated dataset is empty")
 
+    # More nuanced validation for auto-determined vs explicit sample counts
     if len(synthetic_data) != n_samples:
-        print(f"⚠️  Generated {len(synthetic_data)} samples instead of requested {n_samples}")
+        if cfg.generation.n_samples is None:
+            print(f"⚠️  Generated {len(synthetic_data)} samples instead of original dataset size {n_samples}")
+            print("💡 This may indicate model generation issues with auto-sizing")
+        else:
+            print(f"⚠️  Generated {len(synthetic_data)} samples instead of requested {n_samples}")
+            print("💡 This may indicate model parameter issues")
 
     # Save synthetic data (monolithic path + experiment versioning)
     Path("experiments/data/synthetic").mkdir(parents=True, exist_ok=True)
@@ -87,6 +120,8 @@ def main(cfg: DictConfig) -> None:
         "timestamp": datetime.now().isoformat(),
         "library": library,
         "model_type": model_type,
+        "n_samples_config": cfg.generation.n_samples,  # Original config value (may be null)
+        "n_samples_auto_determined": cfg.generation.n_samples is None,  # Flag for auto-sizing
         "samples_generated": len(synthetic_data),
         "samples_requested": n_samples,
         "columns": len(synthetic_data.columns),
@@ -142,7 +177,10 @@ def main(cfg: DictConfig) -> None:
     print(f"\n📈 Generation Summary:")
     print(f"  Library: {library}")
     print(f"  Model: {model_type}")
-    print(f"  Samples: {len(synthetic_data):,}")
+    if cfg.generation.n_samples is None:
+        print(f"  Samples: {len(synthetic_data):,} (auto-matched to original dataset)")
+    else:
+        print(f"  Samples: {len(synthetic_data):,} (requested: {n_samples:,})")
     print(f"  Columns: {len(synthetic_data.columns)}")
     print(f"  Time: {generation_time:.1f}s")
     print(f"  Speed: {len(synthetic_data)/generation_time:.0f} samples/sec")
