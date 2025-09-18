@@ -84,34 +84,24 @@ uv run sdpype model validate 42 --name baseline
 1. **preprocess**: Clean and prepare data (optional)
 2. **train_sdg**: Train synthetic data generator
 3. **generate_synthetic**: Generate synthetic data
-4. **evaluate_original**: Evaluate original data quality
-5. **evaluate_synthetic**: Evaluate synthetic data quality  
-6. **compare_quality**: Compare data quality metrics
+4. **statistical_similarity**: Compare statistical similarity between original and synthetic data
 
 ### Running Individual Stages
 ```bash
 # Run specific stages (after editing params.yaml)
 uv run sdpype stage train_sdg
 uv run sdpype stage generate_synthetic
-uv run sdpype stage compare_quality
+uv run sdpype stage statistical_similarity
 ```
 
 ## Evaluation Framework
 
-SDPype provides comprehensive evaluation with three approaches:
+SDPype provides statistical similarity evaluation to assess the quality of synthetic data:
 
-### 1. Intrinsic Quality Assessment
+### Statistical Similarity Assessment
 ```bash
-# Run evaluation stages (after setting up experiment in params.yaml)
-uv run sdpype stage evaluate_original
-uv run sdpype stage evaluate_synthetic
-uv run sdpype stage compare_quality
-```
-
-### 2. Statistical Similarity  
-```bash
-# Statistical similarity is included in compare_quality stage
-uv run sdpype stage compare_quality
+# Run statistical similarity evaluation (after setting up experiment in params.yaml)
+uv run sdpype stage statistical_similarity
 ```
 
 ## Configuration

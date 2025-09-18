@@ -41,9 +41,7 @@ def _validate_stage_name(stage_name: str) -> bool:
         "preprocess",
         "train_sdg", 
         "generate_synthetic",
-        "evaluate_original",
-        "evaluate_synthetic",
-        "compare_quality",
+        "statistical_similarity",
     ]
     
     if stage_name not in known_stages:
@@ -98,16 +96,10 @@ def _show_stage_summary(stage_name: str):
             ("experiments/data/synthetic/*.csv", "🎲 Synthetic data"),
             ("experiments/metrics/generation_*.json", "⚡ Generation metrics")
         ],
-        "evaluate_original": [
-            ("experiments/metrics/quality_original_*.json", "📋 Original quality metrics")
-        ],
-        "evaluate_synthetic": [
-            ("experiments/metrics/quality_synthetic_*.json", "📋 Synthetic quality metrics")
-        ],
-        "compare_quality": [
-            ("experiments/metrics/quality_comparison_*.json", "🔍 Quality comparison"),
-            ("experiments/metrics/statistical_similarity_*.json", "📊 Statistical similarity")
-        ]
+        "statistical_similarity": [
+             ("experiments/metrics/statistical_similarity_*.json", "📊 Statistical similarity"),
+            ("experiments/metrics/statistical_report_*.txt", "📋 Statistical reports")
+         ]
     }
 
     patterns = stage_outputs.get(stage_name, [])

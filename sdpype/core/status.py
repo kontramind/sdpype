@@ -64,6 +64,8 @@ def _show_file_counts():
         ("experiments/data/raw/*.csv", "📁 Raw data files"),
         ("experiments/data/processed/*.csv", "🔄 Processed data"),
         ("experiments/data/synthetic/*.csv", "🎲 Synthetic data"),
+        ("experiments/metrics/statistical_*.json", "📊 Statistical similarity"),
+        ("experiments/metrics/statistical_*.txt", "📋 Statistical reports"),
     ]
 
     table = Table(show_header=True)

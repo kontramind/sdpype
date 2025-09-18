@@ -1,16 +1,12 @@
 """
 SDPype Evaluation Module
 
-Unified evaluation framework for both original and synthetic data quality assessment.
-Includes intrinsic quality evaluation and statistical similarity evaluation.
+Statistical similarity evaluation framework for comparing original and synthetic data.
 """
 
-from .intrinsic import evaluate_data_quality, compare_quality_metrics
-from .statistical import evaluate_statistical_similarity, generate_statistical_report  # ✨ NEW
+from .statistical import evaluate_statistical_similarity, generate_statistical_report
 
 __all__ = [
-    "evaluate_data_quality",
-    "compare_quality_metrics",
-    "evaluate_statistical_similarity",  # ✨ NEW
-    "generate_statistical_report"       # ✨ NEW
+    "evaluate_statistical_similarity",
+    "generate_statistical_report"
 ]

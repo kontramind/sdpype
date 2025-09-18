@@ -41,48 +41,17 @@ stages:
     metrics:
       - experiments/metrics/generation_${experiment.name}_${experiment.seed}.json
 
-  evaluate_original:
-    cmd: python -m sdpype.evaluate +evaluation_data_type=original
+  statistical_similarity:
+    cmd: python -m sdpype.evaluate
     deps:
       - sdpype/evaluate.py
-      - sdpype/evaluation/
+      - sdpype/evaluation/statistical.py
       - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv
-    params:
-      - evaluation
-      - experiment.seed
-      - experiment.name
-    metrics:
-      - experiments/metrics/quality_original_${experiment.name}_${experiment.seed}.json
-
-  evaluate_synthetic:
-    cmd: python -m sdpype.evaluate +evaluation_data_type=synthetic
-    deps:
-      - sdpype/evaluate.py
-      - sdpype/evaluation/
       - experiments/data/synthetic/synthetic_data_${experiment.name}_${experiment.seed}.csv
     params:
       - evaluation
       - experiment.seed
       - experiment.name
     metrics:
-      - experiments/metrics/quality_synthetic_${experiment.name}_${experiment.seed}.json
-
-  # 🔬 ENHANCED EVALUATION STAGE - Now includes statistical similarity
-  compare_quality:
-    cmd: python -m sdpype.evaluate +evaluation_data_type=both
-    deps:
-      - sdpype/evaluate.py
-      - sdpype/evaluation/intrinsic.py
-      - sdpype/evaluation/statistical.py        # ✨ NEW DEPENDENCY
-      - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv      # ✨ NEW - needed for statistical comparison
-      - experiments/data/synthetic/synthetic_data_${experiment.name}_${experiment.seed}.csv  # ✨ NEW - needed for statistical comparison
-      - experiments/metrics/quality_original_${experiment.name}_${experiment.seed}.json
-      - experiments/metrics/quality_synthetic_${experiment.name}_${experiment.seed}.json
-    params:
-      - evaluation
-      - experiment.seed
-      - experiment.name
-    metrics:
-      - experiments/metrics/quality_comparison_${experiment.name}_${experiment.seed}.json
-      - experiments/metrics/statistical_similarity_${experiment.name}_${experiment.seed}.json  # ✨ NEW OUTPUT
+      - experiments/metrics/statistical_similarity_${experiment.name}_${experiment.seed}.json
       - experiments/metrics/statistical_report_${experiment.name}_${experiment.seed}.txt
