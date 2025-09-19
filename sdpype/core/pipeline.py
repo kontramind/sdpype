@@ -97,8 +97,8 @@ def _show_stage_summary(stage_name: str):
             ("experiments/metrics/generation_*.json", "⚡ Generation metrics")
         ],
         "statistical_similarity": [
-             ("experiments/metrics/statistical_similarity_*.json", "📊 Statistical similarity"),
-            ("experiments/metrics/statistical_report_*.txt", "📋 Statistical reports")
+            ("experiments/metrics/statistical_similarity_*.json", "📊 Statistical metrics"),
+            ("experiments/metrics/statistical_report_*.txt", "📋 Statistical metric reports")
          ]
     }
 

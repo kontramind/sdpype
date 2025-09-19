@@ -10,6 +10,7 @@ import hydra
 import pandas as pd
 import numpy as np
 from omegaconf import DictConfig
+from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 
 
@@ -28,6 +29,52 @@ def main(cfg: DictConfig) -> None:
     print(f"Loaded data: {data.shape}")
     
     if cfg.preprocessing.enabled:
+
+        # Encode categorical features - some generators/metrics work only with numerical values
+        if "encode_categorical" in cfg.preprocessing.steps:
+            from sdv.metadata import SingleTableMetadata
+            metadata = SingleTableMetadata()
+            metadata.detect_from_dataframe(data)
+
+            categorical_columns = list(filter(lambda col: metadata.columns[col].get("sdtype") == "categorical", metadata.columns.keys()))
+
+            encoding_method = cfg.preprocessing.steps.encode_categorical
+            print(f"Using {encoding_method} encoding for categorical columns")
+
+            match encoding_method:
+                case "label":
+                    # Label encoding
+                    for col in categorical_columns:
+                        le = LabelEncoder()
+                        data[col] = le.fit_transform(data[col])
+                        print(f"  Label encoded {col}: {data[col].nunique()} unique values")
+
+                case "onehot":
+                    # One-hot encoding
+                    if categorical_columns:
+                        # Create one-hot encoded columns
+                        encoded_dfs = []
+                        for col in categorical_columns:
+                            one_hot = pd.get_dummies(data[col], prefix=col, dtype=int)
+                            encoded_dfs.append(one_hot)
+                            print(f"  One-hot encoded {col}: {one_hot.shape[1]} columns created")
+
+                        # Drop original categorical columns and add one-hot encoded ones
+                        data = data.drop(columns=categorical_columns)
+                        data = pd.concat([data] + encoded_dfs, axis=1)
+
+                case "frequency":
+                    # Frequency encoding
+                    for col in categorical_columns:
+                        # Calculate frequency map
+                        freq_map = data[col].value_counts().to_dict()
+                        # Replace values with their frequencies
+                        data[col] = data[col].map(freq_map)
+                        print(f"  Frequency encoded {col}: min_freq={data[col].min()}, max_freq={data[col].max()}")
+
+                case _:
+                    raise ValueError(f"Unknown encoding method: {encoding_method}. Use 'label', 'onehot', or 'frequency'")
+
         # Handle missing values
         if "handle_missing" in cfg.preprocessing.steps:
             method = cfg.preprocessing.steps.handle_missing

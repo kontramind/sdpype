@@ -1,12 +1,12 @@
 """
 SDPype Evaluation Module
 
-Statistical similarity evaluation framework for comparing original and synthetic data.
+Statistical metrics evaluation framework using Alpha Precision Score.
 """
 
-from .statistical import evaluate_statistical_similarity, generate_statistical_report
+from .statistical import evaluate_statistical_metrics, generate_statistical_report
 
 __all__ = [
-    "evaluate_statistical_similarity",
+    "evaluate_statistical_metrics",
     "generate_statistical_report"
 ]

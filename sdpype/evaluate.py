@@ -1,23 +1,32 @@
 """
-Enhanced evaluation script for SDPype - integrates intrinsic quality + statistical similarity
+Statistical metrics evaluation script for SDPype - Alpha Precision and PRDC
 """
 
 import json
 from pathlib import Path
-from datetime import datetime
 
 import hydra
 import pandas as pd
 from omegaconf import DictConfig
+from rich.console import Console
+from rich.table import Table
 
-from sdpype.evaluation.statistical import evaluate_statistical_similarity, generate_statistical_report
+from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate_statistical_report
 
+console = Console()
 
 @hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
-    """Run statistical similarity evaluation between original and synthetic data"""
+    """Run statistical metrics evaluation between original and synthetic data"""
 
-    print("📊 Starting statistical similarity evaluation...")
+    # Check if statistical metrics are configured
+    metrics_config = cfg.get("evaluation", {}).get("statistical_similarity", {}).get("metrics", [])
+
+    if not metrics_config:
+        print("📊 No statistical metrics configured, skipping evaluation")
+        return
+
+    print(f"📊 Starting statistical evaluation with {len(metrics_config)} metrics...")
     print(f"Experiment seed: {cfg.experiment.seed}")
 
     # Load datasets for statistical comparison
@@ -36,10 +45,12 @@ def main(cfg: DictConfig) -> None:
     synthetic_data = pd.read_csv(synthetic_data_path)
 
     # Run statistical similarity evaluation
-    print("🔄 Running statistical similarity analysis...")
-    statistical_results = evaluate_statistical_similarity(
+    # Run statistical metrics evaluation
+    print("🔄 Running statistical metrics analysis...")
+    statistical_results = evaluate_statistical_metrics(
         original_data,
         synthetic_data,
+        metrics_config,
         experiment_name=f"{cfg.experiment.name}_seed_{cfg.experiment.seed}"
     )
 
@@ -48,30 +59,49 @@ def main(cfg: DictConfig) -> None:
     with open(f"experiments/metrics/statistical_similarity_{cfg.experiment.name}_{cfg.experiment.seed}.json", "w") as f:
         json.dump(statistical_results, f, indent=2)
 
-    print(f"📊 Statistical similarity results saved: experiments/metrics/statistical_similarity_{cfg.experiment.name}_{cfg.experiment.seed}.json")
+    print(f"📊 Statistical metrics results saved: experiments/metrics/statistical_similarity_{cfg.experiment.name}_{cfg.experiment.seed}.json")
 
     # Generate and save human-readable report
     report = generate_statistical_report(statistical_results)
     with open(f"experiments/metrics/statistical_report_{cfg.experiment.name}_{cfg.experiment.seed}.txt", "w") as f:
         f.write(report)
 
-    print(f"📋 Statistical similarity report saved: experiments/metrics/statistical_report_{cfg.experiment.name}_{cfg.experiment.seed}.txt")
+    print(f"📋 Statistical metrics report saved: experiments/metrics/statistical_report_{cfg.experiment.name}_{cfg.experiment.seed}.txt")
 
-    # Print statistical summary
-    similarity_score = statistical_results["overall_similarity_score"]
-    print(f"\n📊 Statistical Similarity Summary:")
-    print(f"Overall similarity score: {similarity_score:.3f}")
+    # Print individual metrics summary
+    console.print("\n📊 Statistical Metrics Summary:", style="bold cyan")
 
-    if similarity_score >= 0.9:
-        print("✅ Excellent statistical similarity")
-    elif similarity_score >= 0.8:
-        print("✅ Good statistical similarity")
-    elif similarity_score >= 0.7:
-        print("⚠️  Moderate statistical similarity")
+    metrics = statistical_results.get("metrics", {})
+    if "alpha_precision" in metrics and metrics["alpha_precision"]["status"] == "success":
+        scores = metrics["alpha_precision"]["scores"]
+
+        # Create Alpha Precision results table
+        table = Table(title="✅ Alpha Precision Results", show_header=True, header_style="bold magenta")
+        table.add_column("Metric", style="cyan", no_wrap=True)
+        table.add_column("OC Variant", style="green", justify="right")
+        table.add_column("Naive Variant", style="yellow", justify="right")
+
+        table.add_row(
+            "Delta Precision Alpha",
+            f"{scores['delta_precision_alpha_OC']:.3f}",
+            f"{scores['delta_precision_alpha_naive']:.3f}"
+        )
+        table.add_row(
+            "Delta Coverage Beta",
+            f"{scores['delta_coverage_beta_OC']:.3f}",
+            f"{scores['delta_coverage_beta_naive']:.3f}"
+        )
+        table.add_row(
+            "Authenticity",
+            f"{scores['authenticity_OC']:.3f}",
+            f"{scores['authenticity_naive']:.3f}"
+        )
+
+        console.print(table)
     else:
-        print("❌ Poor statistical similarity")
+        console.print("❌ Alpha Precision failed", style="bold red")
 
-    print("\n✅ Statistical similarity evaluation completed")
+    console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 
 if __name__ == "__main__":

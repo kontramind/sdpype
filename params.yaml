@@ -24,7 +24,7 @@ sdg:
     numerical_distributions:
       age: 'gaussian_kde'
       score: 'gaussian_kde'
-    epochs: 3000
+    epochs: 300
     cuda: True
     verbose: True
     batch_size: 500
@@ -50,6 +50,7 @@ sdg:
 preprocessing:
   enabled: true
   steps:
+    encode_categorical: label
     handle_missing: mean
     remove_outliers: true
     scale_numeric: standard
@@ -71,4 +72,7 @@ generation:
 # =============================================================================
 evaluation:
   statistical_similarity:
-    enabled: true
+    metrics:
+      - name: "alpha_precision"
+        parameters:
+          k: 3
