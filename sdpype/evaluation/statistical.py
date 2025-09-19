@@ -92,8 +92,9 @@ class AlphaPrecisionMetric:
 class PRDCScoreMetric:
     """PRDC Score metric implementation"""
 
-    def __init__(self):
-        self.evaluator = PRDCScore()
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        self.evaluator = PRDCScore(nearest_k=parameters.get("nearest_k", 5))
 
     def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
         """Evaluate PRDC Score metric"""
@@ -113,7 +114,7 @@ class PRDCScoreMetric:
                 "recall": float(result.get("recall", 0.0)),
                 "density": float(result.get("density", 0.0)),
                 "coverage": float(result.get("coverage", 0.0)),
-                "parameters": {},
+                "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
             }
@@ -123,7 +124,7 @@ class PRDCScoreMetric:
                 "recall": 0.0,
                 "density": 0.0,
                 "coverage": 0.0,
-                "parameters": {},
+                "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "error",
                 "error_message": str(e)
@@ -178,18 +179,11 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
             # Collect scores for overall calculation
             if metric_result["status"] == "success":
                 if metric_name == "alpha_precision":
-                    # Don't aggregate - let each score stand on its own
-                    # We'll handle this in the report instead
+                    # Individual scores handled in report - no aggregation
                     pass
                 elif metric_name == "prdc_score":
-                    # Use average of PRDC components
-                    prdc_avg = np.mean([
-                        metric_result["precision"],
-                        metric_result["recall"],
-                        metric_result["density"],
-                        metric_result["coverage"]
-                    ])
-                    metric_scores.append(float(prdc_avg))
+                    # Individual scores handled in report - no aggregation
+                    pass
 
         except Exception as e:
             results["metrics"][metric_name] = {
@@ -210,10 +204,9 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
     """Factory function to create metric evaluators"""
 
     if metric_name == "alpha_precision":
-        k = parameters.get("k", 3)
-        return AlphaPrecisionMetric(k=k)
+        return AlphaPrecisionMetric(**parameters)
     elif metric_name == "prdc_score":
-        return PRDCScoreMetric()
+        return PRDCScoreMetric(**parameters)
     else:
         raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -265,12 +258,15 @@ Metrics Results
     if "prdc_score" in metrics:
         prdc_result = metrics["prdc_score"]
         if prdc_result["status"] == "success":
-            report += f"""PRDC Score:
+            report += f"""PRDC Score Results:
+  Parameters: {prdc_result['parameters'] if prdc_result['parameters'] else 'default settings'}
+  Execution time: {prdc_result['execution_time']:.2f}s
+
+  Individual Scores:
   Precision: {prdc_result['precision']:.3f}
   Recall: {prdc_result['recall']:.3f}
   Density: {prdc_result['density']:.3f}
   Coverage: {prdc_result['coverage']:.3f}
-  Execution time: {prdc_result['execution_time']:.2f}s
 """
     
         else:
@@ -290,8 +286,22 @@ Metrics Results
         else:
             insights.append("Low authenticity (OC)")
 
-    assessment = ", ".join(insights) if insights else "No successful metrics"
+    if "prdc_score" in metrics and metrics["prdc_score"]["status"] == "success":
+        prdc = metrics["prdc_score"]
+        precision = prdc["precision"]
+        recall = prdc["recall"]
+        coverage = prdc["coverage"]
 
+        # Overall PRDC assessment based on average
+        prdc_avg = (precision + recall + coverage) / 3  # Density often lower, so exclude
+        if prdc_avg >= 0.8:
+            insights.append("Strong PRDC performance")
+        elif prdc_avg >= 0.6:
+            insights.append("Moderate PRDC performance")
+        else:
+            insights.append("Low PRDC performance")
+
+    assessment = ", ".join(insights) if insights else "No successful metrics"
 
     report += f"""
 Assessment: {assessment}

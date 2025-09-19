@@ -105,6 +105,28 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ Alpha Precision failed", style="bold red")
 
+    # PRDC Score results table
+    if "prdc_score" in metrics and metrics["prdc_score"]["status"] == "success":
+        prdc_result = metrics["prdc_score"]
+
+        # Get parameters info for display
+        params_info = prdc_result["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
+
+        # Create PRDC results table
+        prdc_table = Table(title=f"✅ PRDC Score Results ({params_display})", show_header=True, header_style="bold blue")
+        prdc_table.add_column("Metric", style="cyan", no_wrap=True)
+        prdc_table.add_column("Score", style="bright_green", justify="right")
+
+        prdc_table.add_row("Precision", f"{prdc_result['precision']:.3f}")
+        prdc_table.add_row("Recall", f"{prdc_result['recall']:.3f}")
+        prdc_table.add_row("Density", f"{prdc_result['density']:.3f}")
+        prdc_table.add_row("Coverage", f"{prdc_result['coverage']:.3f}")
+
+        console.print(prdc_table)
+    else:
+        console.print("❌ PRDC Score failed", style="bold red")
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 

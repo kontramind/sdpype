@@ -75,3 +75,6 @@ evaluation:
     metrics:
       - name: "alpha_precision"
         parameters: {}
+      - name: "prdc_score"
+        parameters:
+          nearest_k: 5
