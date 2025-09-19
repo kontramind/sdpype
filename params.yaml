@@ -74,5 +74,4 @@ evaluation:
   statistical_similarity:
     metrics:
       - name: "alpha_precision"
-        parameters:
-          k: 3
+        parameters: {}

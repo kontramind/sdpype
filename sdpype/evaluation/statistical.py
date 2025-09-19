@@ -42,9 +42,9 @@ def ensure_json_serializable(obj: Any) -> Any:
 class AlphaPrecisionMetric:
     """Alpha Precision metric implementation"""
 
-    def __init__(self, k: int = 3):
-        self.k = k
+    def __init__(self, **parameters):
         self.evaluator = AlphaPrecision()
+        self.parameters = parameters  # Store for reporting
 
     def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
         """Evaluate Alpha Precision metric"""
@@ -69,7 +69,7 @@ class AlphaPrecisionMetric:
 
             return {
                 "scores": scores,
-                "parameters": {"k": self.k},
+                "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
             }
@@ -83,7 +83,7 @@ class AlphaPrecisionMetric:
                     "delta_coverage_beta_naive": 0.0,
                     "authenticity_naive": 0.0
                 },
-                "parameters": {"k": self.k},
+                "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "error",
                 "error_message": str(e)
@@ -242,7 +242,7 @@ Metrics Results
         if alpha_result["status"] == "success":
             scores = alpha_result['scores']
             report += f"""Alpha Precision Results:
-  Parameters: k={alpha_result['parameters']['k']}
+  Parameters: {alpha_result['parameters'] if alpha_result['parameters'] else 'none'}
   Execution time: {alpha_result['execution_time']:.2f}s
 
   Individual Scores:

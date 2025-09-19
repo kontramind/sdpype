@@ -75,8 +75,12 @@ def main(cfg: DictConfig) -> None:
     if "alpha_precision" in metrics and metrics["alpha_precision"]["status"] == "success":
         scores = metrics["alpha_precision"]["scores"]
 
+        # Get parameters info for display
+        params_info = metrics["alpha_precision"]["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
+
         # Create Alpha Precision results table
-        table = Table(title="✅ Alpha Precision Results", show_header=True, header_style="bold magenta")
+        table = Table(title=f"✅ Alpha Precision Results ({params_display})", show_header=True, header_style="bold magenta")
         table.add_column("Metric", style="cyan", no_wrap=True)
         table.add_column("OC Variant", style="green", justify="right")
         table.add_column("Naive Variant", style="yellow", justify="right")
