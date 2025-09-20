@@ -186,6 +186,51 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ KSComplement failed", style="bold red")
 
+    # TVComplement results table
+    if "tv_complement" in metrics and metrics["tv_complement"]["status"] == "success":
+        tv_result = metrics["tv_complement"]
+
+        # Get parameters info for display
+        params_info = tv_result["parameters"]
+        target_cols = params_info.get("target_columns", "all categorical/boolean")
+        params_display = f"target_columns={target_cols}"
+
+        # Create TVComplement results table
+        tv_table = Table(title=f"✅ TVComplement Results ({params_display})", show_header=True, header_style="bold blue")
+        tv_table.add_column("Column", style="cyan", no_wrap=True)
+        tv_table.add_column("TV Score", style="bright_green", justify="right")
+        tv_table.add_column("Status", style="yellow", justify="center")
+
+        # Add aggregate score as first row
+        if tv_result['aggregate_score'] is not None:
+            tv_table.add_row("AGGREGATE", f"{tv_result['aggregate_score']:.3f}", "✓")
+        else:
+            tv_table.add_row("AGGREGATE", "n/a", "ℹ️")
+
+        tv_table.add_section()
+
+        # Show all columns from the original dataset
+        all_columns = list(original_data.columns)
+        column_scores = tv_result['column_scores']
+        compatible_columns = tv_result['compatible_columns']
+
+        for col in sorted(all_columns):
+            if col in column_scores:
+                tv_table.add_row(col, f"{column_scores[col]:.3f}", "✓")
+            elif col in compatible_columns:
+                tv_table.add_row(col, "error", "⚠️")
+            else:
+                tv_table.add_row(col, "n/a", "—")
+
+        # Add message at the bottom if no compatible columns found
+        if tv_result.get("message"):
+            tv_table.add_section()
+            tv_table.add_row("INFO", tv_result["message"], "ℹ️")
+
+        console.print(tv_table)
+    else:
+        console.print("❌ TVComplement failed", style="bold red")
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 

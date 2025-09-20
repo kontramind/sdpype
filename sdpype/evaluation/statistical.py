@@ -16,6 +16,7 @@ from synthcity.metrics.eval_statistical import PRDCScore
 
 # SDMetrics imports
 from sdmetrics.single_column import KSComplement
+from sdmetrics.single_column import TVComplement
 from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
 
 import warnings
@@ -258,6 +259,81 @@ class KSComplementMetric:
         return compatible
 
 
+class TVComplementMetric:
+    """TVComplement metric implementation for column-wise categorical distribution similarity"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        self.target_columns = parameters.get("target_columns", None)  # None = all categorical/boolean
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
+        """Evaluate TVComplement metric across compatible columns"""
+        start_time = time.time()
+
+        try:
+            # Identify compatible columns (categorical and boolean)
+            compatible_columns = self._get_compatible_columns(original)
+
+            if self.target_columns:
+                # Filter to user-specified columns
+                compatible_columns = [col for col in compatible_columns if col in self.target_columns]
+
+            if not compatible_columns:
+                # No compatible columns is not an error - just return empty results
+                return {
+                    "aggregate_score": None,  # Use None to indicate N/A
+                    "column_scores": {},
+                    "compatible_columns": [],
+                    "parameters": self.parameters,
+                    "execution_time": time.time() - start_time,
+                    "status": "success",
+                    "message": "No compatible categorical/boolean columns found"
+                }
+
+            column_scores = {}
+            for column in compatible_columns:
+                try:
+                    score = TVComplement.compute(
+                        real_data=original[column],
+                        synthetic_data=synthetic[column]
+                    )
+                    column_scores[column] = float(score)
+                except Exception as e:
+                    # Handle individual column failures
+                    column_scores[column] = 0.0
+                    print(f"Warning: TVComplement failed for column '{column}': {e}")
+
+            # Calculate aggregate score
+            aggregate_score = sum(column_scores.values()) / len(column_scores) if column_scores else 0.0
+
+            return {
+                "aggregate_score": float(aggregate_score),
+                "column_scores": column_scores,
+                "compatible_columns": compatible_columns,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "aggregate_score": 0.0,
+                "column_scores": {},
+                "compatible_columns": [],
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+    def _get_compatible_columns(self, df: pd.DataFrame) -> List[str]:
+        """Get columns compatible with TVComplement (categorical and boolean)"""
+        compatible = []
+        for col in df.columns:
+            if df[col].dtype in ['object', 'category', 'bool', 'string']:
+                compatible.append(col)
+        return compatible
+
+
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
@@ -306,7 +382,7 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
             # Collect scores for overall calculation
             if metric_result["status"] == "success":
                 match metric_name:
-                    case "alpha_precision" | "prdc_score" | "new_row_synthesis" | "ks_complement":
+                    case "alpha_precision" | "prdc_score" | "new_row_synthesis" | "ks_complement" | "tv_complement":
                         # Individual scores handled in report - no aggregation
                         pass
                     case _:
@@ -340,6 +416,8 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return NewRowSynthesisMetric(**parameters)
         case "ks_complement":
             return KSComplementMetric(**parameters)
+        case "tv_complement":
+            return TVComplementMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -450,6 +528,39 @@ Metrics Results
   Error: {ks_result.get('error_message', 'Unknown error')}
 """
 
+    # TVComplement results
+    if "tv_complement" in metrics:
+        tv_result = metrics["tv_complement"]
+        if tv_result["status"] == "success":
+            params_info = tv_result["parameters"]
+            target_cols = params_info.get("target_columns", "all categorical/boolean")
+
+            if tv_result.get("message"):
+                # Handle case where no compatible columns found
+                report += f"""TVComplement Results:
+  Parameters: target_columns={target_cols}
+  Execution time: {tv_result['execution_time']:.2f}s
+  Status: {tv_result['message']}
+"""
+            else:
+                report += f"""TVComplement Results:
+  Parameters: target_columns={target_cols}
+  Execution time: {tv_result['execution_time']:.2f}s
+
+  Categorical Distribution Similarity:
+  → Aggregate Score:   {tv_result['aggregate_score']:.3f}
+  → Columns Evaluated: {len(tv_result['compatible_columns'])}
+
+  Individual Column Scores:"""
+                for col, score in tv_result['column_scores'].items():
+                    report += f"""
+    → {col}: {score:.3f}"""
+                report += "\n"
+        else:
+            report += f"""TVComplement: ERROR
+  Error: {tv_result.get('error_message', 'Unknown error')}
+"""
+
     # Individual metric insights
     insights = []
 
@@ -494,6 +605,17 @@ Metrics Results
             insights.append("Good distribution similarity")
         else:
             insights.append("Poor distribution similarity")
+
+    if "tv_complement" in metrics and metrics["tv_complement"]["status"] == "success":
+        tv_score = metrics["tv_complement"]["aggregate_score"]
+        if tv_score is not None:  # Only evaluate if we have compatible columns
+            if tv_score >= 0.9:
+                insights.append("Excellent categorical similarity")
+            elif tv_score >= 0.7:
+                insights.append("Good categorical similarity")
+            else:
+                insights.append("Poor categorical similarity")
+        # If tv_score is None, we simply don't add any insight (no categorical columns to evaluate)
 
     assessment = ", ".join(insights) if insights else "No successful metrics"
 

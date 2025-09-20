@@ -61,6 +61,19 @@ AVAILABLE_METRICS = {
             },
             "outputs": ["aggregate_score", "column_scores", "compatible_columns"],
             "reference": "SDMetrics library - Single column statistical metric using KS test"
+        },
+        "tv_complement": {
+            "description": "Total Variation Distance for categorical distribution similarity across categorical/boolean columns",
+            "library": "sdmetrics",
+            "parameters": {
+                "target_columns": {
+                    "type": "list",
+                    "default": None,
+                    "description": "Specific columns to evaluate (None = all categorical/boolean columns)"
+                }
+            },
+            "outputs": ["aggregate_score", "column_scores", "compatible_columns"],
+            "reference": "SDMetrics library - Single column statistical metric using Total Variation Distance"
         }
     }
 }
