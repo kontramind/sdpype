@@ -48,6 +48,19 @@ AVAILABLE_METRICS = {
             },
             "outputs": ["score", "num_new_rows", "num_matched_rows"],
             "reference": "SDMetrics library - Single table evaluation metric"
+        },
+        "ks_complement": {
+            "description": "Kolmogorov-Smirnov test for distribution similarity across numerical/datetime columns",
+            "library": "sdmetrics",
+            "parameters": {
+                "target_columns": {
+                    "type": "list",
+                    "default": None,
+                    "description": "Specific columns to evaluate (None = all numerical/datetime columns)"
+                }
+            },
+            "outputs": ["aggregate_score", "column_scores", "compatible_columns"],
+            "reference": "SDMetrics library - Single column statistical metric using KS test"
         }
     }
 }

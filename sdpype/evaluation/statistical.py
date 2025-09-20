@@ -1,6 +1,6 @@
 # sdpype/evaluation/statistical.py
 """
-Statistical metrics evaluation using Alpha Precision and PRDC Score
+Statistical metrics evaluation
 """
 
 import time
@@ -14,7 +14,8 @@ from synthcity.plugins.core.dataloader import GenericDataLoader
 from synthcity.metrics.eval_statistical import AlphaPrecision
 from synthcity.metrics.eval_statistical import PRDCScore
 
-# SDMetrics imports for NewRowSynthesis
+# SDMetrics imports
+from sdmetrics.single_column import KSComplement
 from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
 
 import warnings
@@ -191,6 +192,72 @@ class NewRowSynthesisMetric:
         return {'columns': columns}
 
 
+class KSComplementMetric:
+    """KSComplement metric implementation for column-wise distribution similarity"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        self.target_columns = parameters.get("target_columns", None)  # None = all numerical/datetime
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
+        """Evaluate KSComplement metric across compatible columns"""
+        start_time = time.time()
+
+        try:
+            # Identify compatible columns (numerical and datetime)
+            compatible_columns = self._get_compatible_columns(original)
+
+            if self.target_columns:
+                # Filter to user-specified columns
+                compatible_columns = [col for col in compatible_columns if col in self.target_columns]
+
+            if not compatible_columns:
+                raise ValueError("No compatible numerical/datetime columns found")
+
+            column_scores = {}
+            for column in compatible_columns:
+                try:
+                    score = KSComplement.compute(
+                        real_data=original[column],
+                        synthetic_data=synthetic[column]
+                    )
+                    column_scores[column] = float(score)
+                except Exception as e:
+                    # Handle individual column failures
+                    column_scores[column] = 0.0
+                    print(f"Warning: KSComplement failed for column '{column}': {e}")
+
+            # Calculate aggregate score
+            aggregate_score = sum(column_scores.values()) / len(column_scores) if column_scores else 0.0
+
+            return {
+                "aggregate_score": float(aggregate_score),
+                "column_scores": column_scores,
+                "compatible_columns": compatible_columns,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "aggregate_score": 0.0,
+                "column_scores": {},
+                "compatible_columns": [],
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+    def _get_compatible_columns(self, df: pd.DataFrame) -> List[str]:
+        """Get columns compatible with KSComplement (numerical and datetime)"""
+        compatible = []
+        for col in df.columns:
+            if df[col].dtype in ['int64', 'int32', 'float64', 'float32', 'datetime64[ns]']:
+                compatible.append(col)
+        return compatible
+
+
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
@@ -239,7 +306,7 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
             # Collect scores for overall calculation
             if metric_result["status"] == "success":
                 match metric_name:
-                    case "alpha_precision" | "prdc_score" | "new_row_synthesis":
+                    case "alpha_precision" | "prdc_score" | "new_row_synthesis" | "ks_complement":
                         # Individual scores handled in report - no aggregation
                         pass
                     case _:
@@ -271,6 +338,8 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return PRDCScoreMetric(**parameters)
         case "new_row_synthesis":
             return NewRowSynthesisMetric(**parameters)
+        case "ks_complement":
+            return KSComplementMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -356,6 +425,31 @@ Metrics Results
   → Matched Rows:      {nrs_result['num_matched_rows']:,}
 """
 
+    # KSComplement results
+    if "ks_complement" in metrics:
+        ks_result = metrics["ks_complement"]
+        if ks_result["status"] == "success":
+            params_info = ks_result["parameters"]
+            target_cols = params_info.get("target_columns", "all numerical/datetime")
+
+            report += f"""KSComplement Results:
+  Parameters: target_columns={target_cols}
+  Execution time: {ks_result['execution_time']:.2f}s
+
+  Distribution Similarity:
+  → Aggregate Score:   {ks_result['aggregate_score']:.3f}
+  → Columns Evaluated: {len(ks_result['compatible_columns'])}
+
+  Individual Column Scores:"""
+            for col, score in ks_result['column_scores'].items():
+                report += f"""
+    → {col}: {score:.3f}"""
+            report += "\n"
+        else:
+            report += f"""KSComplement: ERROR
+  Error: {ks_result.get('error_message', 'Unknown error')}
+"""
+
     # Individual metric insights
     insights = []
 
@@ -391,6 +485,15 @@ Metrics Results
             insights.append("Good synthesis novelty")
         else:
             insights.append("Low synthesis novelty")
+
+    if "ks_complement" in metrics and metrics["ks_complement"]["status"] == "success":
+        ks_score = metrics["ks_complement"]["aggregate_score"]
+        if ks_score >= 0.9:
+            insights.append("Excellent distribution similarity")
+        elif ks_score >= 0.7:
+            insights.append("Good distribution similarity")
+        else:
+            insights.append("Poor distribution similarity")
 
     assessment = ", ".join(insights) if insights else "No successful metrics"
 

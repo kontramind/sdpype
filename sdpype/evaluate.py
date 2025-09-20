@@ -150,6 +150,42 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ NewRowSynthesis failed", style="bold red")
 
+    # KSComplement results table
+    if "ks_complement" in metrics and metrics["ks_complement"]["status"] == "success":
+        ks_result = metrics["ks_complement"]
+
+        # Get parameters info for display
+        params_info = ks_result["parameters"]
+        target_cols = params_info.get("target_columns", "all numerical/datetime")
+        params_display = f"target_columns={target_cols}"
+
+        # Create KSComplement results table
+        ks_table = Table(title=f"✅ KSComplement Results ({params_display})", show_header=True, header_style="bold blue")
+        ks_table.add_column("Column", style="cyan", no_wrap=True)
+        ks_table.add_column("KS Score", style="bright_green", justify="right")
+        ks_table.add_column("Status", style="yellow", justify="center")
+
+        # Add aggregate score as first row
+        ks_table.add_row("AGGREGATE", f"{ks_result['aggregate_score']:.3f}", "✓")
+        ks_table.add_section()
+
+        # Show all columns from the original dataset
+        all_columns = list(original_data.columns)
+        column_scores = ks_result['column_scores']
+        compatible_columns = ks_result['compatible_columns']
+
+        for col in sorted(all_columns):
+            if col in column_scores:
+                ks_table.add_row(col, f"{column_scores[col]:.3f}", "✓")
+            elif col in compatible_columns:
+                ks_table.add_row(col, "error", "⚠️")
+            else:
+                ks_table.add_row(col, "n/a", "—")
+
+        console.print(ks_table)
+    else:
+        console.print("❌ KSComplement failed", style="bold red")
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 
