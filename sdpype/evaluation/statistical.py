@@ -14,6 +14,9 @@ from synthcity.plugins.core.dataloader import GenericDataLoader
 from synthcity.metrics.eval_statistical import AlphaPrecision
 from synthcity.metrics.eval_statistical import PRDCScore
 
+# SDMetrics imports for NewRowSynthesis
+from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
+
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -131,6 +134,63 @@ class PRDCScoreMetric:
             }
 
 
+class NewRowSynthesisMetric:
+    """NewRowSynthesis metric implementation"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        self.numerical_match_tolerance = parameters.get("numerical_match_tolerance", 0.01)
+        self.synthetic_sample_size = parameters.get("synthetic_sample_size", None)
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
+        """Evaluate NewRowSynthesis metric"""
+        start_time = time.time()
+
+        try:
+            # Build metadata from DataFrame dtypes if not provided
+            metadata = self._build_metadata_from_dataframe(original)
+
+            # Run evaluation using SDMetrics
+            result = NewRowSynthesis.compute_breakdown(
+                real_data=original,
+                synthetic_data=synthetic,
+                metadata=metadata,
+                numerical_match_tolerance=self.numerical_match_tolerance,
+                synthetic_sample_size=self.synthetic_sample_size
+            )
+
+            return {
+                "score": float(result.get("score", 0.0)),
+                "num_new_rows": int(result.get("num_new_rows", 0)),
+                "num_matched_rows": int(result.get("num_matched_rows", 0)),
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "score": 0.0,
+                "num_new_rows": 0,
+                "num_matched_rows": len(synthetic) if synthetic is not None else 0,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+    def _build_metadata_from_dataframe(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Build SDMetrics-compatible metadata from DataFrame"""
+        columns = {}
+        for col in df.columns:
+            if df[col].dtype in ['int64', 'int32', 'float64', 'float32']:
+                columns[col] = {'sdtype': 'numerical'}
+            elif df[col].dtype == 'bool':
+                columns[col] = {'sdtype': 'boolean'}
+            else:
+                columns[col] = {'sdtype': 'categorical'}
+        return {'columns': columns}
+
+
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
@@ -178,12 +238,13 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
 
             # Collect scores for overall calculation
             if metric_result["status"] == "success":
-                if metric_name == "alpha_precision":
-                    # Individual scores handled in report - no aggregation
-                    pass
-                elif metric_name == "prdc_score":
-                    # Individual scores handled in report - no aggregation
-                    pass
+                match metric_name:
+                    case "alpha_precision" | "prdc_score" | "new_row_synthesis":
+                        # Individual scores handled in report - no aggregation
+                        pass
+                    case _:
+                        # Future metrics that might need aggregation
+                        pass
 
         except Exception as e:
             results["metrics"][metric_name] = {
@@ -203,12 +264,15 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
 def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
     """Factory function to create metric evaluators"""
 
-    if metric_name == "alpha_precision":
-        return AlphaPrecisionMetric(**parameters)
-    elif metric_name == "prdc_score":
-        return PRDCScoreMetric(**parameters)
-    else:
-        raise ValueError(f"Unknown metric: {metric_name}")
+    match metric_name:
+        case "alpha_precision":
+            return AlphaPrecisionMetric(**parameters)
+        case "prdc_score":
+            return PRDCScoreMetric(**parameters)
+        case "new_row_synthesis":
+            return NewRowSynthesisMetric(**parameters)
+        case _:
+            raise ValueError(f"Unknown metric: {metric_name}")
 
 
 def generate_statistical_report(results: Dict[str, Any]) -> str:
@@ -274,6 +338,24 @@ Metrics Results
   Error: {prdc_result.get('error_message', 'Unknown error')}
 """
 
+    # NewRowSynthesis results
+    if "new_row_synthesis" in metrics:
+        nrs_result = metrics["new_row_synthesis"]
+        if nrs_result["status"] == "success":
+            params_info = nrs_result["parameters"]
+            tolerance = params_info.get("numerical_match_tolerance", 0.01)
+            sample_size = params_info.get("synthetic_sample_size", "all rows")
+
+            report += f"""NewRowSynthesis Results:
+  Parameters: tolerance={tolerance}, sample_size={sample_size}
+  Execution time: {nrs_result['execution_time']:.2f}s
+
+  Synthesis Quality:
+  → New Row Score:     {nrs_result['score']:.3f}
+  → New Rows:          {nrs_result['num_new_rows']:,}
+  → Matched Rows:      {nrs_result['num_matched_rows']:,}
+"""
+
     # Individual metric insights
     insights = []
 
@@ -300,6 +382,15 @@ Metrics Results
             insights.append("Moderate PRDC performance")
         else:
             insights.append("Low PRDC performance")
+
+    if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
+        nrs_score = metrics["new_row_synthesis"]["score"]
+        if nrs_score >= 0.9:
+            insights.append("Excellent synthesis novelty")
+        elif nrs_score >= 0.7:
+            insights.append("Good synthesis novelty")
+        else:
+            insights.append("Low synthesis novelty")
 
     assessment = ", ".join(insights) if insights else "No successful metrics"
 

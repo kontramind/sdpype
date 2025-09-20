@@ -78,3 +78,7 @@ evaluation:
       - name: "prdc_score"
         parameters:
           nearest_k: 5
+      - name: "new_row_synthesis"
+        parameters:
+          numerical_match_tolerance: 0.01
+          synthetic_sample_size: null

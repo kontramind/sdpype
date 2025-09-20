@@ -127,6 +127,29 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ PRDC Score failed", style="bold red")
 
+    # NewRowSynthesis results table
+    if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
+        nrs_result = metrics["new_row_synthesis"]
+
+        # Get parameters info for display
+        params_info = nrs_result["parameters"]
+        tolerance = params_info.get("numerical_match_tolerance", 0.01)
+        sample_size = params_info.get("synthetic_sample_size", "all rows")
+        params_display = f"tolerance={tolerance}, sample_size={sample_size}"
+
+        # Create NewRowSynthesis results table
+        nrs_table = Table(title=f"✅ NewRowSynthesis Results ({params_display})", show_header=True, header_style="bold blue")
+        nrs_table.add_column("Metric", style="cyan", no_wrap=True)
+        nrs_table.add_column("Value", style="bright_green", justify="right")
+
+        nrs_table.add_row("New Row Score", f"{nrs_result['score']:.3f}")
+        nrs_table.add_row("New Rows", f"{nrs_result['num_new_rows']:,}")
+        nrs_table.add_row("Matched Rows", f"{nrs_result['num_matched_rows']:,}")
+
+        console.print(nrs_table)
+    else:
+        console.print("❌ NewRowSynthesis failed", style="bold red")
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 

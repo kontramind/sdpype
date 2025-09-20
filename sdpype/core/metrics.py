@@ -30,6 +30,24 @@ AVAILABLE_METRICS = {
             },
             "outputs": ["precision", "recall", "density", "coverage"],
             "reference": "Kynkäänniemi et al. 2019 - Improved precision and recall metric"
+        },
+        "new_row_synthesis": {
+            "description": "Measures whether each synthetic row is new or matches real data exactly",
+            "library": "sdmetrics",
+            "parameters": {
+                "numerical_match_tolerance": {
+                    "type": "float",
+                    "default": 0.01,
+                    "description": "Tolerance for numerical value matching (0.01 = 1%)"
+                },
+                "synthetic_sample_size": {
+                    "type": "int",
+                    "default": None,
+                    "description": "Number of synthetic rows to sample (None = use all rows)"
+                }
+            },
+            "outputs": ["score", "num_new_rows", "num_matched_rows"],
+            "reference": "SDMetrics library - Single table evaluation metric"
         }
     }
 }
