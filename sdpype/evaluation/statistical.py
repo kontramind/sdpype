@@ -213,7 +213,16 @@ class KSComplementMetric:
                 compatible_columns = [col for col in compatible_columns if col in self.target_columns]
 
             if not compatible_columns:
-                raise ValueError("No compatible numerical/datetime columns found")
+                # No compatible columns is not an error - just return empty results
+                return {
+                    "aggregate_score": None,  # Use None to indicate N/A
+                    "column_scores": {},
+                    "compatible_columns": [],
+                    "parameters": self.parameters,
+                    "execution_time": time.time() - start_time,
+                    "status": "success",
+                    "message": "No compatible numerical/datetime columns found"
+                }
 
             column_scores = {}
             for column in compatible_columns:
@@ -510,7 +519,15 @@ Metrics Results
             params_info = ks_result["parameters"]
             target_cols = params_info.get("target_columns", "all numerical/datetime")
 
-            report += f"""KSComplement Results:
+            if ks_result.get("message"):
+                # Handle case where no compatible columns found
+                report += f"""KSComplement Results:
+  Parameters: target_columns={target_cols}
+  Execution time: {ks_result['execution_time']:.2f}s
+  Status: {ks_result['message']}
+"""
+            else:
+                report += f"""KSComplement Results:
   Parameters: target_columns={target_cols}
   Execution time: {ks_result['execution_time']:.2f}s
 
@@ -519,10 +536,10 @@ Metrics Results
   → Columns Evaluated: {len(ks_result['compatible_columns'])}
 
   Individual Column Scores:"""
-            for col, score in ks_result['column_scores'].items():
-                report += f"""
+                for col, score in ks_result['column_scores'].items():
+                    report += f"""
     → {col}: {score:.3f}"""
-            report += "\n"
+                report += "\n"
         else:
             report += f"""KSComplement: ERROR
   Error: {ks_result.get('error_message', 'Unknown error')}
@@ -599,12 +616,14 @@ Metrics Results
 
     if "ks_complement" in metrics and metrics["ks_complement"]["status"] == "success":
         ks_score = metrics["ks_complement"]["aggregate_score"]
-        if ks_score >= 0.9:
-            insights.append("Excellent distribution similarity")
-        elif ks_score >= 0.7:
-            insights.append("Good distribution similarity")
-        else:
-            insights.append("Poor distribution similarity")
+        if ks_score is not None:  # Only evaluate if we have compatible columns
+            if ks_score >= 0.9:
+                insights.append("Excellent distribution similarity")
+            elif ks_score >= 0.7:
+                insights.append("Good distribution similarity")
+            else:
+                insights.append("Poor distribution similarity")
+        # If ks_score is None, we simply don't add any insight (no numerical columns to evaluate)
 
     if "tv_complement" in metrics and metrics["tv_complement"]["status"] == "success":
         tv_score = metrics["tv_complement"]["aggregate_score"]

@@ -166,7 +166,11 @@ def main(cfg: DictConfig) -> None:
         ks_table.add_column("Status", style="yellow", justify="center")
 
         # Add aggregate score as first row
-        ks_table.add_row("AGGREGATE", f"{ks_result['aggregate_score']:.3f}", "✓")
+        if ks_result['aggregate_score'] is not None:
+            ks_table.add_row("AGGREGATE", f"{ks_result['aggregate_score']:.3f}", "✓")
+        else:
+            ks_table.add_row("AGGREGATE", "n/a", "ℹ️")
+
         ks_table.add_section()
 
         # Show all columns from the original dataset
@@ -181,6 +185,11 @@ def main(cfg: DictConfig) -> None:
                 ks_table.add_row(col, "error", "⚠️")
             else:
                 ks_table.add_row(col, "n/a", "—")
+
+        # Add message at the bottom if no compatible columns found
+        if ks_result.get("message"):
+            ks_table.add_section()
+            ks_table.add_row("INFO", ks_result["message"], "ℹ️")
 
         console.print(ks_table)
     else:
