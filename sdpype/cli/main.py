@@ -5,6 +5,7 @@ SDPype - Synthetic Data Pipeline CLI Entry Point
 import typer
 from rich.console import Console
 from typing import Optional
+from pathlib import Path
 
 console = Console()
 
@@ -69,6 +70,35 @@ def models(
     from sdpype.core.models import show_available_models
     show_available_models(library, show_params)
 
+@app.command()
+def metadata(
+    data_path: Path = typer.Argument(..., help="Path to dataset file"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save metadata to file"),
+    table_name: str = typer.Option("data", "--table-name", help="Name for the table"),
+    no_summary: bool = typer.Option(False, "--no-summary", help="Skip displaying summary"),
+):
+    """
+    🔍 Auto-detect and save SDV metadata for a dataset.
+
+    Uses SDV's auto-detection to analyze your dataset and generate
+    the metadata required for synthetic data generation.
+    """
+    from sdpype.metadata import detect_metadata
+
+    if not data_path.exists():
+        console.print(f"❌ Data file not found: {data_path}", style="red")
+        raise typer.Exit(1)
+
+    # Default output path if not specified
+    if output is None:
+        output = data_path.parent / f"{data_path.stem}_metadata.json"
+
+    detect_metadata(
+        data_path=data_path,
+        output_path=output,
+        table_name=table_name,
+        show_summary=not no_summary
+    )
 
 if __name__ == "__main__":
     app()

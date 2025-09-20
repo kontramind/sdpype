@@ -33,6 +33,8 @@ dependencies = [
     "torchvision==0.17.2",    
     "sdv>=1.0.0",
     "synthcity>=0.2.12",
+    "openpyxl>=3.1.0",
+    "pyarrow>=12.0.0",
 ]
 
 [project.scripts]
