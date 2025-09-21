@@ -83,6 +83,19 @@ AVAILABLE_METRICS = {
             "parameters": {},  # No configurable parameters
             "outputs": ["score"],
             "reference": "SDMetrics library - Single table diagnostic metric for structure validation"
+        },
+        "boundary_adherence": {
+            "description": "Measures whether synthetic column values respect the min/max boundaries of real data",
+            "library": "sdmetrics",
+            "parameters": {
+                "target_columns": {
+                    "type": "list",
+                    "default": None,
+                    "description": "Specific columns to evaluate (None = all numerical/datetime columns)"
+                }
+            },
+            "outputs": ["aggregate_score", "column_scores", "compatible_columns"],
+            "reference": "SDMetrics library - Single column diagnostic metric for boundary validation"
         }
     }
 }

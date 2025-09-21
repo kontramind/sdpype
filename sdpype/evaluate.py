@@ -98,6 +98,51 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ TableStructure failed", style="bold red")
 
+    # BoundaryAdherence results table
+    if "boundary_adherence" in metrics and metrics["boundary_adherence"]["status"] == "success":
+        ba_result = metrics["boundary_adherence"]
+
+        # Get parameters info for display
+        params_info = ba_result["parameters"]
+        target_cols = params_info.get("target_columns", "all numerical/datetime")
+        params_display = f"target_columns={target_cols}"
+
+        # Create BoundaryAdherence results table
+        ba_table = Table(title=f"✅ BoundaryAdherence Results ({params_display})", show_header=True, header_style="bold blue")
+        ba_table.add_column("Column", style="cyan", no_wrap=True)
+        ba_table.add_column("Boundary Score", style="bright_green", justify="right")
+        ba_table.add_column("Status", style="yellow", justify="center")
+
+        # Add aggregate score as first row
+        if ba_result['aggregate_score'] is not None:
+            ba_table.add_row("AGGREGATE", f"{ba_result['aggregate_score']:.3f}", "✓")
+        else:
+            ba_table.add_row("AGGREGATE", "n/a", "ℹ️")
+
+        ba_table.add_section()
+
+        # Show all columns from the original dataset
+        all_columns = list(original_data.columns)
+        column_scores = ba_result['column_scores']
+        compatible_columns = ba_result['compatible_columns']
+
+        for col in sorted(all_columns):
+            if col in column_scores:
+                ba_table.add_row(col, f"{column_scores[col]:.3f}", "✓")
+            elif col in compatible_columns:
+                ba_table.add_row(col, "error", "⚠️")
+            else:
+                ba_table.add_row(col, "n/a", "—")
+
+        # Add message at the bottom if no compatible columns found
+        if ba_result.get("message"):
+            ba_table.add_section()
+            ba_table.add_row("INFO", ba_result["message"], "ℹ️")
+
+        console.print(ba_table)
+    else:
+        console.print("❌ BoundaryAdherence failed", style="bold red")
+
     if "alpha_precision" in metrics and metrics["alpha_precision"]["status"] == "success":
         scores = metrics["alpha_precision"]["scores"]
 

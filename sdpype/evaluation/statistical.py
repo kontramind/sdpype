@@ -18,6 +18,7 @@ from synthcity.metrics.eval_statistical import PRDCScore
 
 # SDMetrics imports
 from sdmetrics.single_table import TableStructure
+from sdmetrics.single_column import BoundaryAdherence
 from sdmetrics.single_column import KSComplement
 from sdmetrics.single_column import TVComplement
 from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
@@ -371,6 +372,115 @@ class TableStructureMetric:
             }
 
 
+class BoundaryAdherenceMetric:
+    """BoundaryAdherence metric implementation for column-wise boundary validation"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        self.target_columns = parameters.get("target_columns", None)  # None = all numerical/datetime
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+        """Evaluate BoundaryAdherence metric across compatible columns"""
+        start_time = time.time()
+
+        try:
+            # Identify compatible columns (numerical and datetime)
+            compatible_columns = self._get_compatible_columns(metadata)
+
+            if self.target_columns:
+                # Filter to only requested columns that are also compatible
+                target_set = set(self.target_columns)
+                compatible_set = set(compatible_columns)
+                valid_targets = list(target_set.intersection(compatible_set))
+                invalid_targets = list(target_set - compatible_set)
+
+                if invalid_targets:
+                    print(f"Warning: These target columns are not compatible with BoundaryAdherence: {invalid_targets}")
+
+                if not valid_targets:
+                    return {
+                        "aggregate_score": None,
+                        "column_scores": {},
+                        "compatible_columns": compatible_columns,
+                        "parameters": self.parameters,
+                        "execution_time": time.time() - start_time,
+                        "status": "success",
+                        "message": f"No compatible columns found from target list: {self.target_columns}"
+                    }
+
+                columns_to_evaluate = valid_targets
+            else:
+                columns_to_evaluate = compatible_columns
+
+            if not columns_to_evaluate:
+                return {
+                    "aggregate_score": None,
+                    "column_scores": {},
+                    "compatible_columns": compatible_columns,
+                    "parameters": self.parameters,
+                    "execution_time": time.time() - start_time,
+                    "status": "success",
+                    "message": "No compatible numerical/datetime columns found in the dataset"
+                }
+
+            # Calculate BoundaryAdherence for each compatible column
+            column_scores = {}
+            for column in columns_to_evaluate:
+                try:
+                    score = BoundaryAdherence.compute(
+                        real_data=original[column],
+                        synthetic_data=synthetic[column]
+                    )
+                    column_scores[column] = float(score)
+                except Exception as e:
+                    print(f"Error computing BoundaryAdherence for column {column}: {e}")
+                    # Skip this column but continue with others
+
+            if not column_scores:
+                return {
+                    "aggregate_score": None,
+                    "column_scores": {},
+                    "compatible_columns": compatible_columns,
+                    "parameters": self.parameters,
+                    "execution_time": time.time() - start_time,
+                    "status": "success",
+                    "message": "All column evaluations failed"
+                }
+
+            # Calculate aggregate score as mean of individual column scores
+            aggregate_score = float(np.mean(list(column_scores.values())))
+
+            return {
+                "aggregate_score": aggregate_score,
+                "column_scores": column_scores,
+                "compatible_columns": compatible_columns,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "aggregate_score": 0.0,
+                "column_scores": {},
+                "compatible_columns": [],
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+    def _get_compatible_columns(self, metadata: SingleTableMetadata) -> List[str]:
+        """Get columns compatible with BoundaryAdherence (numerical and datetime) from SDV metadata"""
+
+        compatible_columns = []
+        for column_name, column_info in metadata.columns.items():
+            sdtype = column_info.get('sdtype', 'unknown')
+            if sdtype in ['numerical', 'datetime']:
+                compatible_columns.append(column_name)
+
+        return compatible_columns
+
+
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
@@ -446,6 +556,10 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
     """Factory function to create metric evaluators"""
 
     match metric_name:
+        case "table_structure":
+            return TableStructureMetric(**parameters)
+        case "boundary_adherence":
+            return BoundaryAdherenceMetric(**parameters)
         case "alpha_precision":
             return AlphaPrecisionMetric(**parameters)
         case "prdc_score":
@@ -456,8 +570,6 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return KSComplementMetric(**parameters)
         case "tv_complement":
             return TVComplementMetric(**parameters)
-        case "table_structure":
-            return TableStructureMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -624,6 +736,39 @@ Metrics Results
   Error: {ts_result.get('error_message', 'Unknown error')}
 """
 
+    # BoundaryAdherence results
+    if "boundary_adherence" in metrics:
+        ba_result = metrics["boundary_adherence"]
+        if ba_result["status"] == "success":
+            params_info = ba_result["parameters"]
+            target_cols = params_info.get("target_columns", "all numerical/datetime")
+
+            if ba_result.get("message"):
+                # Handle case where no compatible columns found
+                report += f"""BoundaryAdherence Results:
+  Parameters: target_columns={target_cols}
+  Execution time: {ba_result['execution_time']:.2f}s
+  Status: {ba_result['message']}
+"""
+            else:
+                report += f"""BoundaryAdherence Results:
+  Parameters: target_columns={target_cols}
+  Execution time: {ba_result['execution_time']:.2f}s
+
+  Boundary Compliance:
+  → Aggregate Score:   {ba_result['aggregate_score']:.3f}
+  → Columns Evaluated: {len(ba_result['compatible_columns'])}
+
+  Individual Column Scores:"""
+                for col, score in ba_result['column_scores'].items():
+                    report += f"""
+    → {col}: {score:.3f}"""
+                report += "\n"
+        else:
+            report += f"""BoundaryAdherence: ERROR
+  Error: {ba_result.get('error_message', 'Unknown error')}
+"""
+
     # Individual metric insights
     insights = []
 
@@ -690,6 +835,17 @@ Metrics Results
             insights.append("Good table structure match")
         else:
             insights.append("Poor table structure match")
+
+    if "boundary_adherence" in metrics and metrics["boundary_adherence"]["status"] == "success":
+        ba_score = metrics["boundary_adherence"]["aggregate_score"]
+        if ba_score is not None:  # Only evaluate if we have compatible columns
+            if ba_score >= 0.95:
+                insights.append("Excellent boundary adherence")
+            elif ba_score >= 0.8:
+                insights.append("Good boundary adherence")
+            else:
+                insights.append("Poor boundary adherence")
+        # If ba_score is None, we simply don't add any insight (no numerical/datetime columns to evaluate)
 
     assessment = ", ".join(insights) if insights else "No successful metrics"
 
