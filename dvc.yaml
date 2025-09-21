@@ -18,6 +18,7 @@ stages:
     deps:
       - sdpype/training.py
       - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv
+      - experiments/data/processed/data_${experiment.name}_${experiment.seed}_metadata.json
     params:
       - sdg
       - experiment.seed

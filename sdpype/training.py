@@ -13,6 +13,7 @@ import hydra
 import pandas as pd
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
+from sdv.metadata import SingleTableMetadata
 
 # SDV models
 from sdv.single_table import GaussianCopulaSynthesizer, CTGANSynthesizer, TVAESynthesizer, CopulaGANSynthesizer
@@ -24,14 +25,9 @@ from synthcity.plugins import Plugins
 from sdpype.serialization import save_model, create_model_metadata
 
 
-def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
+def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
     """Create SDV model with metadata"""
     # SDV v1+ requires metadata
-    from omegaconf import OmegaConf
-    from sdv.metadata import SingleTableMetadata
-    metadata = SingleTableMetadata()
-    metadata.detect_from_dataframe(data)
-
     # Get model parameters from config, filtering for SDV-compatible params  
     # Use OmegaConf.to_container to properly convert nested structures
     all_params = OmegaConf.to_container(cfg.sdg.parameters, resolve=True) if cfg.sdg.parameters else {}
@@ -50,7 +46,7 @@ def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
                 default_distribution=model_params.get("default_distribution", 'beta'),
                 numerical_distributions=model_params.get("numerical_distributions", {})
             )
-        case "ctgan" as model_type:
+        case "ctgan":
             return CTGANSynthesizer(
                 metadata,
                 enforce_min_max_values=model_params.get("enforce_min_max_values", True),
@@ -72,7 +68,7 @@ def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
                 pac=model_params.get("pac", 10)
             )
 
-        case "tvae" as model_type:
+        case "tvae":
             return TVAESynthesizer(
                 metadata,
                 enforce_min_max_values=model_params.get("enforce_min_max_values", True),
@@ -88,7 +84,7 @@ def create_sdv_model(cfg: DictConfig, data: pd.DataFrame):
                 loss_factor=model_params.get("loss_factor", 2)
             )
 
-        case "copula_gan" as model_type:
+        case "copula_gan":
             return CopulaGANSynthesizer(
                 metadata,
                 enforce_min_max_values=model_params.get("enforce_min_max_values", True),
@@ -168,18 +164,26 @@ def main(cfg: DictConfig) -> None:
     data_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
     if not Path(data_file).exists():
         print(f"❌ Processed data not found: {data_file}")
-        print("💡 Run preprocessing first: dvc repro -s preprocess")
+        print("💡 Run preprocessing first!")
         raise FileNotFoundError(f"Data file not found: {data_file}")
+
+    metadata_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}_metadata.json"
+    if not Path(metadata_file).exists():
+        print(f"❌ Metadata for processed data not found: {metadata_file}")
+        print("💡 Run metadata creation first!")
+        raise FileNotFoundError(f"Metadata file not found: {metadata_file}")
 
     data = pd.read_csv(data_file)
     print(f"📊 Training data: {data.shape}")
+
+    metadata = SingleTableMetadata.load_from_json(metadata_file)
 
     # Create model based on library
     library = cfg.sdg.library
 
     if library == "sdv":
         print(f"🔧 Creating SDV {cfg.sdg.model_type} model...")
-        model = create_sdv_model(cfg, data)
+        model = create_sdv_model(cfg, metadata)
     elif library == "synthcity":
         print(f"🔧 Creating Synthcity {cfg.sdg.model_type} model...")
         model = create_synthcity_model(cfg, data.shape)
