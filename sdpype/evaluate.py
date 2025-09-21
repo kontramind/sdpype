@@ -11,6 +11,7 @@ from omegaconf import DictConfig
 from rich.console import Console
 from rich.table import Table
 
+from sdv.metadata import SingleTableMetadata
 from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate_statistical_report
 
 console = Console()
@@ -31,8 +32,11 @@ def main(cfg: DictConfig) -> None:
 
     # Load datasets for statistical comparison
     original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+    metadata_path = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}_metadata.json"
     synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
 
+    if not Path(metadata_path).exists():
+        raise FileNotFoundError(f"Metadata not found: {metadata_path}")
     if not Path(original_data_path).exists():
         raise FileNotFoundError(f"Original data not found: {original_data_path}")
     if not Path(synthetic_data_path).exists():
@@ -43,6 +47,7 @@ def main(cfg: DictConfig) -> None:
 
     original_data = pd.read_csv(original_data_path)
     synthetic_data = pd.read_csv(synthetic_data_path)
+    metadata = SingleTableMetadata.load_from_json(metadata_path)
 
     # Run statistical similarity evaluation
     # Run statistical metrics evaluation
@@ -51,7 +56,8 @@ def main(cfg: DictConfig) -> None:
         original_data,
         synthetic_data,
         metrics_config,
-        experiment_name=f"{cfg.experiment.name}_seed_{cfg.experiment.seed}"
+        experiment_name=f"{cfg.experiment.name}_seed_{cfg.experiment.seed}",
+        metadata=metadata
     )
 
     # Save statistical similarity results

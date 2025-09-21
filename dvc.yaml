@@ -47,6 +47,7 @@ stages:
       - sdpype/evaluate.py
       - sdpype/evaluation/statistical.py
       - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv
+      - experiments/data/processed/data_${experiment.name}_${experiment.seed}_metadata.json
       - experiments/data/synthetic/synthetic_data_${experiment.name}_${experiment.seed}.csv
     params:
       - evaluation

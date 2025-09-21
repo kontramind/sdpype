@@ -6,8 +6,10 @@ Statistical metrics evaluation
 import time
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Tuple, List
 from datetime import datetime
+from typing import Dict, Any, List
+
+from sdv.metadata import SingleTableMetadata
 
 # Synthcity imports for statistical metrics
 from synthcity.plugins.core.dataloader import GenericDataLoader
@@ -51,7 +53,7 @@ class AlphaPrecisionMetric:
         self.evaluator = AlphaPrecision()
         self.parameters = parameters  # Store for reporting
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
         """Evaluate Alpha Precision metric"""
 
         start_time = time.time()
@@ -94,6 +96,7 @@ class AlphaPrecisionMetric:
                 "error_message": str(e)
             }
 
+
 class PRDCScoreMetric:
     """PRDC Score metric implementation"""
 
@@ -101,7 +104,7 @@ class PRDCScoreMetric:
         self.parameters = parameters
         self.evaluator = PRDCScore(nearest_k=parameters.get("nearest_k", 5))
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
         """Evaluate PRDC Score metric"""
         start_time = time.time()
 
@@ -144,14 +147,11 @@ class NewRowSynthesisMetric:
         self.numerical_match_tolerance = parameters.get("numerical_match_tolerance", 0.01)
         self.synthetic_sample_size = parameters.get("synthetic_sample_size", None)
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
         """Evaluate NewRowSynthesis metric"""
         start_time = time.time()
 
         try:
-            # Build metadata from DataFrame dtypes if not provided
-            metadata = self._build_metadata_from_dataframe(original)
-
             # Run evaluation using SDMetrics
             result = NewRowSynthesis.compute_breakdown(
                 real_data=original,
@@ -180,18 +180,6 @@ class NewRowSynthesisMetric:
                 "error_message": str(e)
             }
 
-    def _build_metadata_from_dataframe(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Build SDMetrics-compatible metadata from DataFrame"""
-        columns = {}
-        for col in df.columns:
-            if df[col].dtype in ['int64', 'int32', 'float64', 'float32']:
-                columns[col] = {'sdtype': 'numerical'}
-            elif df[col].dtype == 'bool':
-                columns[col] = {'sdtype': 'boolean'}
-            else:
-                columns[col] = {'sdtype': 'categorical'}
-        return {'columns': columns}
-
 
 class KSComplementMetric:
     """KSComplement metric implementation for column-wise distribution similarity"""
@@ -200,13 +188,13 @@ class KSComplementMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all numerical/datetime
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
         """Evaluate KSComplement metric across compatible columns"""
         start_time = time.time()
 
         try:
             # Identify compatible columns (numerical and datetime)
-            compatible_columns = self._get_compatible_columns(original)
+            compatible_columns = self._get_compatible_columns(metadata)
 
             if self.target_columns:
                 # Filter to user-specified columns
@@ -259,13 +247,16 @@ class KSComplementMetric:
                 "error_message": str(e)
             }
 
-    def _get_compatible_columns(self, df: pd.DataFrame) -> List[str]:
-        """Get columns compatible with KSComplement (numerical and datetime)"""
-        compatible = []
-        for col in df.columns:
-            if df[col].dtype in ['int64', 'int32', 'float64', 'float32', 'datetime64[ns]']:
-                compatible.append(col)
-        return compatible
+    def _get_compatible_columns(self, metadata: SingleTableMetadata) -> List[str]:
+        """Get columns compatible with KSComplement (numerical and datetime) from SDV metadata"""
+
+        compatible_columns = []
+        for column_name, column_info in metadata.columns.items():
+            sdtype = column_info.get('sdtype', 'unknown')
+            if sdtype in ['numerical', 'datetime']:
+                compatible_columns.append(column_name)
+
+        return compatible_columns
 
 
 class TVComplementMetric:
@@ -275,13 +266,13 @@ class TVComplementMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all categorical/boolean
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
         """Evaluate TVComplement metric across compatible columns"""
         start_time = time.time()
 
         try:
             # Identify compatible columns (categorical and boolean)
-            compatible_columns = self._get_compatible_columns(original)
+            compatible_columns = self._get_compatible_columns(metadata)
 
             if self.target_columns:
                 # Filter to user-specified columns
@@ -334,19 +325,23 @@ class TVComplementMetric:
                 "error_message": str(e)
             }
 
-    def _get_compatible_columns(self, df: pd.DataFrame) -> List[str]:
-        """Get columns compatible with TVComplement (categorical and boolean)"""
-        compatible = []
-        for col in df.columns:
-            if df[col].dtype in ['object', 'category', 'bool', 'string']:
-                compatible.append(col)
-        return compatible
+    def _get_compatible_columns(self, metadata: SingleTableMetadata) -> List[str]:
+        """Get columns compatible with TVComplement (categorical and boolean) from SDV metadata"""
+
+        compatible_columns = []
+        for column_name, column_info in metadata.columns.items():
+            sdtype = column_info.get('sdtype', 'unknown')
+            if sdtype in ['categorical', 'boolean']:
+                compatible_columns.append(column_name)
+
+        return compatible_columns
 
 
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
-                                experiment_name: str = "unknown") -> Dict[str, Any]:
+                                experiment_name: str,
+                                metadata: SingleTableMetadata) -> Dict[str, Any]:
     """
     Evaluate configured statistical metrics
 
@@ -385,7 +380,7 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
 
         try:
             evaluator = get_metric_evaluator(metric_name, parameters)
-            metric_result = evaluator.evaluate(original, synthetic)
+            metric_result = evaluator.evaluate(original, synthetic, metadata)
             results["metrics"][metric_name] = metric_result
 
             # Collect scores for overall calculation
