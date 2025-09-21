@@ -75,6 +75,15 @@ AVAILABLE_METRICS = {
             "outputs": ["aggregate_score", "column_scores", "compatible_columns"],
             "reference": "SDMetrics library - Single column statistical metric using Total Variation Distance"
         }
+    },
+    "diagnostic": {
+        "table_structure": {
+            "description": "Measures whether synthetic data captures the same table structure (column names and data types) as real data",
+            "library": "sdmetrics",
+            "parameters": {},  # No configurable parameters
+            "outputs": ["score"],
+            "reference": "SDMetrics library - Single table diagnostic metric for structure validation"
+        }
     }
 }
 

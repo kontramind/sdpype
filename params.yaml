@@ -73,6 +73,8 @@ generation:
 evaluation:
   statistical_similarity:
     metrics:
+      - name: table_structure
+        parameters: {}
       - name: "alpha_precision"
         parameters: {}
       - name: "prdc_score"

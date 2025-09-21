@@ -17,6 +17,7 @@ from synthcity.metrics.eval_statistical import AlphaPrecision
 from synthcity.metrics.eval_statistical import PRDCScore
 
 # SDMetrics imports
+from sdmetrics.single_table import TableStructure
 from sdmetrics.single_column import KSComplement
 from sdmetrics.single_column import TVComplement
 from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
@@ -337,6 +338,39 @@ class TVComplementMetric:
         return compatible_columns
 
 
+class TableStructureMetric:
+    """TableStructure metric implementation for table structure validation"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+        """Evaluate TableStructure metric"""
+        start_time = time.time()
+
+        try:
+            # Run evaluation using SDMetrics
+            score = TableStructure.compute(
+                real_data=original,
+                synthetic_data=synthetic
+            )
+
+            return {
+                "score": float(score),
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "score": 0.0,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
@@ -422,6 +456,8 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return KSComplementMetric(**parameters)
         case "tv_complement":
             return TVComplementMetric(**parameters)
+        case "table_structure":
+            return TableStructureMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -572,6 +608,21 @@ Metrics Results
             report += f"""TVComplement: ERROR
   Error: {tv_result.get('error_message', 'Unknown error')}
 """
+    # TableStructure results
+    if "table_structure" in metrics:
+        ts_result = metrics["table_structure"]
+        if ts_result["status"] == "success":
+            report += f"""TableStructure Results:
+  Parameters: {ts_result['parameters'] if ts_result['parameters'] else 'none'}
+  Execution time: {ts_result['execution_time']:.2f}s
+
+  Structure Similarity:
+  → Table Structure Score: {ts_result['score']:.3f}
+"""
+        else:
+            report += f"""TableStructure: ERROR
+  Error: {ts_result.get('error_message', 'Unknown error')}
+"""
 
     # Individual metric insights
     insights = []
@@ -630,6 +681,15 @@ Metrics Results
             else:
                 insights.append("Poor categorical similarity")
         # If tv_score is None, we simply don't add any insight (no categorical columns to evaluate)
+
+    if "table_structure" in metrics and metrics["table_structure"]["status"] == "success":
+        ts_score = metrics["table_structure"]["score"]
+        if ts_score >= 0.95:
+            insights.append("Perfect table structure match")
+        elif ts_score >= 0.8:
+            insights.append("Good table structure match")
+        else:
+            insights.append("Poor table structure match")
 
     assessment = ", ".join(insights) if insights else "No successful metrics"
 

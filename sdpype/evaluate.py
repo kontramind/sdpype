@@ -78,6 +78,26 @@ def main(cfg: DictConfig) -> None:
     console.print("\n📊 Statistical Metrics Summary:", style="bold cyan")
 
     metrics = statistical_results.get("metrics", {})
+
+    # TableStructure results table
+    if "table_structure" in metrics and metrics["table_structure"]["status"] == "success":
+        ts_result = metrics["table_structure"]
+
+        # Get parameters info for display
+        params_info = ts_result["parameters"]
+        params_display = str(params_info) if params_info else "no parameters"
+
+        # Create TableStructure results table
+        ts_table = Table(title=f"✅ TableStructure Results ({params_display})", show_header=True, header_style="bold blue")
+        ts_table.add_column("Metric", style="cyan", no_wrap=True)
+        ts_table.add_column("Score", style="bright_green", justify="right")
+
+        ts_table.add_row("Table Structure Score", f"{ts_result['score']:.3f}")
+
+        console.print(ts_table)
+    else:
+        console.print("❌ TableStructure failed", style="bold red")
+
     if "alpha_precision" in metrics and metrics["alpha_precision"]["status"] == "success":
         scores = metrics["alpha_precision"]["scores"]
 
