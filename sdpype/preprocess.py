@@ -10,6 +10,7 @@ import hydra
 import pandas as pd
 import numpy as np
 from omegaconf import DictConfig
+from sdv.metadata import SingleTableMetadata
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 
@@ -36,7 +37,6 @@ def main(cfg: DictConfig) -> None:
     data = pd.read_csv(data_file_path)
     print(f"Loaded data: {data.shape}")
 
-    from sdv.metadata import SingleTableMetadata
     metadata = SingleTableMetadata.load_from_json(metadata_file_path)
     
     if cfg.preprocessing.enabled:
@@ -51,24 +51,39 @@ def main(cfg: DictConfig) -> None:
             match encoding_method:
                 case "label":
                     # Label encoding
+                    label_encoders = {}
                     for col in categorical_columns:
                         le = LabelEncoder()
                         data[col] = le.fit_transform(data[col])
+                        label_encoders[col] = le
                         print(f"  Label encoded {col}: {data[col].nunique()} unique values")
+                        # Update metadata: keep semantic type as categorical, but change representation
+                        metadata.update_column(col, sdtype='categorical')
 
                 case "onehot":
                     # One-hot encoding
                     if categorical_columns:
-                        # Create one-hot encoded columns
+                        # Create one-hot encoded columns and update metadata
                         encoded_dfs = []
+                        new_columns_metadata = {}
                         for col in categorical_columns:
                             one_hot = pd.get_dummies(data[col], prefix=col, dtype=int)
                             encoded_dfs.append(one_hot)
                             print(f"  One-hot encoded {col}: {one_hot.shape[1]} columns created")
 
+                            # Track new binary columns for metadata (semantic type: boolean)
+                            for new_col in one_hot.columns:
+                                new_columns_metadata[new_col] = {'sdtype': 'boolean'}
+
                         # Drop original categorical columns and add one-hot encoded ones
                         data = data.drop(columns=categorical_columns)
                         data = pd.concat([data] + encoded_dfs, axis=1)
+
+                        # Update metadata: remove original categorical columns, add new binary columns
+                        for col in categorical_columns:
+                            metadata.remove_column(col)
+                        for new_col, col_metadata in new_columns_metadata.items():
+                            metadata.add_column(new_col, **col_metadata)
 
                 case "frequency":
                     # Frequency encoding
@@ -78,6 +93,8 @@ def main(cfg: DictConfig) -> None:
                         # Replace values with their frequencies
                         data[col] = data[col].map(freq_map)
                         print(f"  Frequency encoded {col}: min_freq={data[col].min()}, max_freq={data[col].max()}")
+                        # Update metadata: categorical -> numerical (frequency counts are truly numerical)
+                        metadata.update_column(col, sdtype='numerical', computer_representation='Int64')
 
                 case _:
                     raise ValueError(f"Unknown encoding method: {encoding_method}. Use 'label', 'onehot', or 'frequency'")
@@ -113,7 +130,12 @@ def main(cfg: DictConfig) -> None:
     output_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
     data.to_csv(output_file, index=False)
     print(f"📁 Saved: {output_file}")
-    
+
+    # Save updated metadata (NEW)
+    metadata_output_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}_metadata.json"
+    metadata.save_to_json(metadata_output_file)
+    print(f"🔍 Updated metadata saved: {metadata_output_file}")
+
     # Save metrics (updated path + experiment versioning + enhanced metadata)
     metrics = {
         "experiment_seed": cfg.experiment.seed,

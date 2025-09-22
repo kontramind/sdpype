@@ -5,8 +5,8 @@
 # =============================================================================
 experiment:
   seed: 1
-  name: sdv_copula_gan_baseline
-  description: Using SDV copula gan with default settings (baseline)
+  name: sdv_gaussian_copula_baseline
+  description: Using SDV gaussian copula with default settings (baseline)
   researcher: anonymous
   tags: []
 
@@ -15,7 +15,7 @@ experiment:
 # =============================================================================
 sdg:
   library: sdv
-  model_type: copula_gan
+  model_type: gaussian_copula
   parameters: {}
 
 # =============================================================================
