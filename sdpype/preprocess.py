@@ -17,6 +17,14 @@ from sklearn.preprocessing import StandardScaler
 @hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
     """Preprocess data with experiment versioning"""
+
+    data_file_path = Path(cfg.data.input_file)
+    if not data_file_path.exists():
+        raise FileNotFoundError(f"❌ Required input data file not found: {cfg.data.input_file}")
+
+    metadata_file_path = Path(cfg.data.metadata_file)
+    if not metadata_file_path.exists():
+        raise FileNotFoundError(f"Required metadata file not found: {cfg.data.metadata_file}")
     
     # Set random seed for reproducibility
     np.random.seed(cfg.experiment.seed)
@@ -25,17 +33,16 @@ def main(cfg: DictConfig) -> None:
     print(f"🎲 Experiment seed: {cfg.experiment.seed}")
 
     # Load data (updated path for monolithic structure)
-    data = pd.read_csv(cfg.data.input_file)
+    data = pd.read_csv(data_file_path)
     print(f"Loaded data: {data.shape}")
+
+    from sdv.metadata import SingleTableMetadata
+    metadata = SingleTableMetadata.load_from_json(metadata_file_path)
     
     if cfg.preprocessing.enabled:
 
         # Encode categorical features - some generators/metrics work only with numerical values
         if "encode_categorical" in cfg.preprocessing.steps:
-            from sdv.metadata import SingleTableMetadata
-            metadata = SingleTableMetadata()
-            metadata.detect_from_dataframe(data)
-
             categorical_columns = list(filter(lambda col: metadata.columns[col].get("sdtype") == "categorical", metadata.columns.keys()))
 
             encoding_method = cfg.preprocessing.steps.encode_categorical

@@ -4,9 +4,9 @@
 # EXPERIMENT CONFIGURATION
 # =============================================================================
 experiment:
-  seed: 123
-  name: sdv_tvae_test
-  description: SDPype synthetic data generation experiment
+  seed: 1
+  name: sdv_copula_gan_baseline
+  description: Using SDV copula gan with default settings (baseline)
   researcher: anonymous
   tags: []
 
@@ -16,32 +16,7 @@ experiment:
 sdg:
   library: sdv
   model_type: copula_gan
-  parameters:
-    enforce_min_max_values: True
-    enforce_rounding: True
-    locales: ['en_US']
-    default_distribution: beta
-    numerical_distributions:
-      age: 'gaussian_kde'
-      score: 'gaussian_kde'
-    epochs: 300
-    cuda: True
-    verbose: True
-    batch_size: 500
-    discriminator_dim:
-      - 256
-      - 256
-    discriminator_decay: 1e-06
-    discriminator_lr: 0.0002
-    discriminator_steps: 1
-    embedding_dim: 128
-    generator_decay: 1e-06
-    generator_dim:
-      - 256
-      - 256
-    generator_lr: 0.0002
-    log_frequency: True
-    pac: 10
+  parameters: {}
 
 # =============================================================================
 # PREPROCESSING CONFIGURATION
@@ -60,6 +35,7 @@ preprocessing:
 # =============================================================================
 data:
   input_file: experiments/data/raw/sample_data.csv
+  metadata_file: experiments/data/raw/sample_data_metadata.json
 
 # =============================================================================
 # GENERATION SETTINGS

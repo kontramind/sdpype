@@ -5,6 +5,8 @@ stages:
     deps:
       - sdpype/preprocess.py
       - experiments/data/raw/
+      - ${data.input_file}
+      - ${data.metadata_file}
     params:
       - experiment.seed
       - experiment.name
