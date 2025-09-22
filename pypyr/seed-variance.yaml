@@ -1,0 +1,95 @@
+# pypyr/seed-variance.yaml
+
+context_parser: pypyr.parser.keyvaluepairs
+
+steps:
+  - name: pypyr.steps.default
+    description: "Set default seeds"
+    in:
+      defaults:
+        seeds: [11, 12, 13]
+
+  - name: pypyr.steps.py
+    description: "Parse seeds if provided as string"
+    in:
+      pycode: |
+        import ast
+        
+        print(f"🔍 Raw seeds value: {repr(context['seeds'])}")
+        print(f"🔍 Seeds type: {type(context['seeds'])}")
+        
+        # Check if seeds is a string (from command line) or already a list (default)
+        if isinstance(context['seeds'], str):
+            # Parse string like "[42,43,44]" into actual Python list
+            try:
+                seeds_list = ast.literal_eval(context['seeds'])
+                context['seeds'] = seeds_list
+                print(f"✅ Parsed seeds from string: {seeds_list}")
+            except (ValueError, SyntaxError) as e:
+                print(f"❌ Error parsing seeds string: {e}")
+                print("💡 Use format: seeds='[42,43,44]'")
+                raise
+        else:
+            print(f"✅ Using default seeds: {context['seeds']}")
+
+  - name: pypyr.steps.py
+    description: "Backup original params.yaml"
+    in:
+      pycode: |
+        import shutil
+        import os
+        
+        if os.path.exists('params.yaml'):
+            shutil.copy('params.yaml', 'params.yaml.backup')
+            print("📋 Backed up params.yaml to params.yaml.backup")
+        else:
+            print("⚠️  params.yaml not found - nothing to backup")
+
+  - name: pypyr.steps.call
+    description: "Process each seed: update params → run pipeline"
+    foreach: '{seeds}'
+    in:
+      call: process_seed
+
+process_seed:
+  - name: pypyr.steps.py
+    description: "Update params.yaml with current seed"
+    in:
+      pycode: |
+        import yaml
+        
+        print(f"🔄 Processing seed: {context['i']}")
+        
+        # Load params.yaml
+        with open('params.yaml', 'r') as f:
+            params = yaml.safe_load(f)
+        
+        # Update seed
+        params['experiment']['seed'] = int(context['i'])
+        print(f"📝 Updated seed to: {params['experiment']['seed']}")
+        
+        # Save updated params.yaml
+        with open('params.yaml', 'w') as f:
+            yaml.dump(params, f, default_flow_style=False, indent=2)
+        
+        print(f"💾 Saved params.yaml with seed {context['i']}")
+  - name: pypyr.steps.shell
+    description: "Run SDPype pipeline with current seed"
+    in:
+      cmd: uv run sdpype pipeline
+  - name: pypyr.steps.echo
+    in:
+      echoMe: "✅ Completed seed {i}"
+
+  - name: pypyr.steps.py
+    description: "Restore params.yaml"
+    in:
+      pycode: |
+        import shutil
+        import os
+        
+        if os.path.exists('params.yaml.backup'):
+            shutil.move('params.yaml.backup', 'params.yaml')
+            print("📋 Restored original params.yaml")
+        else:
+            print("⚠️  No backup file found")
