@@ -78,6 +78,9 @@ evaluation:
       - name: boundary_adherence
         parameters:
           target_columns: null
+      - name: category_adherence
+        parameters:
+          target_columns: null
       - name: "alpha_precision"
         parameters: {}
       - name: "prdc_score"

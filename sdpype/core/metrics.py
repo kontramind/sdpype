@@ -96,6 +96,19 @@ AVAILABLE_METRICS = {
             },
             "outputs": ["aggregate_score", "column_scores", "compatible_columns"],
             "reference": "SDMetrics library - Single column diagnostic metric for boundary validation"
+        },
+        "category_adherence": {
+            "description": "Measures whether synthetic categorical data adheres to the same category values as real data (no new categories)",
+            "library": "sdmetrics",
+            "parameters": {
+                "target_columns": {
+                    "type": "list",
+                    "default": None,
+                    "description": "Specific columns to evaluate (None = all categorical/boolean columns)"
+                }
+            },
+            "outputs": ["aggregate_score", "column_scores", "compatible_columns"],
+            "reference": "SDMetrics library - Single column diagnostic metric for category validation"
         }
     }
 }

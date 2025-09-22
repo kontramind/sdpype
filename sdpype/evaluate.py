@@ -98,6 +98,29 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ TableStructure failed", style="bold red")
 
+    # NewRowSynthesis results table
+    if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
+        nrs_result = metrics["new_row_synthesis"]
+
+        # Get parameters info for display
+        params_info = nrs_result["parameters"]
+        tolerance = params_info.get("numerical_match_tolerance", 0.01)
+        sample_size = params_info.get("synthetic_sample_size", "all rows")
+        params_display = f"tolerance={tolerance}, sample_size={sample_size}"
+
+        # Create NewRowSynthesis results table
+        nrs_table = Table(title=f"✅ NewRowSynthesis Results ({params_display})", show_header=True, header_style="bold blue")
+        nrs_table.add_column("Metric", style="cyan", no_wrap=True)
+        nrs_table.add_column("Value", style="bright_green", justify="right")
+
+        nrs_table.add_row("New Row Score", f"{nrs_result['score']:.3f}")
+        nrs_table.add_row("New Rows", f"{nrs_result['num_new_rows']:,}")
+        nrs_table.add_row("Matched Rows", f"{nrs_result['num_matched_rows']:,}")
+
+        console.print(nrs_table)
+    else:
+        console.print("❌ NewRowSynthesis failed", style="bold red")
+
     # BoundaryAdherence results table
     if "boundary_adherence" in metrics and metrics["boundary_adherence"]["status"] == "success":
         ba_result = metrics["boundary_adherence"]
@@ -143,83 +166,52 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ BoundaryAdherence failed", style="bold red")
 
-    if "alpha_precision" in metrics and metrics["alpha_precision"]["status"] == "success":
-        scores = metrics["alpha_precision"]["scores"]
+    # CategoryAdherence results table
+    if "category_adherence" in metrics and metrics["category_adherence"]["status"] == "success":
+        ca_result = metrics["category_adherence"]
 
         # Get parameters info for display
-        params_info = metrics["alpha_precision"]["parameters"]
-        params_display = str(params_info) if params_info else "default settings"
+        params_info = ca_result["parameters"]
+        target_cols = params_info.get("target_columns", None)
+        params_display = f"target_columns={target_cols}"
 
-        # Create Alpha Precision results table
-        table = Table(title=f"✅ Alpha Precision Results ({params_display})", show_header=True, header_style="bold magenta")
-        table.add_column("Metric", style="cyan", no_wrap=True)
-        table.add_column("OC Variant", style="green", justify="right")
-        table.add_column("Naive Variant", style="yellow", justify="right")
+        if ca_result.get("message"):
+            # Handle case where no compatible columns found
+            console.print(f"⚠️  CategoryAdherence Results ({params_display})", style="bold yellow")
+            console.print(f"   Status: {ca_result['message']}", style="yellow")
+        else:
+            # Create CategoryAdherence results table
+            ca_table = Table(title=f"✅ CategoryAdherence Results ({params_display})", show_header=True, header_style="bold blue")
+            ca_table.add_column("Column", style="cyan", no_wrap=True)
+            ca_table.add_column("Category Score", style="bright_green", justify="right")
+            ca_table.add_column("Status", style="yellow", justify="center")
 
-        table.add_row(
-            "Delta Precision Alpha",
-            f"{scores['delta_precision_alpha_OC']:.3f}",
-            f"{scores['delta_precision_alpha_naive']:.3f}"
-        )
-        table.add_row(
-            "Delta Coverage Beta",
-            f"{scores['delta_coverage_beta_OC']:.3f}",
-            f"{scores['delta_coverage_beta_naive']:.3f}"
-        )
-        table.add_row(
-            "Authenticity",
-            f"{scores['authenticity_OC']:.3f}",
-            f"{scores['authenticity_naive']:.3f}"
-        )
+            # Add aggregate score first
+            ca_table.add_row("AGGREGATE", f"{ca_result['aggregate_score']:.3f}", "✓")
 
-        console.print(table)
+            ca_table.add_section()
+
+            # Show all columns from the original dataset
+            all_columns = list(original_data.columns)
+            column_scores = ca_result['column_scores']
+            compatible_columns = ca_result['compatible_columns']
+
+            for col in sorted(all_columns):
+                if col in column_scores:
+                    ca_table.add_row(col, f"{column_scores[col]:.3f}", "✓")
+                elif col in compatible_columns:
+                    ca_table.add_row(col, "error", "⚠️")
+                else:
+                    ca_table.add_row(col, "n/a", "—")
+
+            # Add message at the bottom if no compatible columns found
+            if ca_result.get("message"):
+                ca_table.add_section()
+                ca_table.add_row("INFO", ca_result["message"], "ℹ️")
+
+            console.print(ca_table)
     else:
-        console.print("❌ Alpha Precision failed", style="bold red")
-
-    # PRDC Score results table
-    if "prdc_score" in metrics and metrics["prdc_score"]["status"] == "success":
-        prdc_result = metrics["prdc_score"]
-
-        # Get parameters info for display
-        params_info = prdc_result["parameters"]
-        params_display = str(params_info) if params_info else "default settings"
-
-        # Create PRDC results table
-        prdc_table = Table(title=f"✅ PRDC Score Results ({params_display})", show_header=True, header_style="bold blue")
-        prdc_table.add_column("Metric", style="cyan", no_wrap=True)
-        prdc_table.add_column("Score", style="bright_green", justify="right")
-
-        prdc_table.add_row("Precision", f"{prdc_result['precision']:.3f}")
-        prdc_table.add_row("Recall", f"{prdc_result['recall']:.3f}")
-        prdc_table.add_row("Density", f"{prdc_result['density']:.3f}")
-        prdc_table.add_row("Coverage", f"{prdc_result['coverage']:.3f}")
-
-        console.print(prdc_table)
-    else:
-        console.print("❌ PRDC Score failed", style="bold red")
-
-    # NewRowSynthesis results table
-    if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
-        nrs_result = metrics["new_row_synthesis"]
-
-        # Get parameters info for display
-        params_info = nrs_result["parameters"]
-        tolerance = params_info.get("numerical_match_tolerance", 0.01)
-        sample_size = params_info.get("synthetic_sample_size", "all rows")
-        params_display = f"tolerance={tolerance}, sample_size={sample_size}"
-
-        # Create NewRowSynthesis results table
-        nrs_table = Table(title=f"✅ NewRowSynthesis Results ({params_display})", show_header=True, header_style="bold blue")
-        nrs_table.add_column("Metric", style="cyan", no_wrap=True)
-        nrs_table.add_column("Value", style="bright_green", justify="right")
-
-        nrs_table.add_row("New Row Score", f"{nrs_result['score']:.3f}")
-        nrs_table.add_row("New Rows", f"{nrs_result['num_new_rows']:,}")
-        nrs_table.add_row("Matched Rows", f"{nrs_result['num_matched_rows']:,}")
-
-        console.print(nrs_table)
-    else:
-        console.print("❌ NewRowSynthesis failed", style="bold red")
+        console.print("❌ CategoryAdherence failed", style="bold red")
 
     # KSComplement results table
     if "ks_complement" in metrics and metrics["ks_complement"]["status"] == "success":
@@ -310,6 +302,61 @@ def main(cfg: DictConfig) -> None:
         console.print(tv_table)
     else:
         console.print("❌ TVComplement failed", style="bold red")
+
+
+    if "alpha_precision" in metrics and metrics["alpha_precision"]["status"] == "success":
+        scores = metrics["alpha_precision"]["scores"]
+        # Get parameters info for display
+        params_info = metrics["alpha_precision"]["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
+
+        # Create Alpha Precision results table
+        table = Table(title=f"✅ Alpha Precision Results ({params_display})", show_header=True, header_style="bold magenta")
+        table.add_column("Metric", style="cyan", no_wrap=True)
+        table.add_column("OC Variant", style="green", justify="right")
+        table.add_column("Naive Variant", style="yellow", justify="right")
+
+        table.add_row(
+            "Delta Precision Alpha",
+            f"{scores['delta_precision_alpha_OC']:.3f}",
+            f"{scores['delta_precision_alpha_naive']:.3f}"
+        )
+        table.add_row(
+            "Delta Coverage Beta",
+            f"{scores['delta_coverage_beta_OC']:.3f}",
+            f"{scores['delta_coverage_beta_naive']:.3f}"
+        )
+        table.add_row(
+            "Authenticity",
+            f"{scores['authenticity_OC']:.3f}",
+            f"{scores['authenticity_naive']:.3f}"
+        )
+
+        console.print(table)
+    else:
+        console.print("❌ Alpha Precision failed", style="bold red")
+
+    # PRDC Score results table
+    if "prdc_score" in metrics and metrics["prdc_score"]["status"] == "success":
+        prdc_result = metrics["prdc_score"]
+
+        # Get parameters info for display
+        params_info = prdc_result["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
+
+        # Create PRDC results table
+        prdc_table = Table(title=f"✅ PRDC Score Results ({params_display})", show_header=True, header_style="bold blue")
+        prdc_table.add_column("Metric", style="cyan", no_wrap=True)
+        prdc_table.add_column("Score", style="bright_green", justify="right")
+
+        prdc_table.add_row("Precision", f"{prdc_result['precision']:.3f}")
+        prdc_table.add_row("Recall", f"{prdc_result['recall']:.3f}")
+        prdc_table.add_row("Density", f"{prdc_result['density']:.3f}")
+        prdc_table.add_row("Coverage", f"{prdc_result['coverage']:.3f}")
+
+        console.print(prdc_table)
+    else:
+        console.print("❌ PRDC Score failed", style="bold red")
 
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 

@@ -19,6 +19,7 @@ from synthcity.metrics.eval_statistical import PRDCScore
 # SDMetrics imports
 from sdmetrics.single_table import TableStructure
 from sdmetrics.single_column import BoundaryAdherence
+from sdmetrics.single_column import CategoryAdherence
 from sdmetrics.single_column import KSComplement
 from sdmetrics.single_column import TVComplement
 from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
@@ -481,6 +482,97 @@ class BoundaryAdherenceMetric:
         return compatible_columns
 
 
+class CategoryAdherenceMetric:
+    """CategoryAdherence metric implementation for categorical/boolean column validation"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        self.target_columns = parameters.get("target_columns", None)  # None = all categorical/boolean
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+        """Evaluate CategoryAdherence metric across compatible columns"""
+        start_time = time.time()
+
+        try:
+            # Identify compatible columns (categorical and boolean)
+            compatible_columns = self._get_compatible_columns(metadata)
+
+            if self.target_columns:
+                # Filter to only requested columns that are also compatible
+                target_set = set(self.target_columns)
+                compatible_set = set(compatible_columns)
+                valid_targets = list(target_set.intersection(compatible_set))
+
+                # Warn about invalid target columns
+                invalid_targets = target_set - compatible_set
+                if invalid_targets:
+                    print(f"Warning: Columns {invalid_targets} are not compatible with CategoryAdherence (not categorical/boolean)")
+
+                columns_to_evaluate = valid_targets
+            else:
+                columns_to_evaluate = compatible_columns
+
+            if not columns_to_evaluate:
+                return {
+                    "aggregate_score": None,
+                    "column_scores": {},
+                    "compatible_columns": compatible_columns,
+                    "parameters": self.parameters,
+                    "execution_time": time.time() - start_time,
+                    "status": "success",
+                    "message": f"No compatible categorical/boolean columns found for evaluation"
+                }
+
+            # Evaluate each column
+            column_scores = {}
+            for column in columns_to_evaluate:
+                try:
+                    score = CategoryAdherence.compute(
+                        real_data=original[column],
+                        synthetic_data=synthetic[column]
+                    )
+                    column_scores[column] = float(score)
+                except Exception as e:
+                    print(f"Warning: Failed to compute CategoryAdherence for column '{column}': {str(e)}")
+                    column_scores[column] = 0.0
+
+            # Calculate aggregate score (average of all column scores)
+            if column_scores:
+                aggregate_score = sum(column_scores.values()) / len(column_scores)
+            else:
+                aggregate_score = 0.0
+
+            return {
+                "aggregate_score": aggregate_score,
+                "column_scores": column_scores,
+                "compatible_columns": compatible_columns,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "aggregate_score": 0.0,
+                "column_scores": {},
+                "compatible_columns": [],
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+    def _get_compatible_columns(self, metadata: SingleTableMetadata) -> List[str]:
+        """Get columns compatible with CategoryAdherence (categorical and boolean) from SDV metadata"""
+
+        compatible_columns = []
+        for column_name, column_info in metadata.columns.items():
+            sdtype = column_info.get('sdtype', 'unknown')
+            if sdtype in ['categorical', 'boolean']:
+                compatible_columns.append(column_name)
+
+        return compatible_columns
+
+
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
@@ -560,16 +652,18 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return TableStructureMetric(**parameters)
         case "boundary_adherence":
             return BoundaryAdherenceMetric(**parameters)
-        case "alpha_precision":
-            return AlphaPrecisionMetric(**parameters)
-        case "prdc_score":
-            return PRDCScoreMetric(**parameters)
+        case "category_adherence":
+            return CategoryAdherenceMetric(**parameters)
         case "new_row_synthesis":
             return NewRowSynthesisMetric(**parameters)
         case "ks_complement":
             return KSComplementMetric(**parameters)
         case "tv_complement":
             return TVComplementMetric(**parameters)
+        case "alpha_precision":
+            return AlphaPrecisionMetric(**parameters)
+        case "prdc_score":
+            return PRDCScoreMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -769,6 +863,39 @@ Metrics Results
   Error: {ba_result.get('error_message', 'Unknown error')}
 """
 
+    # CategoryAdherence results
+    if "category_adherence" in metrics:
+        ca_result = metrics["category_adherence"]
+        if ca_result["status"] == "success":
+            params_info = ca_result["parameters"]
+            target_cols = params_info.get("target_columns", "all categorical/boolean")
+
+            if ca_result.get("message"):
+                # Handle case where no compatible columns found
+                report += f"""CategoryAdherence Results:
+  Parameters: target_columns={target_cols}
+  Execution time: {ca_result['execution_time']:.2f}s
+  Status: {ca_result['message']}
+"""
+            else:
+                report += f"""CategoryAdherence Results:
+  Parameters: target_columns={target_cols}
+  Execution time: {ca_result['execution_time']:.2f}s
+
+  Category Compliance:
+  → Aggregate Score:   {ca_result['aggregate_score']:.3f}
+  → Columns Evaluated: {len(ca_result['compatible_columns'])}
+
+  Individual Column Scores:"""
+                for col, score in ca_result['column_scores'].items():
+                    report += f"""
+    → {col}: {score:.3f}"""
+                report += "\n"
+        else:
+            report += f"""CategoryAdherence: ERROR
+  Error: {ca_result.get('error_message', 'Unknown error')}
+"""
+
     # Individual metric insights
     insights = []
 
@@ -846,6 +973,17 @@ Metrics Results
             else:
                 insights.append("Poor boundary adherence")
         # If ba_score is None, we simply don't add any insight (no numerical/datetime columns to evaluate)
+
+    if "category_adherence" in metrics and metrics["category_adherence"]["status"] == "success":
+        ca_score = metrics["category_adherence"]["aggregate_score"]
+        if ca_score is not None:  # Only evaluate if we have compatible columns
+            if ca_score >= 0.95:
+                insights.append("Excellent category adherence")
+            elif ca_score >= 0.8:
+                insights.append("Good category adherence")
+            else:
+                insights.append("Poor category adherence")
+        # If ca_score is None, we simply don't add any insight (no categorical/boolean columns to evaluate)
 
     assessment = ", ".join(insights) if insights else "No successful metrics"
 
