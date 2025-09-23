@@ -1,0 +1,124 @@
+# pypyr/sdg-sweep.yaml
+# Sweep through different SDG models, calling variance-sweep for each
+
+context_parser: pypyr.parser.keyvaluepairs
+
+steps:
+  - name: pypyr.steps.default
+    description: "Set SDG configurations to sweep"
+    in:
+      defaults:
+        sdg_configs:
+          - library: "sdv"
+            model_type: "gaussian_copula"
+          - library: "sdv" 
+            model_type: "ctgan"
+          - library: "synthcity"
+            model_type: "ctgan"
+        seeds: "[1,2,3]"  # Seeds to use for each config
+
+  - name: pypyr.steps.py
+    description: "Show sweep configuration"
+    in:
+      pycode: |
+        print("🔄 Starting SDG Model Sweep")
+        print(f"Models to test: {len(context['sdg_configs'])}")
+        print(f"Seeds per model: {context['seeds']}")
+
+        print("\nModels:")
+        for i, config in enumerate(context['sdg_configs']):
+            print(f"  {i+1}. {config['library']}/{config['model_type']}")
+
+  - name: pypyr.steps.py
+    description: "Backup original params.yaml"
+    in:
+      pycode: |
+        import shutil
+        import os
+        
+        if os.path.exists('params.yaml'):
+            shutil.copy('params.yaml', 'params.yaml.backup')
+            print("📋 Backed up params.yaml to params.yaml.backup")
+        else:
+            print("⚠️  params.yaml not found - nothing to backup")
+
+  - name: pypyr.steps.call
+    description: "Process each SDG configuration"
+    foreach: '{sdg_configs}'
+    in:
+      call: process_sdg_config
+
+process_sdg_config:
+  - name: pypyr.steps.py
+    description: "Update params.yaml with current SDG config"
+    in:
+      pycode: |
+        from ruamel.yaml import YAML
+        from ruamel.yaml.comments import CommentedMap
+        from pathlib import Path
+        import tempfile, os
+
+        def set_in(d, path, value):
+            """Safely set nested key path like ['sdg','library'] even if missing."""
+            cur = d
+            for k in path[:-1]:
+                if k not in cur or not isinstance(cur[k], dict):
+                    cur[k] = CommentedMap()
+                cur = cur[k]
+            cur[path[-1]] = value
+
+        config = context['i']
+        print(f"\n🔄 Processing: {config['library']}/{config['model_type']}")
+
+        # Load with round-trip preservation (order, comments, quotes)
+        yaml = YAML(typ="rt")
+        yaml.preserve_quotes = True
+        yaml.indent(mapping=2, sequence=2, offset=0)
+
+        params_path = Path("params.yaml")
+        with params_path.open("r", encoding="utf-8") as f:
+            params = yaml.load(f)
+
+        # Update SDG configuration (robust to missing sections)
+        set_in(params, ["sdg", "library"], config["library"])
+        set_in(params, ["sdg", "model_type"], config["model_type"])
+        set_in(params, ["experiment", "name"], f"{config['library']}_{config['model_type']}_baseline")
+        set_in(params, ["experiment", "description"],
+               f"Using {config['library']} {config['model_type']} with default settings")
+
+        # Atomic write to avoid partial files
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=str(params_path.parent), encoding="utf-8") as tf:
+            yaml.dump(params, tf)
+            tmp_name = tf.name
+        os.replace(tmp_name, params_path)
+
+        print(f"📝 Updated params.yaml with {config['library']}/{config['model_type']}")
+
+  - name: pypyr.steps.echo
+    in:
+      echoMe: "✅ Ready to run seed variance for {i[library]}/{i[model_type]}"
+
+  - name: pypyr.steps.pype
+    description: "Run seed variance analysis for current SDG config"
+    in:
+      pype:
+        name: variance-sweep
+        args:
+          seeds: '{seeds}'
+
+  - name: pypyr.steps.echo
+    in:
+      echoMe: "✅ Completed {i[library]}/{i[model_type]} with all seeds"
+
+  - name: pypyr.steps.py
+    description: "Restore original params.yaml"
+    in:
+      pycode: |
+        import shutil
+        import os
+
+        if os.path.exists('params.yaml.backup'):
+            shutil.move('params.yaml.backup', 'params.yaml')
+            print("📋 Restored original params.yaml")
+        else:
+            print("⚠️  No backup file found")

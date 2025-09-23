@@ -1,4 +1,4 @@
-# pypyr/seed-variance.yaml
+# pypyr/variance-sweep.yaml
 
 context_parser: pypyr.parser.keyvaluepairs
 
@@ -7,7 +7,7 @@ steps:
     description: "Set default seeds"
     in:
       defaults:
-        seeds: [11, 12, 13]
+        seeds: [11, 12]
 
   - name: pypyr.steps.py
     description: "Parse seeds if provided as string"
@@ -56,23 +56,43 @@ process_seed:
     description: "Update params.yaml with current seed"
     in:
       pycode: |
-        import yaml
-        
-        print(f"🔄 Processing seed: {context['i']}")
-        
-        # Load params.yaml
-        with open('params.yaml', 'r') as f:
-            params = yaml.safe_load(f)
-        
-        # Update seed
-        params['experiment']['seed'] = int(context['i'])
-        print(f"📝 Updated seed to: {params['experiment']['seed']}")
-        
-        # Save updated params.yaml
-        with open('params.yaml', 'w') as f:
-            yaml.dump(params, f, default_flow_style=False, indent=2)
-        
-        print(f"💾 Saved params.yaml with seed {context['i']}")
+
+        from ruamel.yaml import YAML
+        from ruamel.yaml.comments import CommentedMap
+        from pathlib import Path
+        import tempfile, os
+
+        def set_in(d, path, value):
+            """Safely set a nested key path like ['experiment','seed'] even if parts are missing."""
+            cur = d
+            for k in path[:-1]:
+                if k not in cur or not isinstance(cur[k], dict):
+                    cur[k] = CommentedMap()
+                cur = cur[k]
+            cur[path[-1]] = value
+
+        seed = context['i']   # <-- this is just an int (42, 123, …)
+        print(f"\n🔄 Processing seed: {seed}")
+
+        yaml = YAML(typ="rt")          # round-trip mode
+        yaml.preserve_quotes = True
+        yaml.indent(mapping=2, sequence=2, offset=0)
+
+        params_path = Path("params.yaml")
+        with params_path.open("r", encoding="utf-8") as f:
+            params = yaml.load(f)
+
+        # --- Mutations (adjust path if you want seed somewhere else) ---
+        set_in(params, ["experiment", "seed"], seed)
+
+        # --- Atomic write ---
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=str(params_path.parent), encoding="utf-8") as tf:
+            yaml.dump(params, tf)
+            tmp_name = tf.name
+        os.replace(tmp_name, params_path)
+
+        print(f"📝 Updated params.yaml with seed={seed}")
+
   - name: pypyr.steps.shell
     description: "Run SDPype pipeline with current seed"
     in:
