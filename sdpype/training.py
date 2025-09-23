@@ -33,7 +33,14 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
     all_params = OmegaConf.to_container(cfg.sdg.parameters, resolve=True) if cfg.sdg.parameters else {}
     
     # Filter out Synthcity-specific parameters that SDV doesn't understand
-    synthcity_only_params = {'n_iter'}  # Add more Synthcity-only params as needed
+    synthcity_only_params = {
+        'n_iter', 'generator_n_layers_hidden', 'generator_n_units_hidden',
+        'generator_nonlin', 'generator_opt_betas', 'discriminator_n_layers_hidden',
+        'discriminator_n_units_hidden', 'discriminator_nonlin', 'discriminator_n_iter',
+        'discriminator_opt_betas', 'clipping_value', 'lambda_gradient_penalty',
+        'encoder_max_clusters', 'adjust_inference_sampling', 'patience',
+        'n_iter_print', 'n_iter_min', 'compress_dataset', 'sampling_patience'
+    }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
     match cfg.sdg.model_type:
@@ -113,23 +120,81 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
 
 
 def create_synthcity_model(cfg: DictConfig, data_shape):
-    """Create Synthcity model"""
+    """Create Synthcity model with detailed parameter handling"""
     model_name = cfg.sdg.model_type
-    
+
     # Get model parameters from config, filtering for Synthcity-compatible params
-    all_params = dict(cfg.sdg.parameters) if cfg.sdg.parameters else {}
-    
+    all_params = OmegaConf.to_container(cfg.sdg.parameters, resolve=True) if cfg.sdg.parameters else {}
+
     # Filter out SDV-specific parameters that Synthcity doesn't understand
-    sdv_only_params = {'epochs', 'verbose'}  # Add more SDV-only params as needed
+    sdv_only_params = {'epochs', 'verbose', 'cuda', 'enforce_min_max_values', 'enforce_rounding', 'locales'}
     model_params = {k: v for k, v in all_params.items() if k not in sdv_only_params}
-    
-    # Create synthcity plugin
+
+    # Create synthcity plugin with detailed parameter mapping
     try:
-        model = Plugins().get(model_name, **model_params)
-        return model
+        match model_name:
+            case "ctgan":
+                # Map common parameters that might have different names
+                # Handle epochs -> n_iter mapping
+                if 'epochs' in all_params and 'n_iter' not in model_params:
+                    model_params['n_iter'] = all_params['epochs']
+
+                model = Plugins().get("ctgan",
+                    # Training configuration
+                    n_iter=model_params.get("n_iter", 2000),
+                    batch_size=model_params.get("batch_size", 200),
+                    random_state=model_params.get("random_state", 0),
+
+                    # Generator architecture
+                    generator_n_layers_hidden=model_params.get("generator_n_layers_hidden", 2),
+                    generator_n_units_hidden=model_params.get("generator_n_units_hidden", 500),
+                    generator_nonlin=model_params.get("generator_nonlin", "relu"),
+                    generator_dropout=model_params.get("generator_dropout", 0.1),
+                    generator_opt_betas=tuple(model_params.get("generator_opt_betas", [0.5, 0.999])),
+
+                    # Discriminator architecture
+                    discriminator_n_layers_hidden=model_params.get("discriminator_n_layers_hidden", 2),
+                    discriminator_n_units_hidden=model_params.get("discriminator_n_units_hidden", 500),
+                    discriminator_nonlin=model_params.get("discriminator_nonlin", "leaky_relu"),
+                    discriminator_n_iter=model_params.get("discriminator_n_iter", 1),
+                    discriminator_dropout=model_params.get("discriminator_dropout", 0.1),
+                    discriminator_opt_betas=tuple(model_params.get("discriminator_opt_betas", [0.5, 0.999])),
+
+                    # Learning rates and regularization
+                    lr=model_params.get("lr", 1e-3),
+                    weight_decay=model_params.get("weight_decay", 1e-3),
+
+                    # Training stability
+                    clipping_value=model_params.get("clipping_value", 1),
+                    lambda_gradient_penalty=model_params.get("lambda_gradient_penalty", 10),
+
+                    # Data encoding and handling
+                    encoder_max_clusters=model_params.get("encoder_max_clusters", 10),
+                    adjust_inference_sampling=model_params.get("adjust_inference_sampling", False),
+
+                    # Early stopping and monitoring
+                    patience=model_params.get("patience", 5),
+                    n_iter_print=model_params.get("n_iter_print", 50),
+                    n_iter_min=model_params.get("n_iter_min", 100),
+
+                    # Core plugin settings
+                    compress_dataset=model_params.get("compress_dataset", False),
+                    sampling_patience=model_params.get("sampling_patience", 500),
+
+                    # Advanced parameters (only if explicitly provided)
+                    **{k: v for k, v in model_params.items() if k in [
+                        'encoder', 'dataloader_sampler', 'patience_metric', 'workspace'
+                    ] and v is not None}
+                )
+                return model
+
+            case _:
+                # Fallback to generic plugin creation for other Synthcity models
+                model = Plugins().get(model_name, **model_params)
+                return model
+
     except Exception as e:
         raise ValueError(f"Failed to create Synthcity model '{model_name}': {e}")
-
 
 def create_experiment_hash(cfg: DictConfig) -> str:
     """Create unique hash for experiment configuration"""

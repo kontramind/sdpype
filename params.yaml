@@ -4,9 +4,9 @@
 # EXPERIMENT CONFIGURATION
 # =============================================================================
 experiment:
-  seed: 3
-  name: synthcity_ctgan_baseline
-  description: Using synthcity ctgan with default settings
+  seed: 1
+  name: synthcity_ctgan_non_default
+  description: Using synthcity ctgan with non-default settings
   researcher: anonymous
   tags: []
 
@@ -16,7 +16,39 @@ experiment:
 sdg:
   library: synthcity
   model_type: ctgan
-  parameters: {}
+  parameters:
+    # Core training parameters (different from defaults to verify they're used)
+    n_iter: 500  # Reduced for faster testing (default: 2000)
+    batch_size: 100  # Smaller than default (default: 200)
+    random_state: 3  # Match experiment seed
+
+    # Architecture parameters (test enhanced parameter passing)
+    generator_n_layers_hidden: 3  # More than default (default: 2)
+    generator_n_units_hidden: 256  # Different from default (default: 500)
+    generator_nonlin: "leaky_relu"  # Different from default (default: "relu")
+    generator_dropout: 0.2  # Higher than default (default: 0.1)
+
+    discriminator_n_layers_hidden: 2  # Keep default
+    discriminator_n_units_hidden: 256  # Match generator
+    discriminator_nonlin: "relu"  # Different from default (default: "leaky_relu")
+    discriminator_dropout: 0.15  # Different from default (default: 0.1)
+
+    # Learning parameters
+    lr: 0.0005  # Different from default (default: 0.001)
+    weight_decay: 0.0005  # Different from default (default: 0.001)
+
+    # Training stability (test advanced parameters)
+    clipping_value: 2  # Different from default (default: 1)
+    lambda_gradient_penalty: 5  # Different from default (default: 10)
+
+    # Early stopping (useful for testing)
+    patience: 3  # Reduced for testing (default: 5)
+    n_iter_print: 25  # More frequent updates for testing (default: 50)
+    n_iter_min: 50  # Reduced minimum (default: 100)
+
+    # Data encoding
+    encoder_max_clusters: 15  # Different from default (default: 10)
+    adjust_inference_sampling: True  # Different from default (default: False)
 
 # =============================================================================
 # PREPROCESSING CONFIGURATION

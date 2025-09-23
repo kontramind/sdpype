@@ -54,7 +54,7 @@ CURATED_MODELS = {
         "tvae": {
             "type": "VAE",
             "description": "Tabular Variational Autoencoder", 
-            "tested": True,  # Set to True once you test this
+            "tested": True,
             "hyperparams": {
                 "enforce_min_max_values": True,
                 "enforce_rounding": True,
@@ -72,7 +72,7 @@ CURATED_MODELS = {
         "copula_gan": {
             "type": "Copula + GAN",
             "description": "A mix of classic (statistical) and GAN-based (deep learning) methods.", 
-            "tested": False,  # Set to True once you test this
+            "tested": True,
             "hyperparams": {
                 "enforce_min_max_values": True,
                 "enforce_rounding": True,
@@ -100,15 +100,58 @@ CURATED_MODELS = {
         },
     },
     "synthcity": {
-        "ctgan": {
-            "type": "GAN",
-            "description": "Synthcity's CTGAN implementation",
-            "tested": False,  # Set to True once you test this
-            "hyperparams": {
-                "n_epochs": 300,
-                "batch_size": 500,
-                "generator_lr": 0.0002,
-                "discriminator_lr": 0.0002
+    "ctgan": {
+        "type": "GAN",
+        "description": "Synthcity's CTGAN implementation",
+        "tested": False,  # Set to True once you test this
+        "hyperparams": {
+            # Training iterations - EXACT DEFAULTS FROM SOURCE CODE
+            "n_iter": 2000,  # Note: your current "n_epochs" maps to this
+            "batch_size": 200,  # Source default: 200
+
+            # Generator architecture - EXACT DEFAULTS
+            "generator_n_layers_hidden": 2,  # Source default: 2
+            "generator_n_units_hidden": 500,  # Source default: 500
+            "generator_nonlin": "relu",  # Source default: "relu"
+            "generator_dropout": 0.1,  # Source default: 0.1
+            "generator_opt_betas": [0.5, 0.999],  # Source default: (0.5, 0.999)
+
+            # Discriminator architecture - EXACT DEFAULTS
+            "discriminator_n_layers_hidden": 2,  # Source default: 2
+            "discriminator_n_units_hidden": 500,  # Source default: 500
+            "discriminator_nonlin": "leaky_relu",  # Source default: "leaky_relu"
+            "discriminator_n_iter": 1,  # Source default: 1
+            "discriminator_dropout": 0.1,  # Source default: 0.1
+            "discriminator_opt_betas": [0.5, 0.999],  # Source default: (0.5, 0.999)
+
+            # Learning rates and regularization - EXACT DEFAULTS
+            "lr": 0.001,  # Source default: 1e-3 (same as 0.001)
+            "weight_decay": 0.001,  # Source default: 1e-3 (same as 0.001)
+
+            # Training stability - EXACT DEFAULTS
+            "clipping_value": 1,  # Source default: 1 (int)
+            "lambda_gradient_penalty": 10,  # Source default: 10 (float)
+
+            # Data encoding - EXACT DEFAULTS
+            "encoder_max_clusters": 10,  # Source default: 10
+            "adjust_inference_sampling": False,  # Source default: False
+
+            # Early stopping and monitoring - EXACT DEFAULTS
+            "patience": 5,  # Source default: 5
+            "n_iter_print": 50,  # Source default: 50
+            "n_iter_min": 100,  # Source default: 100
+
+            # Core plugin settings - EXACT DEFAULTS
+            "compress_dataset": False,  # Source default: False
+            "sampling_patience": 500,  # Source default: 500
+            "random_state": 0,  # Source default: 0
+
+            # Advanced parameters (usually left as None/default)
+            # "encoder": None,  # Source default: None
+            # "dataloader_sampler": None,  # Source default: None
+            # "patience_metric": None,  # Source default: None
+            # "workspace": "workspace",  # Source default: Path("workspace")
+            # "device": "auto",  # Source default: DEVICE constant
             }
         },
         "ddpm": {
