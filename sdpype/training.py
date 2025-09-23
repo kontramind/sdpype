@@ -24,6 +24,9 @@ from synthcity.plugins import Plugins
 # Import new serialization module
 from sdpype.serialization import save_model, create_model_metadata
 
+# Synthpop imports
+from synthpop.method import CARTMethod
+
 
 def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
     """Create SDV model with metadata"""
@@ -89,7 +92,7 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
                 enforce_min_max_values=model_params.get("enforce_min_max_values", True),
                 enforce_rounding=model_params.get("enforce_rounding", True),
                 epochs=model_params.get("epochs", 300),
-                batpch_size=model_params.get("batch_size", 500),
+                batch_size=model_params.get("batch_size", 500),
                 verbose=model_params.get("verbose", False),
                 cuda=model_params.get("cuda", True),
                 compress_dims=model_params.get("compress_dims", (128, 128)),
@@ -252,7 +255,7 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                 if 'epochs' in all_params and 'struct_learning_n_iter' not in model_params:
                     model_params['struct_learning_n_iter'] = all_params['epochs']
 
-                    model = Plugins().get("bayesian_network",
+                model = Plugins().get("bayesian_network",
                     # Structure learning parameters
                     struct_learning_n_iter=model_params.get("struct_learning_n_iter", 1000),
                     struct_learning_search_method=model_params.get("struct_learning_search_method", "tree_search"),
@@ -282,6 +285,42 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
 
     except Exception as e:
         raise ValueError(f"Failed to create Synthcity model '{model_name}': {e}")
+
+def create_synthpop_model(cfg: DictConfig, metadata):
+    """Create Synthpop model with metadata conversion"""
+    model_type = cfg.sdg.model_type
+
+    # Convert SDPype/SDV metadata to synthpop format
+    synthpop_metadata = {}
+    for column_name, column_info in metadata.columns.items():
+        sdtype = column_info.get('sdtype', 'unknown')
+        if sdtype == "numerical":
+            synthpop_metadata[column_name] = "numerical"
+        elif sdtype == "categorical":
+            synthpop_metadata[column_name] = "categorical"
+        elif sdtype == "boolean":
+            synthpop_metadata[column_name] = "boolean"
+        elif sdtype == "datetime":
+            synthpop_metadata[column_name] = "datetime"
+        else:
+            # Default fallback
+            synthpop_metadata[column_name] = "numerical"
+            print(f"⚠️  Unknown sdtype '{sdtype}' for column '{column_name}', defaulting to numerical")
+
+    # Get parameters from config
+    model_params = OmegaConf.to_container(cfg.sdg.parameters, resolve=True) if cfg.sdg.parameters else {}
+
+    if model_type == "cart":
+        return CARTMethod(
+            metadata=synthpop_metadata,
+            smoothing=model_params.get("smoothing", False),
+            proper=model_params.get("proper", False),
+            minibucket=model_params.get("minibucket", 5),
+            random_state=cfg.experiment.seed,
+            tree_params=model_params.get("tree_params", {})
+        ), synthpop_metadata
+    else:
+        raise ValueError(f"Unknown synthpop model: {model_type}")
 
 def create_experiment_hash(cfg: DictConfig) -> str:
     """Create unique hash for experiment configuration"""
@@ -339,13 +378,24 @@ def main(cfg: DictConfig) -> None:
     elif library == "synthcity":
         print(f"🔧 Creating Synthcity {cfg.sdg.model_type} model...")
         model = create_synthcity_model(cfg, data.shape)
+    elif library == "synthpop":
+        print(f"🔧 Creating Synthpop {cfg.sdg.model_type} model...")
+        model, synthpop_metadata = create_synthpop_model(cfg, metadata)
     else:
         raise ValueError(f"Unknown library: {library}")
 
     # Train model
     print(f"⏳ Training {library} {cfg.sdg.model_type} model...")
     start_time = time.time()
-    model.fit(data)
+
+    if library == "synthpop":
+        # Use SDPype preprocessed data directly
+        print(f"🔄 Using SDPype preprocessing for synthpop...")
+        model._sdpype_metadata = synthpop_metadata
+        model.fit(data)
+    else:
+        model.fit(data)
+
     training_time = time.time() - start_time
 
     print(f"⏱️  Training completed in {training_time:.1f}s")

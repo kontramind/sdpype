@@ -2685,6 +2685,21 @@ wheels = [
 ]
 
 [[package]]
+name = "python-synthpop"
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "copulas" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scikit-learn" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/73/9c/5e50de75200c7787fcda0985a08ec500f56ac1562418b92d9b4e208689c9/python_synthpop-0.1.2.tar.gz", hash = "sha256:2bf39a3e80a9ea73a721b661b3dba86af49031c3034174b7ed856cada9d19504", size = 612580, upload-time = "2025-05-25T10:39:24.768Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/90/93/7f90be134b58e1efb92461d709ebad78d13b366fc1ee458d401c9cbd7f17/python_synthpop-0.1.2-py3-none-any.whl", hash = "sha256:83a52a01cb06937e1d9cc3a09cceb015e3d7eaf65a739b1a1e240c24fa0b1692", size = 558130, upload-time = "2025-05-25T10:39:22.913Z" },
+]
+
+[[package]]
 name = "pytorch-lightning"
 version = "2.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -3031,6 +3046,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pypyr" },
+    { name = "python-synthpop" },
     { name = "rich" },
     { name = "scikit-learn" },
     { name = "sdv" },
@@ -3051,6 +3067,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=1.5.0" },
     { name = "pyarrow", specifier = ">=12.0.0" },
     { name = "pypyr", specifier = ">=5.9.1" },
+    { name = "python-synthpop", specifier = ">=0.1.2" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "scikit-learn", specifier = ">=1.1.0" },
     { name = "sdv", specifier = ">=1.0.0" },

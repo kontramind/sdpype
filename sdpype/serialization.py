@@ -24,6 +24,13 @@ except ImportError:
     SYNTHCITY_AVAILABLE = False
     synthcity_save = synthcity_load = None
 
+# Check for synthpop availability
+try:
+    import synthpop
+    SYNTHPOP_AVAILABLE = True
+except ImportError:
+    SYNTHPOP_AVAILABLE = False
+
 
 # Model format version for compatibility
 SERIALIZE_FORMAT_VERSION = "2.0"
@@ -102,7 +109,15 @@ def save_model(
             # Synthcity models: serialize to bytes
             model_bytes = synthcity_save(model)
             model_data["model_bytes"] = model_bytes
-            
+
+        elif library == "synthpop":
+            if not SYNTHPOP_AVAILABLE:
+                raise LibraryNotSupportedError(
+                    "Synthpop not available. Install with: pip install python-synthpop"
+                )
+            # Synthpop models can be pickled directly like SDV
+            model_data["model"] = model
+
         else:
             raise LibraryNotSupportedError(f"Library '{library}' not supported")
         
@@ -170,7 +185,15 @@ def load_model(experiment_seed: int, experiment_name: str, model_dir: Optional[P
                     )
                 model_bytes = model_data["model_bytes"]
                 model = synthcity_load(model_bytes)
-                
+
+            elif library == "synthpop":
+                if not SYNTHPOP_AVAILABLE:
+                    raise LibraryNotSupportedError(
+                        "Synthpop not available. Install with: pip install python-synthpop"
+                    )
+                # Synthpop models are stored directly like SDV
+                model = model_data["model"]
+
             else:
                 raise LibraryNotSupportedError(f"Library '{library}' not supported")
                 
@@ -344,7 +367,8 @@ def get_supported_libraries() -> Dict[str, bool]:
     
     libraries = {
         "sdv": True,  # Always supported (pickle-based)
-        "synthcity": SYNTHCITY_AVAILABLE
+        "synthcity": SYNTHCITY_AVAILABLE,
+        "synthpop": SYNTHPOP_AVAILABLE,
     }
     
     return libraries

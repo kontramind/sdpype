@@ -84,6 +84,10 @@ def main(cfg: DictConfig) -> None:
             synthetic_data = model.sample(n_samples)
         elif library == "synthcity":
             synthetic_data = model.generate(count=n_samples).dataframe()
+        elif library == "synthpop":
+            # Synthpop generation
+            print(f"🔄 Generating {n_samples} samples using synthpop {model_type}...")
+            synthetic_data = model.sample(n_samples)
         else:
             raise ValueError(f"Unknown library: {library}")
     except Exception as e:

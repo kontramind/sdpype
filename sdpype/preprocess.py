@@ -114,13 +114,33 @@ def main(cfg: DictConfig) -> None:
                 Q3 = data[col].quantile(0.75)
                 IQR = Q3 - Q1
                 data = data[~((data[col] < (Q1 - 1.5 * IQR)) | (data[col] > (Q3 + 1.5 * IQR)))]
-        
+
         # Scale numeric features
         if cfg.preprocessing.steps.get("scale_numeric") == "standard":
-            numeric_cols = data.select_dtypes(include=['number']).columns
-            scaler = StandardScaler()
-            data[numeric_cols] = scaler.fit_transform(data[numeric_cols])
-        
+            # Get only truly numerical columns from metadata, exclude categorical/boolean/datetime
+            numerical_columns = []
+            excluded_columns = []
+
+            for col in data.columns:
+                if col in metadata.columns:
+                    sdtype = metadata.columns[col].get("sdtype", "unknown")
+                    if sdtype == "numerical":
+                        numerical_columns.append(col)
+                    else:
+                        excluded_columns.append((col, sdtype))
+                else:
+                    # Column not in metadata, assume numerical for safety
+                    numerical_columns.append(col)
+
+            print(f"Scaling {len(numerical_columns)} numerical columns using standard scaler")
+            if numerical_columns:
+                print(f"  Scaling columns: {numerical_columns}")
+                scaler = StandardScaler()
+                data[numerical_columns] = scaler.fit_transform(data[numerical_columns])
+
+            if excluded_columns:
+                print(f"  Preserving non-numerical columns: {[(col, dtype) for col, dtype in excluded_columns]}")
+
         print(f"Processed data: {data.shape}")
     else:
         print("Preprocessing disabled - using raw data")
@@ -133,6 +153,9 @@ def main(cfg: DictConfig) -> None:
 
     # Save updated metadata (NEW)
     metadata_output_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}_metadata.json"
+    if Path(metadata_output_file).exists():
+        Path(metadata_output_file).unlink()
+
     metadata.save_to_json(metadata_output_file)
     print(f"🔍 Updated metadata saved: {metadata_output_file}")
 

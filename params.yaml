@@ -4,35 +4,25 @@
 # EXPERIMENT CONFIGURATION
 # =============================================================================
 experiment:
-  seed: 456
-  name: synthcity_bayesian_network_test
-  description: Testing enhanced synthcity Bayesian Network with custom structure learning
+  seed: 51
+  name: "synthpop_cart_test"
+  description: "Testing CART integration"
   researcher: test_user
-  tags: ["synthcity", "bayesian_network", "probabilistic", "enhanced", "test"]
+  tags:
 
 # =============================================================================
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: synthcity
-  model_type: bayesian_network
+  library: synthpop
+  model_type: cart
   parameters:
-    # Structure learning parameters (different from defaults to verify they're used)
-    struct_learning_n_iter: 500  # Reduced for testing (default: 1000)
-    struct_learning_search_method: "hillclimb"  # Different from default (default: "tree_search")
-    struct_learning_score: "bic"  # Different from default (default: "k2")
-    struct_max_indegree: 3  # Lower than default (default: 4)
+    smoothing: false
+    proper: false
+    minibucket: 5
+    tree_params: {}
 
-    # Data encoding parameters (test custom encoding)
-    encoder_max_clusters: 15  # Higher than default (default: 10)
-    encoder_noise_scale: 0.05  # Lower than default (default: 0.1)
-
-    # Core plugin settings
-    random_state: 456  # Match experiment seed
-    compress_dataset: True  # Different from default (default: False)
-    sampling_patience: 200  # Reduced for testing (default: 500)
-
-# =============================================================================
+# ===========================================================================
 # PREPROCESSING CONFIGURATION
 # =============================================================================
 

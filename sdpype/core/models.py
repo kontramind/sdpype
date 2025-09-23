@@ -226,6 +226,26 @@ CURATED_MODELS = {
                 # "workspace": "workspace",  # Source default: Path("workspace")
             }
         }
+    },
+    "synthpop": {
+        "cart": {
+            "type": "Tree-based",
+            "description": "CART (Classification and Regression Trees) method for synthetic data generation",
+            "tested": True,
+            "hyperparams": {
+                "smoothing": False,  # Apply smoothing to numerical predictions
+                "proper": False,     # Apply proper resampling during training
+                "minibucket": 5,     # Minimum samples per leaf in decision tree
+                "random_state": None,  # Will use experiment.seed
+                "tree_params": {     # Additional sklearn tree parameters
+                    "max_depth": None,
+                    "min_samples_split": 2,
+                    "min_samples_leaf": 1,
+                    "max_features": None,
+                    "random_state": None
+                }
+            }
+        }
     }
 }
 
@@ -285,14 +305,26 @@ def _show_library_status():
     except ImportError:
         synthcity_status = "❌ Not installed"
         synthcity_style = "red"
-    
+
+    # Test Synthpop availability
+    try:
+        import synthpop
+        # Get version if available
+        synthpop_version = getattr(synthpop, '__version__', 'unknown')
+        synthpop_status = f"✅ Available (v{synthpop_version})"
+        synthpop_style = "green"
+    except ImportError:
+        synthpop_status = "❌ Not installed"
+        synthpop_style = "red"
+
     table = Table(show_header=True)
     table.add_column("Library", style="cyan")
     table.add_column("Status", style="white")
     
     table.add_row("SDV", f"[{sdv_style}]{sdv_status}[/{sdv_style}]")
     table.add_row("Synthcity", f"[{synthcity_style}]{synthcity_status}[/{synthcity_style}]")
-    
+    table.add_row("Synthpop", f"[{synthpop_style}]{synthpop_status}[/{synthpop_style}]")
+
     console.print(table)
 
 def _show_models_table(models_to_show: dict):
