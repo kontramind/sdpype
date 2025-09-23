@@ -39,7 +39,15 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         'discriminator_n_units_hidden', 'discriminator_nonlin', 'discriminator_n_iter',
         'discriminator_opt_betas', 'clipping_value', 'lambda_gradient_penalty',
         'encoder_max_clusters', 'adjust_inference_sampling', 'patience',
-        'n_iter_print', 'n_iter_min', 'compress_dataset', 'sampling_patience'
+        'n_iter_print', 'n_iter_min', 'compress_dataset', 'sampling_patience',
+        # DDPM-specific parameters
+        'is_classification', 'num_timesteps', 'gaussian_loss_type', 'scheduler',
+        'model_type', 'model_params', 'dim_embed', 'continuous_encoder',
+        'cont_encoder_params', 'log_interval', 'validation_size', 'callbacks',
+        'validation_metric',
+        # Bayesian Network-specific parameters
+        'struct_learning_n_iter', 'struct_learning_search_method', 'struct_learning_score',
+        'struct_max_indegree', 'encoder_noise_scale',
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
@@ -184,6 +192,85 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     # Advanced parameters (only if explicitly provided)
                     **{k: v for k, v in model_params.items() if k in [
                         'encoder', 'dataloader_sampler', 'patience_metric', 'workspace'
+                    ] and v is not None}
+                )
+                return model
+
+            case "ddpm":
+                # Map common parameters that might have different names
+                # Handle epochs -> n_iter mapping
+                if 'epochs' in all_params and 'n_iter' not in model_params:
+                    model_params['n_iter'] = all_params['epochs']
+
+                model = Plugins().get("ddpm",
+                    # Core training parameters
+                    n_iter=model_params.get("n_iter", 1000),
+                    lr=model_params.get("lr", 0.002),
+                    weight_decay=model_params.get("weight_decay", 1e-4),
+                    batch_size=model_params.get("batch_size", 1024),
+                    random_state=model_params.get("random_state", 0),
+
+                    # Task configuration
+                    is_classification=model_params.get("is_classification", False),
+
+                    # Diffusion process parameters
+                    num_timesteps=model_params.get("num_timesteps", 1000),
+                    gaussian_loss_type=model_params.get("gaussian_loss_type", "mse"),
+                    scheduler=model_params.get("scheduler", "cosine"),
+
+                    # Model architecture
+                    model_type=model_params.get("model_type", "mlp"),
+                    model_params=model_params.get("model_params", {
+                        "n_layers_hidden": 3,
+                        "n_units_hidden": 256,
+                        "dropout": 0.0
+                    }),
+                    dim_embed=model_params.get("dim_embed", 128),
+
+                    # Data encoding
+                    continuous_encoder=model_params.get("continuous_encoder", "quantile"),
+                    cont_encoder_params=model_params.get("cont_encoder_params", {}),
+
+                    # Training monitoring and validation
+                    log_interval=model_params.get("log_interval", 100),
+                    validation_size=model_params.get("validation_size", 0),
+
+                    # Core plugin settings
+                    compress_dataset=model_params.get("compress_dataset", False),
+                    sampling_patience=model_params.get("sampling_patience", 500),
+
+                    # Advanced parameters (only if explicitly provided)
+                    **{k: v for k, v in model_params.items() if k in [
+                        'callbacks', 'validation_metric', 'workspace'
+                    ] and v is not None}
+                )
+                return model
+
+            case "bayesian_network":
+                # Map common parameters that might have different names
+                # Handle epochs -> struct_learning_n_iter mapping (if needed)
+                if 'epochs' in all_params and 'struct_learning_n_iter' not in model_params:
+                    model_params['struct_learning_n_iter'] = all_params['epochs']
+
+                    model = Plugins().get("bayesian_network",
+                    # Structure learning parameters
+                    struct_learning_n_iter=model_params.get("struct_learning_n_iter", 1000),
+                    struct_learning_search_method=model_params.get("struct_learning_search_method", "tree_search"),
+                    struct_learning_score=model_params.get("struct_learning_score", "k2"),
+                    struct_max_indegree=model_params.get("struct_max_indegree", 4),
+
+                    # Data encoding parameters
+                    encoder_max_clusters=model_params.get("encoder_max_clusters", 10),
+                    encoder_noise_scale=model_params.get("encoder_noise_scale", 0.1),
+
+                    # Core plugin settings
+                    random_state=model_params.get("random_state", 0),
+                    compress_dataset=model_params.get("compress_dataset", False),
+                    sampling_patience=model_params.get("sampling_patience", 500),
+
+                    # Advanced parameters (only if explicitly provided)
+                    **{k: v for k, v in model_params.items() if k in [
+                        'workspace'
                     ] and v is not None}
                 )
                 return model

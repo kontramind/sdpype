@@ -103,7 +103,7 @@ CURATED_MODELS = {
     "ctgan": {
         "type": "GAN",
         "description": "Synthcity's CTGAN implementation",
-        "tested": False,  # Set to True once you test this
+        "tested": True,
         "hyperparams": {
             # Training iterations - EXACT DEFAULTS FROM SOURCE CODE
             "n_iter": 2000,  # Note: your current "n_epochs" maps to this
@@ -157,11 +157,73 @@ CURATED_MODELS = {
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",
-            "tested": False,
+            "tested": True,
             "hyperparams": {
-                "n_epochs": 1000,
-                "batch_size": 500,
-                "lr": 0.001
+               # Core training parameters - EXACT DEFAULTS FROM SOURCE CODE
+               "n_iter": 1000,  # Source default: 1000 (not "n_epochs")
+               "lr": 0.002,  # Source default: 0.002 (not 0.001)
+               "weight_decay": 1e-4,  # Source default: 1e-4
+               "batch_size": 1024,  # Source default: 1024 (not 500)
+
+               # Task configuration
+               "is_classification": False,  # Source default: False
+
+               # Diffusion process parameters
+               "num_timesteps": 1000,  # Source default: 1000
+               "gaussian_loss_type": "mse",  # Source default: "mse", options: "mse", "kl"
+               "scheduler": "cosine",  # Source default: "cosine", options: "cosine", "linear"
+
+               # Model architecture
+             "model_type": "mlp",  # Source default: "mlp", options: "mlp" only (resnet/tabnet not implemented)
+               "model_params": {  # Source default model_params for MLP
+                   "n_layers_hidden": 3,  # From docstring default
+                   "n_units_hidden": 256,  # From docstring default
+                   "dropout": 0.0  # From docstring default
+               },
+               "dim_embed": 128,  # Source default: 128
+
+               # Data encoding
+               "continuous_encoder": "quantile",  # Source default: "quantile"
+               "cont_encoder_params": {},  # Source default: {}
+
+               # Training monitoring and validation
+               "log_interval": 100,  # Source default: 100
+               "validation_size": 0,  # Source default: 0 (no validation split)
+
+               # Core plugin settings - EXACT DEFAULTS
+               "random_state": 0,  # Source default: 0
+               "compress_dataset": False,  # Source default: False
+               "sampling_patience": 500,  # Source default: 500
+
+               # Advanced parameters (usually left as default)
+               # "callbacks": [],  # Source default: ()
+               # "validation_metric": None,  # Source default: None
+               # "workspace": "workspace",  # Source default: Path("workspace")
+               # "device": "auto",  # Source default: DEVICE constant
+            }
+        },
+        "bayesian_network": {
+            "type": "Probabilistic",
+            "description": "Bayesian Network using probabilistic graphical models (pgmpy backend)",
+            "tested": True,
+            "hyperparams": {
+                # Structure learning parameters - EXACT DEFAULTS FROM SOURCE CODE
+                "struct_learning_n_iter": 1000,  # Source default: 1000
+                "struct_learning_search_method": "tree_search",  # Source default: "tree_search"
+                "struct_learning_score": "k2",  # Source default: "k2"
+                "struct_max_indegree": 4,  # Source default: 4
+
+                # Data encoding parameters - EXACT DEFAULTS
+                "encoder_max_clusters": 10,  # Source default: 10
+                "encoder_noise_scale": 0.1,  # Source default: 0.1
+
+                # Core plugin settings - EXACT DEFAULTS
+                "random_state": 0,  # Source default: 0
+                "compress_dataset": False,  # Source default: False
+                "sampling_patience": 500,  # Source default: 500
+
+                # Advanced parameters (usually left as default)
+                # "workspace": "workspace",  # Source default: Path("workspace")
             }
         }
     }
