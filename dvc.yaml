@@ -59,3 +59,19 @@ stages:
     metrics:
       - experiments/metrics/statistical_similarity_${experiment.name}_${experiment.seed}.json
       - experiments/metrics/statistical_report_${experiment.name}_${experiment.seed}.txt
+
+  detection_evaluation:
+    cmd: python -m sdpype.detect
+    deps:
+      - sdpype/detect.py
+      - sdpype/evaluation/detection.py
+      - experiments/data/processed/data_${experiment.name}_${experiment.seed}.csv
+      - experiments/data/processed/data_${experiment.name}_${experiment.seed}_metadata.json
+      - experiments/data/synthetic/synthetic_data_${experiment.name}_${experiment.seed}.csv
+    params:
+      - evaluation.detection_evaluation
+      - experiment.seed
+      - experiment.name
+    metrics:
+      - experiments/metrics/detection_evaluation_${experiment.name}_${experiment.seed}.json
+      - experiments/metrics/detection_report_${experiment.name}_${experiment.seed}.txt

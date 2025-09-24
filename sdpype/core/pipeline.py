@@ -42,6 +42,7 @@ def _validate_stage_name(stage_name: str) -> bool:
         "train_sdg", 
         "generate_synthetic",
         "statistical_similarity",
+        "detection_evaluation",
     ]
     
     if stage_name not in known_stages:
@@ -99,7 +100,11 @@ def _show_stage_summary(stage_name: str):
         "statistical_similarity": [
             ("experiments/metrics/statistical_similarity_*.json", "📊 Statistical metrics"),
             ("experiments/metrics/statistical_report_*.txt", "📋 Statistical metric reports")
-         ]
+         ],
+        "detection_evaluation": [
+            ("experiments/metrics/detection_evaluation_*.json", "🔍 Detection metrics"),
+            ("experiments/metrics/detection_report_*.txt", "📋 Detection evaluation reports")
+        ],
     }
 
     patterns = stage_outputs.get(stage_name, [])

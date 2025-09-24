@@ -76,3 +76,27 @@ evaluation:
     - name: "tv_complement"
       parameters:
         target_columns:
+
+# Detection-based evaluation using classifier approaches
+  detection_evaluation:
+    # Common parameters for all detection methods (synthcity DetectionEvaluator params)
+    common_params:
+      n_folds: 5              # Cross-validation folds
+      random_state: 51        # Random seed
+      reduction: "max"        # Aggregation: "mean", "max", "min"
+
+    methods:
+       - name: "detection_gmm"
+         parameters: {}
+           # Override common params if needed
+           # n_folds: 3
+       - name: "detection_xgb"
+         parameters: {}
+           # Override common params if needed
+           # reduction: "max"
+       - name: "detection_mlp"
+         parameters: {}
+           # Override common params if needed
+       - name: "detection_linear"
+         parameters: {}
+            # Override common params if needed

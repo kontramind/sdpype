@@ -85,6 +85,9 @@ uv run sdpype model validate 42 --name baseline
 2. **train_sdg**: Train synthetic data generator
 3. **generate_synthetic**: Generate synthetic data
 4. **statistical_similarity**: Compare statistical similarity between original and synthetic data
+5. **detection_evaluation**: Assess synthetic data quality using classifier-based detection methods
+
+synthetic data
 
 ### Running Individual Stages
 ```bash
@@ -92,6 +95,7 @@ uv run sdpype model validate 42 --name baseline
 uv run sdpype stage train_sdg
 uv run sdpype stage generate_synthetic
 uv run sdpype stage statistical_similarity
+uv run sdpype stage detection_evaluation
 ```
 
 ## Evaluation Framework
