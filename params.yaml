@@ -5,7 +5,7 @@
 # =============================================================================
 experiment:
   seed: 51
-  name: "{sdg.library}_{sdg.model_type}_test"
+  name: "{sdg.library}_{sdg.model_type}_{data.input_hash}"
   description: "Testing"
   researcher: test_user
   tags:
@@ -14,7 +14,7 @@ experiment:
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: synthcity
+  library: sdv
   model_type: ctgan
   parameters:
     smoothing: false

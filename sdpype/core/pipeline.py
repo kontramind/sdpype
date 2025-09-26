@@ -4,6 +4,7 @@ DVC pipeline execution functionality
 """
 
 import shutil
+import hashlib
 import subprocess
 from pathlib import Path
 from rich.console import Console
@@ -14,6 +15,36 @@ import tempfile
 import os
 
 console = Console()
+
+
+def _calculate_data_hash(file_path: str, max_bytes: int = 1024*1024) -> str:
+    """
+    Calculate SHA256 hash of data file for unique experiment identification.
+
+    Args:
+        file_path: Path to the data file
+        max_bytes: Maximum bytes to read for hash calculation (default 1MB)
+
+    Returns:
+        8-character truncated SHA256 hash
+    """
+    try:
+        if not Path(file_path).exists():
+            console.print(f"⚠️  Data file not found for hashing: {file_path}", style="yellow")
+            return "unknown"
+
+        hash_sha256 = hashlib.sha256()
+        with open(file_path, 'rb') as f:
+            # Read file in chunks to handle large files efficiently
+            while chunk := f.read(8192):
+                hash_sha256.update(chunk)
+
+        # Return first 8 characters of hex digest
+        return hash_sha256.hexdigest()[:8]
+
+    except Exception as e:
+        console.print(f"⚠️  Error calculating data hash: {e}", style="yellow")
+        return "hashfail"
 
 
 def _resolve_params_templates():
@@ -58,10 +89,22 @@ def _resolve_params_templates():
     # If name is empty/None or contains templates, resolve it
     if not name or (isinstance(name, str) and '{' in name and '}' in name):
         # Use template or auto-generate
-        template = name_template or name or "{sdg.library}_{sdg.model_type}_{seed}"
+        template = name_template or name or "{sdg.library}_{sdg.model_type}_{data.input_hash}"
 
         # Resolve template
         try:
+            # Calculate data file hash for unique identification
+            data_config = params.get('data', {})
+            input_file = data_config.get('input_file', '')
+
+            if input_file:
+                console.print(f"🔄 Calculating hash for: {input_file}", style="dim")
+                input_hash = _calculate_data_hash(input_file)
+                console.print(f"📊 Data hash: {input_hash}", style="dim")
+            else:
+                console.print("⚠️  No input file found for hashing", style="yellow")
+                input_hash = "nodata"
+
             # Create a custom formatting class that supports dot notation
             class DotDict:
                 def __init__(self, d):
@@ -69,6 +112,10 @@ def _resolve_params_templates():
                     for k, v in d.items():
                         if isinstance(v, dict):
                             setattr(self, k, DotDict(v))
+                        elif isinstance(v, list):
+                            setattr(self, k, v)
+                        else:
+                            setattr(self, k, v)
 
             # Convert CommentedMaps to regular dicts for dot notation
             def to_dict(obj):
@@ -80,10 +127,15 @@ def _resolve_params_templates():
             # Create dot-accessible objects
             sdg_dict = to_dict(params.get('sdg', {}))
             experiment_dict = to_dict(params.get('experiment', {}))
+            data_dict = to_dict(params.get('data', {}))
+
+            # Add calculated hash to data context
+            data_dict['input_hash'] = input_hash
 
             resolved_name = template.format(
                 sdg=DotDict(sdg_dict),
-                experiment=DotDict(experiment_dict)
+                experiment=DotDict(experiment_dict),
+                data=DotDict(data_dict)
             )
             console.print(f"🏷️  Auto-resolving template: {template} → {resolved_name}", style="cyan")
 
@@ -100,11 +152,7 @@ def _resolve_params_templates():
                 tmp_name = tf.name
             os.replace(tmp_name, params_file)
 
-            # DEBUG: Verify the file was actually updated
-            with open(params_file, 'r') as f:
-                verify_content = f.read()
-                console.print(f"🐛 DEBUG: File contents after write:", style="dim")
-                console.print(f"{verify_content[:300]}...", style="dim")
+            console.print(f"✅ Updated params.yaml: {resolved_name}", style="green")
 
         except KeyError as e:
             console.print(f"❌ Template error: missing placeholder {e}", style="red")
