@@ -108,6 +108,25 @@ def _parse_model_id(model_id: str) -> tuple[str, int]:
     except ValueError:
         raise ValueError(f"Last part of model ID must be a number (seed): {model_id}")
 
+
+def _extract_dataset_name(model: dict) -> str:
+    """Extract dataset filename from model metadata"""
+    try:
+        # Get the full config from model metadata
+        params = model.get('params', {})
+        data_config = params.get('data', {})
+        input_file = data_config.get('input_file', '')
+
+        if input_file:
+            # Extract just the filename from the full path
+            from pathlib import Path
+            return Path(input_file).name
+        else:
+            return "Unknown"
+
+    except Exception:
+        return "Unknown"
+
 def _show_compact_model_list(models):
     """Show models in a compact table format"""
 
@@ -115,6 +134,7 @@ def _show_compact_model_list(models):
     table.add_column("Experiment", style="cyan")
     table.add_column("Seed", style="magenta")
     table.add_column("Model", style="green")
+    table.add_column("Dataset", style="yellow")
     table.add_column("Model ID", style="blue")
     table.add_column("Size", style="yellow")
     table.add_column("Created", style="dim")
@@ -123,6 +143,7 @@ def _show_compact_model_list(models):
         name = model.get('experiment_name', 'unknown')
         seed = str(model.get('experiment_seed', '?'))
         model_type = f"{model.get('library', '?')}/{model.get('model_type', '?')}"
+        dataset_name = _extract_dataset_name(model)
         model_id = f"{name}_{seed}"
         size = f"{model.get('file_size_mb', 0):.1f} MB"
 
@@ -132,7 +153,7 @@ def _show_compact_model_list(models):
             # Extract date from ISO timestamp
             created = created.split('T')[0]
 
-        table.add_row(name, seed, model_type, model_id, size, created)
+        table.add_row(name, seed, model_type, dataset_name, model_id, size, created)
 
     console.print(table)
 
@@ -155,6 +176,9 @@ def _show_detailed_model_list(models):
 
         if 'library' in model and 'model_type' in model:
             details.append(f"🔧 Type: {model['library']}/{model['model_type']}")
+
+        dataset_name = _extract_dataset_name(model)
+        details.append(f"📊 Dataset: {dataset_name}")  # NEW LINE
 
         if 'saved_at' in model:
             details.append(f"🕒 Created: {model['saved_at']}")
