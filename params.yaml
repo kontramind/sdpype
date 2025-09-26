@@ -5,8 +5,8 @@
 # =============================================================================
 experiment:
   seed: 51
-  name: "synthpop_cart_test"
-  description: "Testing CART integration"
+  name: "{sdg.library}_{sdg.model_type}_test"
+  description: "Testing"
   researcher: test_user
   tags:
 
@@ -14,8 +14,8 @@ experiment:
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: synthpop
-  model_type: cart
+  library: synthcity
+  model_type: ctgan
   parameters:
     smoothing: false
     proper: false
@@ -86,17 +86,17 @@ evaluation:
       reduction: "max"        # Aggregation: "mean", "max", "min"
 
     methods:
-       - name: "detection_gmm"
-         parameters: {}
+    - name: "detection_gmm"
+      parameters: {}
            # Override common params if needed
            # n_folds: 3
-       - name: "detection_xgb"
-         parameters: {}
+    - name: "detection_xgb"
+      parameters: {}
            # Override common params if needed
            # reduction: "max"
-       - name: "detection_mlp"
-         parameters: {}
+    - name: "detection_mlp"
+      parameters: {}
            # Override common params if needed
-       - name: "detection_linear"
-         parameters: {}
+    - name: "detection_linear"
+      parameters: {}
             # Override common params if needed
