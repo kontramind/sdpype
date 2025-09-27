@@ -366,11 +366,11 @@ def main(cfg: DictConfig) -> None:
     config_hash = _get_config_hash()
 
     # Load processed data (monolithic path + experiment versioning)
-    data_file = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
+    data_file = f"experiments/data/processed/training_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
     if not Path(data_file).exists():
-        print(f"❌ Processed data not found: {data_file}")
+        print(f"❌ Training data not found: {data_file}")
         print("💡 Run preprocessing first!")
-        raise FileNotFoundError(f"Data file not found: {data_file}")
+        raise FileNotFoundError(f"Training data file not found: {data_file}")
 
     metadata_file = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}_metadata.json"
     if not Path(metadata_file).exists():
@@ -378,8 +378,8 @@ def main(cfg: DictConfig) -> None:
         print("💡 Run metadata creation first!")
         raise FileNotFoundError(f"Metadata file not found: {metadata_file}")
 
-    data = pd.read_csv(data_file)
-    print(f"📊 Training data: {data.shape}")
+    training_data = pd.read_csv(data_file)
+    print(f"📊 Training data: {training_data.shape}")
 
     metadata = SingleTableMetadata.load_from_json(metadata_file)
 
@@ -391,7 +391,7 @@ def main(cfg: DictConfig) -> None:
         model = create_sdv_model(cfg, metadata)
     elif library == "synthcity":
         print(f"🔧 Creating Synthcity {cfg.sdg.model_type} model...")
-        model = create_synthcity_model(cfg, data.shape)
+        model = create_synthcity_model(cfg, training_data.shape)
     elif library == "synthpop":
         print(f"🔧 Creating Synthpop {cfg.sdg.model_type} model...")
         model, synthpop_metadata = create_synthpop_model(cfg, metadata)
@@ -406,9 +406,9 @@ def main(cfg: DictConfig) -> None:
         # Use SDPype preprocessed data directly
         print(f"🔄 Using SDPype preprocessing for synthpop...")
         model._sdpype_metadata = synthpop_metadata
-        model.fit(data)
+        model.fit(training_data)
     else:
-        model.fit(data)
+        model.fit(training_data)
 
     training_time = time.time() - start_time
 
@@ -417,7 +417,7 @@ def main(cfg: DictConfig) -> None:
     # Create standardized metadata using serialization module
     metadata = create_model_metadata(
         cfg, cfg.sdg.model_type, library, cfg.experiment.seed,
-        training_time, data, experiment_id, experiment_hash
+        training_time, training_data, experiment_id, experiment_hash
     )
 
     # Save model using new serialization module
@@ -434,8 +434,8 @@ def main(cfg: DictConfig) -> None:
         "library": library,
         "model_type": cfg.sdg.model_type,
         "training_time": training_time,
-        "training_rows": len(data),
-        "training_columns": len(data.columns),
+        "training_rows": len(training_data),
+        "training_columns": len(training_data.columns),
         "timestamp": datetime.now().isoformat(),
         "data_source": data_file,
         "model_output": model_filename,
@@ -455,7 +455,7 @@ def main(cfg: DictConfig) -> None:
     print(f"  Library: {library}")
     print(f"  Model: {cfg.sdg.model_type}")
     print(f"  Training time: {training_time:.1f}s")
-    print(f"  Training data: {len(data):,} rows × {len(data.columns)} columns")
+    print(f"  Training data: {len(training_data):,} rows × {len(training_data.columns)} columns")
     print(f"  Model file: {model_filename}")
 
 

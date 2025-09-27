@@ -30,7 +30,7 @@ def _get_config_hash() -> str:
 
 @hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
-    """Run statistical metrics evaluation between original and synthetic data"""
+    """Run statistical metrics evaluation between reference and synthetic data"""
 
     # Check if statistical metrics are configured
     metrics_config = cfg.get("evaluation", {}).get("statistical_similarity", {}).get("metrics", [])
@@ -44,21 +44,21 @@ def main(cfg: DictConfig) -> None:
 
     config_hash = _get_config_hash()
     # Load datasets for statistical comparison
-    original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
+    reference_data_path = f"experiments/data/processed/reference_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
     metadata_path = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}_metadata.json"
     synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
 
     if not Path(metadata_path).exists():
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
-    if not Path(original_data_path).exists():
-        raise FileNotFoundError(f"Original data not found: {original_data_path}")
+    if not Path(reference_data_path).exists():
+        raise FileNotFoundError(f"Reference data not found: {reference_data_path}")
     if not Path(synthetic_data_path).exists():
         raise FileNotFoundError(f"Synthetic data not found: {synthetic_data_path}")
 
-    print(f"📊 Loading original data: {original_data_path}")
+    print(f"📊 Loading reference data: {reference_data_path}")
     print(f"📊 Loading synthetic data: {synthetic_data_path}")
 
-    original_data = pd.read_csv(original_data_path)
+    reference_data = pd.read_csv(reference_data_path)
     synthetic_data = pd.read_csv(synthetic_data_path)
     metadata = SingleTableMetadata.load_from_json(metadata_path)
 
@@ -66,7 +66,7 @@ def main(cfg: DictConfig) -> None:
     # Run statistical metrics evaluation
     print("🔄 Running statistical metrics analysis...")
     statistical_results = evaluate_statistical_metrics(
-        original_data,
+        reference_data,
         synthetic_data,
         metrics_config,
         experiment_name=f"{cfg.experiment.name}_seed_{cfg.experiment.seed}",
@@ -157,8 +157,8 @@ def main(cfg: DictConfig) -> None:
 
         ba_table.add_section()
 
-        # Show all columns from the original dataset
-        all_columns = list(original_data.columns)
+        # Show all columns from the reference dataset
+        all_columns = list(reference_data.columns)
         column_scores = ba_result['column_scores']
         compatible_columns = ba_result['compatible_columns']
 
@@ -204,8 +204,8 @@ def main(cfg: DictConfig) -> None:
 
             ca_table.add_section()
 
-            # Show all columns from the original dataset
-            all_columns = list(original_data.columns)
+            # Show all columns from the reference dataset
+            all_columns = list(reference_data.columns)
             column_scores = ca_result['column_scores']
             compatible_columns = ca_result['compatible_columns']
 
@@ -249,8 +249,8 @@ def main(cfg: DictConfig) -> None:
 
         ks_table.add_section()
 
-        # Show all columns from the original dataset
-        all_columns = list(original_data.columns)
+        # Show all columns from the reference dataset
+        all_columns = list(reference_data.columns)
         column_scores = ks_result['column_scores']
         compatible_columns = ks_result['compatible_columns']
 
@@ -294,8 +294,8 @@ def main(cfg: DictConfig) -> None:
 
         tv_table.add_section()
 
-        # Show all columns from the original dataset
-        all_columns = list(original_data.columns)
+        # Show all columns from the reference dataset
+        all_columns = list(reference_data.columns)
         column_scores = tv_result['column_scores']
         compatible_columns = tv_result['compatible_columns']
 

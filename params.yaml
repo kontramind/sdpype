@@ -14,8 +14,8 @@ experiment:
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: sdv
-  model_type: gaussian_copula
+  library: synthpop
+  model_type: cart
   parameters:
     smoothing: false
     proper: false
@@ -38,7 +38,8 @@ preprocessing:
 # DATA CONFIGURATION
 # =============================================================================
 data:
-  training_file: experiments/data/raw/sample_data.csv
+  training_file: experiments/data/raw/trn_sample_data.csv
+  reference_file: experiments/data/raw/ref_sample_data.csv
   metadata_file: experiments/data/raw/sample_data_metadata.json
 
 # =============================================================================

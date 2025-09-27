@@ -6,13 +6,15 @@ stages:
       - sdpype/preprocess.py
       - experiments/data/raw/
       - ${data.training_file}
+      - ${data.reference_file}
       - ${data.metadata_file}
     params:
       - experiment.seed
       - experiment.name
       - config_hash
     outs:
-      - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/processed/training_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/processed/reference_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
     metrics:
       - experiments/metrics/preprocess_${experiment.name}_${config_hash}_${experiment.seed}.json
 
@@ -20,7 +22,7 @@ stages:
     cmd: python -m sdpype.training
     deps:
       - sdpype/training.py
-      - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/processed/training_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
       - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}_metadata.json
     params:
       - sdg
@@ -36,7 +38,7 @@ stages:
     cmd: python -m sdpype.generation
     deps:
       - sdpype/generation.py
-      - experiments/models/sdg_model_${experiment.name}_${config_hash}_${experiment.seed}.pkl
+      - experiments/data/processed/reference_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
     params:
       - generation
       - experiment.seed
@@ -52,7 +54,7 @@ stages:
     deps:
       - sdpype/evaluate.py
       - sdpype/evaluation/statistical.py
-      - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/processed/reference_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
       - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}_metadata.json
       - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
     params:
@@ -69,7 +71,7 @@ stages:
     deps:
       - sdpype/detect.py
       - sdpype/evaluation/detection.py
-      - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/processed/reference_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
       - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}_metadata.json
       - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
     params:

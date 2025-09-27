@@ -46,21 +46,21 @@ def main(cfg: DictConfig) -> None:
 
     config_hash = _get_config_hash()
     # Load datasets for detection evaluation
-    original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
+    reference_data_path = f"experiments/data/processed/reference_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
     metadata_path = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}_metadata.json"
     synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
 
     if not Path(metadata_path).exists():
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
-    if not Path(original_data_path).exists():
-        raise FileNotFoundError(f"Original data not found: {original_data_path}")
+    if not Path(reference_data_path).exists():
+        raise FileNotFoundError(f"Reference data not found: {reference_data_path}")
     if not Path(synthetic_data_path).exists():
         raise FileNotFoundError(f"Synthetic data not found: {synthetic_data_path}")
 
-    print(f"📊 Loading original data: {original_data_path}")
+    print(f"📊 Loading reference data: {reference_data_path}")
     print(f"📊 Loading synthetic data: {synthetic_data_path}")
 
-    original_data = pd.read_csv(original_data_path)
+    reference_data = pd.read_csv(reference_data_path)
     synthetic_data = pd.read_csv(synthetic_data_path)
     metadata = SingleTableMetadata.load_from_json(metadata_path)
 
@@ -75,7 +75,7 @@ def main(cfg: DictConfig) -> None:
     })
 
     detection_results = evaluate_detection_metrics(
-        original_data, synthetic_data, metadata, methods_config, common_params, cfg.experiment.name
+        reference_data, synthetic_data, metadata, methods_config, common_params, cfg.experiment.name
     )
 
     # Handle evaluation errors
