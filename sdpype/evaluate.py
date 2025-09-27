@@ -16,6 +16,18 @@ from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate
 
 console = Console()
 
+
+def _get_config_hash() -> str:
+    """Get config hash from temporary file created during pipeline execution"""
+    try:
+        if Path('.sdpype_config_hash').exists():
+            with open('.sdpype_config_hash', 'r') as f:
+                return f.read().strip()
+        return "nohash"
+    except Exception:
+        return "nohash"
+
+
 @hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
     """Run statistical metrics evaluation between original and synthetic data"""
@@ -30,10 +42,11 @@ def main(cfg: DictConfig) -> None:
     print(f"📊 Starting statistical evaluation with {len(metrics_config)} metrics...")
     print(f"Experiment seed: {cfg.experiment.seed}")
 
+    config_hash = _get_config_hash()
     # Load datasets for statistical comparison
-    original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
-    metadata_path = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}_metadata.json"
-    synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+    original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
+    metadata_path = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}_metadata.json"
+    synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
 
     if not Path(metadata_path).exists():
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
@@ -62,17 +75,17 @@ def main(cfg: DictConfig) -> None:
 
     # Save statistical similarity results
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    with open(f"experiments/metrics/statistical_similarity_{cfg.experiment.name}_{cfg.experiment.seed}.json", "w") as f:
+    with open(f"experiments/metrics/statistical_similarity_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.json", "w") as f:
         json.dump(statistical_results, f, indent=2)
 
-    print(f"📊 Statistical metrics results saved: experiments/metrics/statistical_similarity_{cfg.experiment.name}_{cfg.experiment.seed}.json")
+    print(f"📊 Statistical metrics results saved: experiments/metrics/statistical_similarity_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.json")
 
     # Generate and save human-readable report
     report = generate_statistical_report(statistical_results)
-    with open(f"experiments/metrics/statistical_report_{cfg.experiment.name}_{cfg.experiment.seed}.txt", "w") as f:
+    with open(f"experiments/metrics/statistical_report_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.txt", "w") as f:
         f.write(report)
 
-    print(f"📋 Statistical metrics report saved: experiments/metrics/statistical_report_{cfg.experiment.name}_{cfg.experiment.seed}.txt")
+    print(f"📋 Statistical metrics report saved: experiments/metrics/statistical_report_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.txt")
 
     # Print individual metrics summary
     console.print("\n📊 Statistical Metrics Summary:", style="bold cyan")

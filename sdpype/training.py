@@ -28,6 +28,17 @@ from sdpype.serialization import save_model, create_model_metadata
 from synthpop.method import CARTMethod
 
 
+def _get_config_hash() -> str:
+    """Get config hash from temporary file created during pipeline execution"""
+    try:
+        if Path('.sdpype_config_hash').exists():
+            with open('.sdpype_config_hash', 'r') as f:
+                return f.read().strip()
+        return "nohash"
+    except Exception:
+        return "nohash"
+
+
 def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
     """Create SDV model with metadata"""
     # SDV v1+ requires metadata
@@ -329,7 +340,7 @@ def create_experiment_hash(cfg: DictConfig) -> str:
         "sdg": OmegaConf.to_container(cfg.sdg, resolve=True),
         "preprocessing": OmegaConf.to_container(cfg.preprocessing, resolve=True),
         "seed": cfg.experiment.seed,
-        "data_file": cfg.data.input_file
+        "data_file": cfg.data.training_file
     }
 
     hash_str = json.dumps(hash_dict, sort_keys=True)
@@ -351,14 +362,17 @@ def main(cfg: DictConfig) -> None:
     print(f"📋 Experiment: {experiment_id}")
     print(f"🎲 Seed: {cfg.experiment.seed}")
 
+    # Get config hash for file paths
+    config_hash = _get_config_hash()
+
     # Load processed data (monolithic path + experiment versioning)
-    data_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+    data_file = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
     if not Path(data_file).exists():
         print(f"❌ Processed data not found: {data_file}")
         print("💡 Run preprocessing first!")
         raise FileNotFoundError(f"Data file not found: {data_file}")
 
-    metadata_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}_metadata.json"
+    metadata_file = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}_metadata.json"
     if not Path(metadata_file).exists():
         print(f"❌ Metadata for processed data not found: {metadata_file}")
         print("💡 Run metadata creation first!")
@@ -416,6 +430,7 @@ def main(cfg: DictConfig) -> None:
         "experiment_id": experiment_id,
         "experiment_hash": experiment_hash,
         "seed": cfg.experiment.seed,
+        "config_hash": config_hash,
         "library": library,
         "model_type": cfg.sdg.model_type,
         "training_time": training_time,
@@ -428,7 +443,7 @@ def main(cfg: DictConfig) -> None:
     }
 
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    metrics_filename = f"experiments/metrics/training_{cfg.experiment.name}_{cfg.experiment.seed}.json"
+    metrics_filename = f"experiments/metrics/training_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.json"
     with open(metrics_filename, "w") as f:
         json.dump(metrics, f, indent=2)
 

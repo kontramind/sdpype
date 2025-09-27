@@ -55,6 +55,17 @@ class LibraryNotSupportedError(SerializationError):
     pass
 
 
+def _get_config_hash() -> str:
+    """Get config hash from temporary file created during pipeline execution"""
+    try:
+        if Path('.sdpype_config_hash').exists():
+            with open('.sdpype_config_hash', 'r') as f:
+                return f.read().strip()
+        return "nohash"
+    except Exception:
+        return "nohash"
+
+
 def save_model(
     model: Any,
     metadata: Dict[str, Any],
@@ -86,7 +97,8 @@ def save_model(
         model_dir = DEFAULT_MODEL_DIR
     
     model_dir.mkdir(parents=True, exist_ok=True)
-    model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
+    config_hash = _get_config_hash()
+    model_filename = model_dir / f"sdg_model_{experiment_name}_{config_hash}_{experiment_seed}.pkl"
 
     # Prepare base model data structure
     model_data = {
@@ -153,10 +165,14 @@ def load_model(experiment_seed: int, experiment_name: str, model_dir: Optional[P
     if model_dir is None:
         model_dir = DEFAULT_MODEL_DIR
 
-    model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
+    # Find model file with any config hash
+    model_files = list(model_dir.glob(f"sdg_model_{experiment_name}_*_{experiment_seed}.pkl"))
 
-    if not model_filename.exists():
-        raise ModelNotFoundError(f"Model file not found: {model_filename}")
+    if not model_files:
+        raise ModelNotFoundError(f"No model files found for: {experiment_name}_{experiment_seed}")
+    
+    # Use the most recent if multiple exist
+    model_filename = max(model_files, key=lambda f: f.stat().st_mtime)
 
     try:
         with open(model_filename, "rb") as f:
@@ -225,14 +241,18 @@ def get_model_info(experiment_seed: int, experiment_name: str, model_dir: Option
         ModelNotFoundError: If model file doesn't exist
         SerializationError: If reading metadata fails
     """
-    
+
     if model_dir is None:
         model_dir = DEFAULT_MODEL_DIR
 
-    model_filename = model_dir / f"sdg_model_{experiment_name}_{experiment_seed}.pkl"
+    # Find model file with any config hash for this experiment and seed
+    model_files = list(model_dir.glob(f"sdg_model_{experiment_name}_*_{experiment_seed}.pkl"))
 
-    if not model_filename.exists():
-        raise ModelNotFoundError(f"Model file not found: {model_filename}")
+    if not model_files:
+        raise ModelNotFoundError(f"No model files found for: {experiment_name}_{experiment_seed}")
+
+    # Use the most recent if multiple exist
+    model_filename = max(model_files, key=lambda f: f.stat().st_mtime)
 
     try:
         with open(model_filename, "rb") as f:
@@ -277,27 +297,28 @@ def list_saved_models(model_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     
     for model_file in model_dir.glob("sdg_model_*.pkl"):
         try:
-            # Parse filename: sdg_model_name_seed.pkl
-            # Expected format: sdg_model_experiment_name_seed.pkl
+            # Parse filename: sdg_model_experiment_name_config_hash_seed.pkl
             filename_parts = model_file.stem.split("_")
             
-            if len(filename_parts) < 4:  # Less than sdg_model_name_seed
+            if len(filename_parts) < 5:  # Less than sdg_model_name_hash_seed
                 warnings.warn(f"Unexpected filename format: {model_file.name}")
                 continue
 
             try:
                 seed = int(filename_parts[-1])  # Last part is always seed
+                config_hash = filename_parts[-2]  # Second to last is config hash                
             except ValueError:
-                warnings.warn(f"Cannot extract seed from filename: {model_file.name}")
+                warnings.warn(f"Cannot extract seed/hash from filename: {model_file.name}")
                 continue
 
-            # Extract experiment name: everything between "sdg_model_" and "_seed"
-            experiment_name = "_".join(filename_parts[2:-1])
+            # Extract experiment name: everything between "sdg_model_" and "_config_hash_seed"
+            experiment_name = "_".join(filename_parts[2:-2])
 
             info = get_model_info(seed, experiment_name, model_dir)
 
             info["experiment_seed"] = seed
             info["experiment_name"] = experiment_name
+            info["config_hash"] = config_hash
 
             models.append(info)
 

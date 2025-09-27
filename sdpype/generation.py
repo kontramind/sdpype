@@ -17,6 +17,17 @@ from omegaconf import DictConfig
 from sdpype.serialization import load_model
 
 
+def _get_config_hash() -> str:
+    """Get config hash from temporary file created during pipeline execution"""
+    try:
+        if Path('.sdpype_config_hash').exists():
+            with open('.sdpype_config_hash', 'r') as f:
+                return f.read().strip()
+        return "nohash"
+    except Exception:
+        return "nohash"
+
+
 @hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
     """Generate synthetic data with unified model loading"""
@@ -25,6 +36,7 @@ def main(cfg: DictConfig) -> None:
     np.random.seed(cfg.experiment.seed)
 
     print("🎯 Generating synthetic data...")
+    config_hash = _get_config_hash()
     print(f"🎲 Experiment seed: {cfg.experiment.seed}")
     
     # Load model using unified method
@@ -53,7 +65,7 @@ def main(cfg: DictConfig) -> None:
     if n_samples is None:
         print("🔍 Auto-determining sample count from original dataset...")
         # Load processed data to get original sample count
-        processed_data_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+        processed_data_file = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
         if not Path(processed_data_file).exists():
             print(f"❌ Cannot determine dataset size: {processed_data_file} not found")
             print("💡 Run preprocessing first: dvc repro -s preprocess")
@@ -113,7 +125,7 @@ def main(cfg: DictConfig) -> None:
 
     # Save synthetic data (monolithic path + experiment versioning)
     Path("experiments/data/synthetic").mkdir(parents=True, exist_ok=True)
-    synthetic_filename = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+    synthetic_filename = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
     synthetic_data.to_csv(synthetic_filename, index=False)
     print(f"📁 Synthetic data saved: {synthetic_filename}")
     
@@ -121,6 +133,7 @@ def main(cfg: DictConfig) -> None:
     metrics = {
         "experiment_id": experiment_info.get("id", f"gen_{cfg.experiment.seed}"),
         "experiment_seed": cfg.experiment.seed,
+        "config_hash": config_hash,
         "timestamp": datetime.now().isoformat(),
         "library": library,
         "model_type": model_type,
@@ -170,7 +183,7 @@ def main(cfg: DictConfig) -> None:
 
     # Save metrics
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    metrics_filename = f"experiments/metrics/generation_{cfg.experiment.name}_{cfg.experiment.seed}.json"
+    metrics_filename = f"experiments/metrics/generation_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.json"
     with open(metrics_filename, "w") as f:
         json.dump(metrics, f, indent=2)
 

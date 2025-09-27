@@ -89,24 +89,30 @@ def model_info(
 
 def _parse_model_id(model_id: str) -> tuple[str, int]:
     """
-    Parse model_id into experiment_name and seed
+    Parse model_id into experiment_name, config_hash, and seed
     
     Args:
-        model_id: Format 'experiment_name_seed' (e.g., 'sdv_copula_gan_test_123')
+        model_id: Format 'experiment_name_config_hash_seed' (e.g., 'sdv_ctgan_a4b7c9f2_c8f3d4e1_51')
         
     Returns:
-        tuple: (experiment_name, seed)
+        tuple: (experiment_name, seed) - config_hash is handled internally
     """
     parts = model_id.split('_')
-    if len(parts) < 2:
-        raise ValueError(f"Model ID must contain at least one underscore: {model_id}")
+    if len(parts) < 3:
+        raise ValueError(f"Model ID must contain at least two underscores: {model_id}")
     
     try:
         seed = int(parts[-1])  # Last part should be seed
-        experiment_name = '_'.join(parts[:-1])  # Everything else is experiment name
+        config_hash = parts[-2]  # Second to last is config hash
+        experiment_name = '_'.join(parts[:-2])  # Everything else is experiment name
+
+        # Validate config hash format (8 hex characters)
+        if len(config_hash) != 8 or not all(c in '0123456789abcdef' for c in config_hash.lower()):
+            raise ValueError(f"Invalid config hash format in model ID: {config_hash}")
+
         return experiment_name, seed
     except ValueError:
-        raise ValueError(f"Last part of model ID must be a number (seed): {model_id}")
+        raise ValueError(f"Invalid model ID format. Expected: experiment_name_config_hash_seed, got: {model_id}")
 
 
 def _extract_dataset_name(model: dict) -> str:
@@ -115,12 +121,12 @@ def _extract_dataset_name(model: dict) -> str:
         # Get the full config from model metadata
         params = model.get('params', {})
         data_config = params.get('data', {})
-        input_file = data_config.get('input_file', '')
+        training_file = data_config.get('training_file', '')
 
-        if input_file:
+        if training_file:
             # Extract just the filename from the full path
             from pathlib import Path
-            return Path(input_file).name
+            return Path(training_file).name
         else:
             return "Unknown"
 
@@ -135,6 +141,7 @@ def _show_compact_model_list(models):
     table.add_column("Seed", style="magenta")
     table.add_column("Model", style="green")
     table.add_column("Dataset", style="yellow")
+    table.add_column("Config", style="bright_blue")
     table.add_column("Model ID", style="blue")
     table.add_column("Size", style="yellow")
     table.add_column("Created", style="dim")
@@ -144,7 +151,8 @@ def _show_compact_model_list(models):
         seed = str(model.get('experiment_seed', '?'))
         model_type = f"{model.get('library', '?')}/{model.get('model_type', '?')}"
         dataset_name = _extract_dataset_name(model)
-        model_id = f"{name}_{seed}"
+        config_hash = model.get('config_hash', '?')[:6] + '...'  # Show truncated hash
+        model_id = f"{name}_{model.get('config_hash', '?')}_{seed}"
         size = f"{model.get('file_size_mb', 0):.1f} MB"
 
         # Format timestamp
@@ -153,7 +161,7 @@ def _show_compact_model_list(models):
             # Extract date from ISO timestamp
             created = created.split('T')[0]
 
-        table.add_row(name, seed, model_type, dataset_name, model_id, size, created)
+        table.add_row(name, seed, model_type, dataset_name, config_hash, model_id, size, created)
 
     console.print(table)
 

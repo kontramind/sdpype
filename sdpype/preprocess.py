@@ -14,14 +14,24 @@ from sdv.metadata import SingleTableMetadata
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 
+def _get_config_hash() -> str:
+    """Get config hash from temporary file created during pipeline execution"""
+    try:
+        if Path('.sdpype_config_hash').exists():
+            with open('.sdpype_config_hash', 'r') as f:
+                return f.read().strip()
+        return "nohash"
+    except Exception:
+        return "nohash"
+
 
 @hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
     """Preprocess data with experiment versioning"""
 
-    data_file_path = Path(cfg.data.input_file)
+    data_file_path = Path(cfg.data.training_file)
     if not data_file_path.exists():
-        raise FileNotFoundError(f"❌ Required input data file not found: {cfg.data.input_file}")
+        raise FileNotFoundError(f"❌ Required training data file not found: {cfg.data.training_file}")
 
     metadata_file_path = Path(cfg.data.metadata_file)
     if not metadata_file_path.exists():
@@ -30,6 +40,7 @@ def main(cfg: DictConfig) -> None:
     # Set random seed for reproducibility
     np.random.seed(cfg.experiment.seed)
     
+    config_hash = _get_config_hash()
     print(f"🔄 Starting preprocessing for {cfg.experiment.name} (seed: {cfg.experiment.seed})")
     print(f"🎲 Experiment seed: {cfg.experiment.seed}")
 
@@ -147,12 +158,12 @@ def main(cfg: DictConfig) -> None:
     
     # Save processed data (updated path + experiment versioning)
     Path("experiments/data/processed").mkdir(parents=True, exist_ok=True)
-    output_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+    output_file = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
     data.to_csv(output_file, index=False)
     print(f"📁 Saved: {output_file}")
 
     # Save updated metadata (NEW)
-    metadata_output_file = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}_metadata.json"
+    metadata_output_file = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}_metadata.json"
     if Path(metadata_output_file).exists():
         Path(metadata_output_file).unlink()
 
@@ -164,14 +175,14 @@ def main(cfg: DictConfig) -> None:
         "experiment_seed": cfg.experiment.seed,
         "experiment_name": cfg.experiment.name,
         "timestamp": datetime.now().isoformat(),
-        "original_rows": len(pd.read_csv(cfg.data.input_file)),
+        "original_rows": len(pd.read_csv(cfg.data.training_file)),
         "processed_rows": len(data),
         "preprocessing_enabled": cfg.preprocessing.enabled,
         "output_file": output_file
     }
     
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    metrics_file = f"experiments/metrics/preprocess_{cfg.experiment.name}_{cfg.experiment.seed}.json"
+    metrics_file = f"experiments/metrics/preprocess_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.json"
     with open(metrics_file, "w") as f:
         json.dump(metrics, f, indent=2)
     

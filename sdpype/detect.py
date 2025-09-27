@@ -18,6 +18,18 @@ from sdpype.evaluation.detection import evaluate_detection_metrics, generate_det
 
 console = Console()
 
+
+def _get_config_hash() -> str:
+    """Get config hash from temporary file created during pipeline execution"""
+    try:
+        if Path('.sdpype_config_hash').exists():
+            with open('.sdpype_config_hash', 'r') as f:
+                return f.read().strip()
+        return "nohash"
+    except Exception:
+        return "nohash"
+
+
 @hydra.main(version_base=None, config_path="../", config_name="params")
 def main(cfg: DictConfig) -> None:
     """Run detection-based evaluation between original and synthetic data"""
@@ -32,10 +44,11 @@ def main(cfg: DictConfig) -> None:
     print(f"🔍 Starting detection evaluation with {len(methods_config)} methods...")
     print(f"Experiment seed: {cfg.experiment.seed}")
 
+    config_hash = _get_config_hash()
     # Load datasets for detection evaluation
-    original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
-    metadata_path = f"experiments/data/processed/data_{cfg.experiment.name}_{cfg.experiment.seed}_metadata.json"
-    synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{cfg.experiment.seed}.csv"
+    original_data_path = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
+    metadata_path = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}_metadata.json"
+    synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
 
     if not Path(metadata_path).exists():
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
@@ -72,7 +85,7 @@ def main(cfg: DictConfig) -> None:
         return
 
     # Save results
-    results_file = f"experiments/metrics/detection_evaluation_{cfg.experiment.name}_{cfg.experiment.seed}.json"
+    results_file = f"experiments/metrics/detection_evaluation_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.json"
     
     print(f"💾 Saving detection results to: {results_file}")
     Path(results_file).parent.mkdir(parents=True, exist_ok=True)
@@ -85,7 +98,7 @@ def main(cfg: DictConfig) -> None:
         json.dump(detection_results, f, indent=2)
 
     # Generate human-readable report
-    report_file = f"experiments/metrics/detection_report_{cfg.experiment.name}_{cfg.experiment.seed}.txt"
+    report_file = f"experiments/metrics/detection_report_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.txt"
     report_content = generate_detection_report(detection_results)
     
     print(f"📋 Generating detection report: {report_file}")

@@ -47,6 +47,37 @@ def _calculate_data_hash(file_path: str, max_bytes: int = 1024*1024) -> str:
         return "hashfail"
 
 
+def _calculate_config_hash(params: dict) -> str:
+    """
+    Calculate SHA256 hash of resolved configuration for unique model identification.
+
+    Args:
+        params: Resolved params dictionary
+
+    Returns:
+        8-character truncated SHA256 hash of configuration
+    """
+    try:
+        # Create a copy excluding experiment.name to avoid circular dependency
+        config_for_hash = dict(params)
+        if 'experiment' in config_for_hash:
+            experiment_copy = dict(config_for_hash['experiment'])
+            # Remove name field to avoid chicken-egg problem
+            experiment_copy.pop('name', None)
+            config_for_hash['experiment'] = experiment_copy
+
+        # Convert to deterministic string representation
+        import json
+        config_str = json.dumps(config_for_hash, sort_keys=True, ensure_ascii=True)
+
+        hash_sha256 = hashlib.sha256(config_str.encode('utf-8'))
+        return hash_sha256.hexdigest()[:8]
+
+    except Exception as e:
+        console.print(f"⚠️  Error calculating config hash: {e}", style="yellow")
+        return "confhash"
+
+
 def _resolve_params_templates():
     """Auto-resolve experiment name templates in params.yaml before DVC execution"""
 
@@ -89,21 +120,21 @@ def _resolve_params_templates():
     # If name is empty/None or contains templates, resolve it
     if not name or (isinstance(name, str) and '{' in name and '}' in name):
         # Use template or auto-generate
-        template = name_template or name or "{sdg.library}_{sdg.model_type}_{data.input_hash}"
+        template = name_template or name or "{sdg.library}_{sdg.model_type}_{data.training_hash}"
 
         # Resolve template
         try:
             # Calculate data file hash for unique identification
             data_config = params.get('data', {})
-            input_file = data_config.get('input_file', '')
+            training_file = data_config.get('training_file', '')
 
-            if input_file:
-                console.print(f"🔄 Calculating hash for: {input_file}", style="dim")
-                input_hash = _calculate_data_hash(input_file)
-                console.print(f"📊 Data hash: {input_hash}", style="dim")
+            if training_file:
+                console.print(f"🔄 Calculating hash for: {training_file}", style="dim")
+                training_hash = _calculate_data_hash(training_file)
+                console.print(f"📊 Data hash: {training_hash}", style="dim")
             else:
                 console.print("⚠️  No input file found for hashing", style="yellow")
-                input_hash = "nodata"
+                training_hash = "nodata"
 
             # Create a custom formatting class that supports dot notation
             class DotDict:
@@ -130,7 +161,7 @@ def _resolve_params_templates():
             data_dict = to_dict(params.get('data', {}))
 
             # Add calculated hash to data context
-            data_dict['input_hash'] = input_hash
+            data_dict['training_hash'] = training_hash
 
             resolved_name = template.format(
                 sdg=DotDict(sdg_dict),
@@ -151,6 +182,24 @@ def _resolve_params_templates():
                 yaml.dump(params, tf)
                 tmp_name = tf.name
             os.replace(tmp_name, params_file)
+
+            # Calculate config hash after template resolution
+            config_hash = _calculate_config_hash(params)
+            console.print(f"🔧 Config hash: {config_hash}", style="dim")
+
+            # Add config hash to params for DVC interpolation
+            set_in(params, ["config_hash"], config_hash)
+
+            # Write updated params with both resolved name and config hash
+            with tempfile.NamedTemporaryFile("w", delete=False, dir=str(params_file.parent), encoding="utf-8") as tf:
+                yaml.dump(params, tf)
+                tmp_name = tf.name
+            os.replace(tmp_name, params_file)
+
+            # Store config hash in a global variable for use by other scripts
+            # Write to a temporary file that pipeline scripts can read
+            with open('.sdpype_config_hash', 'w') as f:
+                f.write(config_hash)
 
             console.print(f"✅ Updated params.yaml: {resolved_name}", style="green")
 

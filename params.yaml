@@ -5,7 +5,7 @@
 # =============================================================================
 experiment:
   seed: 51
-  name: "{sdg.library}_{sdg.model_type}_{data.input_hash}"
+  name: "{sdg.library}_{sdg.model_type}_{data.training_hash}"
   description: "Testing"
   researcher: test_user
   tags:
@@ -15,7 +15,7 @@ experiment:
 # =============================================================================
 sdg:
   library: sdv
-  model_type: ctgan
+  model_type: gaussian_copula
   parameters:
     smoothing: false
     proper: false
@@ -38,7 +38,7 @@ preprocessing:
 # DATA CONFIGURATION
 # =============================================================================
 data:
-  input_file: experiments/data/raw/sample_data.csv
+  training_file: experiments/data/raw/sample_data.csv
   metadata_file: experiments/data/raw/sample_data_metadata.json
 
 # =============================================================================
