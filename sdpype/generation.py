@@ -65,10 +65,10 @@ def main(cfg: DictConfig) -> None:
     if n_samples is None:
         print("🔍 Auto-determining sample count from reference dataset...")
         # Load reference data to get sample count
-        reference_data_file = f"experiments/data/processed/reference_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
+        reference_data_file = cfg.data.reference_file
         if not Path(reference_data_file).exists():
             print(f"❌ Cannot determine dataset size: {reference_data_file} not found")
-            print("💡 Run preprocessing first: dvc repro -s preprocess")
+            print("💡 Check your data.reference_file path in params.yaml!")
             raise FileNotFoundError(f"Reference data file not found: {reference_data_file}")
 
         reference_data = pd.read_csv(reference_data_file)

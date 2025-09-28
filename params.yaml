@@ -14,33 +14,21 @@ experiment:
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: synthpop
-  model_type: cart
+  library: synthcity
+  model_type: ctgan
   parameters:
     smoothing: false
     proper: false
     minibucket: 5
     tree_params: {}
 
-# ===========================================================================
-# PREPROCESSING CONFIGURATION
-# =============================================================================
-
-preprocessing:
-  enabled: true
-  steps:
-    encode_categorical: label
-    handle_missing: mean
-    remove_outliers: true
-    scale_numeric: standard
-
 # =============================================================================
 # DATA CONFIGURATION
 # =============================================================================
 data:
-  training_file: experiments/data/raw/trn_sample_data.csv
-  reference_file: experiments/data/raw/ref_sample_data.csv
-  metadata_file: experiments/data/raw/sample_data_metadata.json
+  training_file: experiments/data/processed/trn_sample_data.csv
+  reference_file: experiments/data/processed/ref_sample_data.csv
+  metadata_file: experiments/data/processed/sample_data_metadata.json
 
 # =============================================================================
 # GENERATION SETTINGS

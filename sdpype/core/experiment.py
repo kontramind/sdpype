@@ -19,7 +19,6 @@ def purge_repository(confirm: bool = False, keep_raw_data: bool = True, keep_cac
     items_to_delete = [
         "📊 All experiment metrics (experiments/metrics/)",
         "🤖 All trained models (experiments/models/)", 
-        "📈 All processed data (experiments/data/processed/)",
         "🎲 All synthetic data (experiments/data/synthetic/)",
         "🔄 DVC pipeline lock files",
         "📋 DVC experiment history",
@@ -38,7 +37,8 @@ def purge_repository(confirm: bool = False, keep_raw_data: bool = True, keep_cac
     
     preserved_items = [
         "🐍 Source code (sdpype/ folder)",
-        "⚙️  Configuration (params.yaml, dvc.yaml)", 
+        "⚙️ Configuration (params.yaml, dvc.yaml)",
+        "📈 Processed data (experiments/data/processed/)",
         "📋 Project files (pyproject.toml, README.md)"
     ]
     
@@ -84,7 +84,6 @@ def _purge_experiment_data(keep_raw_data: bool):
     dirs_to_remove = [
         "experiments/metrics",
         "experiments/models",
-        "experiments/data/processed", 
         "experiments/data/synthetic"
     ]
     

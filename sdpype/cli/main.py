@@ -42,7 +42,7 @@ def purge(
 def pipeline(
     force: bool = typer.Option(False, "--force", help="Force rerun all stages"),
 ):
-    """🚀 Run the complete DVC pipeline (preprocess → train → generate → statistical_similarity → detection_evaluation)"""
+    """🚀 Run the complete DVC pipeline (train → generate → statistical_similarity → detection_evaluation)"""
     from sdpype.core.pipeline import run_pipeline_command
     run_pipeline_command(force)
 

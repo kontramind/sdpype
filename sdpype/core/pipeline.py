@@ -251,7 +251,7 @@ def _validate_stage_name(stage_name: str) -> bool:
     
     # Known stages from your pipeline
     known_stages = [
-        "preprocess",
+        # "preprocess",
         "train_sdg", 
         "generate_synthetic",
         "statistical_similarity",
@@ -298,10 +298,6 @@ def _show_stage_summary(stage_name: str):
     
     # Stage-specific output patterns
     stage_outputs = {
-        "preprocess": [
-            ("experiments/data/processed/*.csv", "📁 Processed data"),
-            ("experiments/metrics/preprocess_*.json", "📊 Preprocessing metrics")
-        ],
         "train_sdg": [
             ("experiments/models/*.pkl", "🤖 Trained models"),
             ("experiments/metrics/training_*.json", "📈 Training metrics")

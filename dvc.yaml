@@ -1,29 +1,10 @@
-# Enhanced dvc.yaml - Parameter templating for experiment versioning + statistical similarity
 stages:
-  preprocess:
-    cmd: python -m sdpype.preprocess
-    deps:
-      - sdpype/preprocess.py
-      - experiments/data/raw/
-      - ${data.training_file}
-      - ${data.reference_file}
-      - ${data.metadata_file}
-    params:
-      - experiment.seed
-      - experiment.name
-      - config_hash
-    outs:
-      - experiments/data/processed/training_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
-      - experiments/data/processed/reference_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
-    metrics:
-      - experiments/metrics/preprocess_${experiment.name}_${config_hash}_${experiment.seed}.json
-
   train_sdg:
     cmd: python -m sdpype.training
     deps:
       - sdpype/training.py
-      - experiments/data/processed/training_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
-      - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}_metadata.json
+      - ${data.training_file}
+      - ${data.metadata_file}
     params:
       - sdg
       - experiment.seed
@@ -38,7 +19,7 @@ stages:
     cmd: python -m sdpype.generation
     deps:
       - sdpype/generation.py
-      - experiments/data/processed/reference_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - ${data.reference_file}
     params:
       - generation
       - experiment.seed
@@ -54,8 +35,8 @@ stages:
     deps:
       - sdpype/evaluate.py
       - sdpype/evaluation/statistical.py
-      - experiments/data/processed/reference_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
-      - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}_metadata.json
+      - ${data.reference_file}
+      - ${data.metadata_file}
       - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
     params:
       - evaluation
@@ -71,8 +52,8 @@ stages:
     deps:
       - sdpype/detect.py
       - sdpype/evaluation/detection.py
-      - experiments/data/processed/reference_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
-      - experiments/data/processed/data_${experiment.name}_${config_hash}_${experiment.seed}_metadata.json
+      - ${data.reference_file}
+      - ${data.metadata_file}
       - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}.csv
     params:
       - evaluation.detection_evaluation

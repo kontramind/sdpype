@@ -62,7 +62,6 @@ def _show_file_counts():
         ("experiments/metrics/*.json", "📊 Experiment metrics"),
         ("experiments/models/*.pkl", "🤖 Trained models"),  
         ("experiments/data/raw/*.csv", "📁 Raw data files"),
-        ("experiments/data/processed/*.csv", "🔄 Processed data"),
         ("experiments/data/synthetic/*.csv", "🎲 Synthetic data"),
         ("experiments/metrics/statistical_*.json", "📊 Statistical metrics"),
         ("experiments/metrics/statistical_*.txt", "📋 Statistical metric report"),

@@ -338,7 +338,6 @@ def create_experiment_hash(cfg: DictConfig) -> str:
     # Include key config elements in hash
     hash_dict = {
         "sdg": OmegaConf.to_container(cfg.sdg, resolve=True),
-        "preprocessing": OmegaConf.to_container(cfg.preprocessing, resolve=True),
         "seed": cfg.experiment.seed,
         "data_file": cfg.data.training_file
     }
@@ -365,17 +364,17 @@ def main(cfg: DictConfig) -> None:
     # Get config hash for file paths
     config_hash = _get_config_hash()
 
-    # Load processed data (monolithic path + experiment versioning)
-    data_file = f"experiments/data/processed/training_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
+    # Load training data directly from config path
+    data_file = cfg.data.training_file
     if not Path(data_file).exists():
         print(f"❌ Training data not found: {data_file}")
-        print("💡 Run preprocessing first!")
+        print("💡 Check your data.training_file path in params.yaml!")
         raise FileNotFoundError(f"Training data file not found: {data_file}")
 
-    metadata_file = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}_metadata.json"
+    metadata_file = cfg.data.metadata_file
     if not Path(metadata_file).exists():
         print(f"❌ Metadata for processed data not found: {metadata_file}")
-        print("💡 Run metadata creation first!")
+        print("💡 Check your data.metadata_file path in params.yaml!")
         raise FileNotFoundError(f"Metadata file not found: {metadata_file}")
 
     training_data = pd.read_csv(data_file)

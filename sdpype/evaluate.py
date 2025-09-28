@@ -44,8 +44,8 @@ def main(cfg: DictConfig) -> None:
 
     config_hash = _get_config_hash()
     # Load datasets for statistical comparison
-    reference_data_path = f"experiments/data/processed/reference_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
-    metadata_path = f"experiments/data/processed/data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}_metadata.json"
+    reference_data_path = cfg.data.reference_file
+    metadata_path = cfg.data.metadata_file
     synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
 
     if not Path(metadata_path).exists():
