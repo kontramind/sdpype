@@ -141,7 +141,6 @@ def _show_compact_model_list(models):
     table.add_column("Seed", style="magenta")
     table.add_column("Model", style="green")
     table.add_column("Dataset", style="yellow")
-    table.add_column("Config", style="bright_blue")
     table.add_column("Model ID", style="blue")
     table.add_column("Size", style="yellow")
     table.add_column("Created", style="dim")
@@ -151,7 +150,6 @@ def _show_compact_model_list(models):
         seed = str(model.get('experiment_seed', '?'))
         model_type = f"{model.get('library', '?')}/{model.get('model_type', '?')}"
         dataset_name = _extract_dataset_name(model)
-        config_hash = model.get('config_hash', '?')[:6] + '...'  # Show truncated hash
         model_id = f"{name}_{model.get('config_hash', '?')}_{seed}"
         size = f"{model.get('file_size_mb', 0):.1f} MB"
 
@@ -161,7 +159,7 @@ def _show_compact_model_list(models):
             # Extract date from ISO timestamp
             created = created.split('T')[0]
 
-        table.add_row(name, seed, model_type, dataset_name, config_hash, model_id, size, created)
+        table.add_row(name, seed, model_type, dataset_name, model_id, size, created)
 
     console.print(table)
 

@@ -17,7 +17,7 @@ import os
 console = Console()
 
 
-def _calculate_data_hash(file_path: str, max_bytes: int = 1024*1024) -> str:
+def _calculate_training_data_hash(file_path: str, max_bytes: int = 1024*1024) -> str:
     """
     Calculate SHA256 hash of data file for unique experiment identification.
 
@@ -34,10 +34,16 @@ def _calculate_data_hash(file_path: str, max_bytes: int = 1024*1024) -> str:
             return "unknown"
 
         hash_sha256 = hashlib.sha256()
+        bytes_read = 0
         with open(file_path, 'rb') as f:
             # Read file in chunks to handle large files efficiently
-            while chunk := f.read(8192):
+            while bytes_read < max_bytes:
+                chunk_size = min(8192, max_bytes - bytes_read)
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
                 hash_sha256.update(chunk)
+                bytes_read += len(chunk)
 
         # Return first 8 characters of hex digest
         return hash_sha256.hexdigest()[:8]
@@ -46,6 +52,32 @@ def _calculate_data_hash(file_path: str, max_bytes: int = 1024*1024) -> str:
         console.print(f"⚠️  Error calculating data hash: {e}", style="yellow")
         return "hashfail"
 
+
+def _calculate_reference_data_hash(reference_file: str) -> str:
+
+    """
+    Calculate SHA256 hash of reference data file for experiment naming.
+    Uses same logic as training data hash for consistency.
+
+    Args:
+        reference_file: Path to the reference data file
+
+    Returns:
+        8-character truncated SHA256 hash
+    """
+    try:
+        file_path = Path(reference_file)
+        if not file_path.exists():
+            console.print(f"⚠️  Reference file not found for hashing: {reference_file}", style="yellow")
+            return "unknown"
+
+        # Use the same hashing function as training data for consistency
+        # This reads first 1MB of the file
+        return _calculate_training_data_hash(reference_file)
+
+    except Exception as e:
+        console.print(f"⚠️  Error hashing reference file: {e}", style="yellow")
+        return "nohash"
 
 def _calculate_config_hash(params: dict) -> str:
     """
@@ -130,11 +162,20 @@ def _resolve_params_templates():
 
             if training_file:
                 console.print(f"🔄 Calculating hash for: {training_file}", style="dim")
-                training_hash = _calculate_data_hash(training_file)
+                training_hash = _calculate_training_data_hash(training_file)
                 console.print(f"📊 Data hash: {training_hash}", style="dim")
             else:
                 console.print("⚠️  No input file found for hashing", style="yellow")
                 training_hash = "nodata"
+
+            reference_file = data_config.get('reference_file', '')
+            if reference_file:
+                console.print(f"🔄 Calculating hash for: {reference_file}", style="dim")
+                reference_hash = _calculate_reference_data_hash(reference_file)
+                console.print(f"📊 Reference hash: {reference_hash}", style="dim")
+            else:
+                console.print("⚠️  No reference file found for hashing", style="yellow")
+                reference_hash = "noref"
 
             # Create a custom formatting class that supports dot notation
             class DotDict:
@@ -162,6 +203,7 @@ def _resolve_params_templates():
 
             # Add calculated hash to data context
             data_dict['training_hash'] = training_hash
+            data_dict['reference_hash'] = reference_hash
 
             resolved_name = template.format(
                 sdg=DotDict(sdg_dict),
