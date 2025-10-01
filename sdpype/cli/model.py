@@ -138,20 +138,24 @@ def _show_compact_model_list(models):
 
     table = Table(show_header=True, header_style="bold blue")
     table.add_column("Experiment", style="cyan")
-    table.add_column("Seed", style="magenta")
-    table.add_column("Model", style="green")
+    # table.add_column("Seed", style="magenta")
+    # table.add_column("Model", style="green")
     table.add_column("Dataset", style="yellow")
-    table.add_column("Model ID", style="blue")
-    table.add_column("Size", style="yellow")
+    table.add_column(
+        "Model ID\n(library_model_refhash_trnhash_cfghash_seed)", 
+        style="blue",
+        header_style="blue dim"
+    )
+    # table.add_column("Size", style="yellow")
     table.add_column("Created", style="dim")
 
     for model in models:
         name = model.get('experiment_name', 'unknown')
         seed = str(model.get('experiment_seed', '?'))
-        model_type = f"{model.get('library', '?')}/{model.get('model_type', '?')}"
+        # model_type = f"{model.get('library', '?')}/{model.get('model_type', '?')}"
         dataset_name = _extract_dataset_name(model)
         model_id = f"{name}_{model.get('config_hash', '?')}_{seed}"
-        size = f"{model.get('file_size_mb', 0):.1f} MB"
+        # size = f"{model.get('file_size_mb', 0):.1f} MB"
 
         # Format timestamp
         created = model.get('saved_at', 'unknown')
@@ -159,7 +163,7 @@ def _show_compact_model_list(models):
             # Extract date from ISO timestamp
             created = created.split('T')[0]
 
-        table.add_row(name, seed, model_type, dataset_name, model_id, size, created)
+        table.add_row(name, dataset_name, model_id, created)
 
     console.print(table)
 
