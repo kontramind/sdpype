@@ -5,7 +5,8 @@
 # =============================================================================
 experiment:
   seed: 51
-  name: "{sdg.library}_{sdg.model_type}_{data.reference_hash}_{data.training_hash}"
+  generation: 0
+  name: "{sdg.library}_{sdg.model_type}_{data.reference_hash}_{data.root_hash}_{data.training_hash}_gen_{experiment.generation}"
   description: "Testing"
   researcher: test_user
   tags:

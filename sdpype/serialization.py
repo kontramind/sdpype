@@ -407,6 +407,7 @@ def create_model_metadata(
 ) -> Dict[str, Any]:
     """
     Create standardized metadata for model serialization
+    Now includes lineage tracking for recursive generations
     
     Args:
         cfg: Hydra configuration
@@ -421,7 +422,20 @@ def create_model_metadata(
     Returns:
         Dict with standardized metadata structure
     """
-    
+
+    # Extract lineage information from experiment config
+    generation = cfg.experiment.get("generation", 0)
+
+    # Determine parent model if generation > 0
+    parent_model_id = None
+    if generation > 0:
+        training_file = cfg.data.get("training_file", "")
+        if "synthetic_data_" in training_file:
+            # Extract parent model ID from synthetic data filename
+            # Pattern: synthetic_data_{model_id}.csv
+            filename = Path(training_file).stem
+            parent_model_id = filename.replace("synthetic_data_", "")
+
     return {
         "model_type": model_type,
         "experiment": {
@@ -432,6 +446,13 @@ def create_model_metadata(
             "name": cfg.experiment.get("name", f"exp_{experiment_seed}"),
             "researcher": cfg.experiment.get("researcher", "anonymous")
         },
+        "lineage": {
+            "generation": generation,
+            "parent_model_id": parent_model_id,
+            "root_training_hash": cfg.data.get("root_hash", "unknown"),
+            "reference_hash": cfg.data.get("reference_hash", "unknown"),
+            "training_hash": cfg.data.get("training_hash", "unknown")
+        },        
         "params": OmegaConf.to_container(cfg, resolve=True),
         "training_data_shape": list(data.shape),
         "training_time": training_time,

@@ -17,6 +17,52 @@ import os
 console = Console()
 
 
+def _determine_root_hash(training_file: str, training_hash: str, generation: int) -> str:
+    """
+    Determine the root hash (generation 0 training data hash).
+
+    For generation 0: root_hash = training_hash
+    For generation 1+: Extract from training filename pattern
+
+    Args:
+        training_file: Path to training data file
+        training_hash: Hash of current training data
+        generation: Current generation number
+
+    Returns:
+        8-character root hash
+    """
+    try:
+        if generation == 0:
+            # Generation 0: root_hash equals training_hash
+            return training_hash
+
+        # Generation 1+: Try to extract root_hash from synthetic data filename
+        # Expected pattern: synthetic_data_{library}_{model}_{refhash}_{roothash}_{trnhash}_gen_{N}_{cfghash}_{seed}.csv
+        filename = Path(training_file).stem  # Remove .csv
+
+        if filename.startswith("synthetic_data_"):
+            # Remove prefix
+            parts = filename.replace("synthetic_data_", "").split("_")
+
+            # Pattern: library_model_refhash_roothash_trnhash_gen_N_cfghash_seed
+            # We need the 4th component (index 3) which is roothash
+            if len(parts) >= 8 and parts[-4] == "gen":
+                # parts[-1] = seed, parts[-2] = cfghash, parts[-3] = N, parts[-4] = "gen"
+                # parts[-5] = trnhash, parts[-6] = roothash
+                root_hash = parts[-6]
+                if len(root_hash) == 8:  # Validate hash format
+                    return root_hash
+
+        # Fallback: if we can't parse, use training_hash
+        console.print(f"⚠️  Could not extract root_hash from filename, using training_hash", style="yellow")
+        return training_hash
+
+    except Exception as e:
+        console.print(f"⚠️  Error determining root_hash: {e}", style="yellow")
+        return training_hash
+
+
 def _calculate_training_data_hash(file_path: str, max_bytes: int = 1024*1024) -> str:
     """
     Calculate SHA256 hash of data file for unique experiment identification.
@@ -147,6 +193,7 @@ def _resolve_params_templates():
     # Check if we need to resolve templates
     experiment = params.get('experiment', {})
     name = experiment.get('name')
+    generation = experiment.get('generation', 0)
     name_template = experiment.get('name_template')
 
     # If name is empty/None or contains templates, resolve it
@@ -177,6 +224,14 @@ def _resolve_params_templates():
                 console.print("⚠️  No reference file found for hashing", style="yellow")
                 reference_hash = "noref"
 
+            # Determine root hash (generation 0 training data)
+            console.print(f"🌳 Determining root hash for generation {generation}...", style="dim")
+            root_hash = _determine_root_hash(training_file, training_hash, generation)
+            console.print(f"📊 Root hash: {root_hash}", style="dim")
+
+            if generation == 0 and root_hash != training_hash:
+                console.print("⚠️  Warning: Generation 0 should have root_hash == training_hash", style="yellow")
+
             # Create a custom formatting class that supports dot notation
             class DotDict:
                 def __init__(self, d):
@@ -204,6 +259,7 @@ def _resolve_params_templates():
             # Add calculated hash to data context
             data_dict['training_hash'] = training_hash
             data_dict['reference_hash'] = reference_hash
+            data_dict['root_hash'] = root_hash
 
             resolved_name = template.format(
                 sdg=DotDict(sdg_dict),
@@ -231,6 +287,10 @@ def _resolve_params_templates():
 
             # Add config hash to params for DVC interpolation
             set_in(params, ["config_hash"], config_hash)
+            # Add calculated hashes to params for model metadata
+            set_in(params, ["data", "training_hash"], training_hash)
+            set_in(params, ["data", "reference_hash"], reference_hash)
+            set_in(params, ["data", "root_hash"], root_hash)
 
             # Write updated params with both resolved name and config hash
             with tempfile.NamedTemporaryFile("w", delete=False, dir=str(params_file.parent), encoding="utf-8") as tf:

@@ -89,22 +89,39 @@ def model_info(
 
 def _parse_model_id(model_id: str) -> tuple[str, int]:
     """
-    Parse model_id into experiment_name, config_hash, and seed
+    Parse model_id into experiment_name and seed (with new structure)
     
     Args:
-        model_id: Format 'experiment_name_config_hash_seed' (e.g., 'sdv_ctgan_a4b7c9f2_c8f3d4e1_51')
+        model_id: Format 'library_model_refhash_roothash_trnhash_gen_N_cfghash_seed'
+                 (e.g., 'synthcity_ctgan_0cf8e0f5_852ba944_de360e6d_gen_1_68b7c931_51')
         
     Returns:
-        tuple: (experiment_name, seed) - config_hash is handled internally
+        tuple: (experiment_name, seed)
+        Note: experiment_name includes everything except cfghash and seed
     """
     parts = model_id.split('_')
-    if len(parts) < 3:
-        raise ValueError(f"Model ID must contain at least two underscores: {model_id}")
-    
+    # New format has at least 9 parts: library_model_refhash_roothash_trnhash_gen_N_cfghash_seed
+    if len(parts) < 9:
+        raise ValueError(f"Model ID format invalid (expected at least 9 components): {model_id}")
+
     try:
-        seed = int(parts[-1])  # Last part should be seed
-        config_hash = parts[-2]  # Second to last is config hash
-        experiment_name = '_'.join(parts[:-2])  # Everything else is experiment name
+        seed = int(parts[-1])
+        config_hash = parts[-2]
+        generation_num = parts[-3]  # Should be a number
+        gen_marker = parts[-4]      # Should be "gen"
+
+        # Validate "gen" marker
+        if gen_marker != "gen":
+            raise ValueError(f"Expected 'gen' marker at position -4, got: {gen_marker}")
+
+        # Validate generation number
+        try:
+            int(generation_num)
+        except ValueError:
+            raise ValueError(f"Invalid generation number: {generation_num}")
+
+        # Experiment name is everything except: _gen_N_cfghash_seed
+        experiment_name = '_'.join(parts[:-4])
 
         # Validate config hash format (8 hex characters)
         if len(config_hash) != 8 or not all(c in '0123456789abcdef' for c in config_hash.lower()):
@@ -142,7 +159,7 @@ def _show_compact_model_list(models):
     # table.add_column("Model", style="green")
     table.add_column("Dataset", style="yellow")
     table.add_column(
-        "Model ID\n(library_model_refhash_trnhash_cfghash_seed)", 
+        "Model ID\n(library_model_refhash_roothash_trnhash_gen_N_cfghash_seed)", 
         style="blue",
         header_style="blue dim"
     )
@@ -227,6 +244,21 @@ def _show_model_details(info, seed, experiment_name, export_file=None):
             details.append(f"📝 Description: {exp_info['description']}")
         if 'researcher' in exp_info:
             details.append(f"👤 Researcher: {exp_info['researcher']}")
+
+    # Display lineage information if available
+    if 'lineage' in info:
+        lineage = info['lineage']
+        details.append("")  # Blank line for separation
+        details.append("🌳 Lineage Information:")
+        details.append(f"  Generation: {lineage.get('generation', 'unknown')}")
+        if lineage.get('parent_model_id'):
+            parent_id = lineage['parent_model_id']
+            # Truncate if too long
+            if len(parent_id) > 50:
+                parent_id = parent_id[:47] + "..."
+            details.append(f"  Parent: {parent_id}")
+        details.append(f"  Root Hash: {lineage.get('root_training_hash', 'unknown')}")
+        details.append(f"  Reference Hash: {lineage.get('reference_hash', 'unknown')}")
 
     console.print(Panel.fit(
         "\n".join(details),
