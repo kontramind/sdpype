@@ -15,8 +15,8 @@ experiment:
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: synthcity
-  model_type: ctgan
+  library: sdv
+  model_type: gaussian_copula
   parameters:
     smoothing: false
     proper: false
