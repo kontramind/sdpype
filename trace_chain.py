@@ -139,7 +139,23 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                     metrics['prdc_recall'] = prdc_metric.get('recall', 0)
                     metrics['prdc_density'] = prdc_metric.get('density', 0)
                     metrics['prdc_coverage'] = prdc_metric.get('coverage', 0)
-    
+
+            if 'tv_complement' in metrics_data:
+                tv_metric = metrics_data['tv_complement']
+                if tv_metric.get('status') == 'success':
+                    # Get aggregate score (None if no compatible columns)
+                    tv_score = tv_metric.get('aggregate_score')
+                    if tv_score is not None:
+                        metrics['tv_complement'] = tv_score
+
+            if 'ks_complement' in metrics_data:
+                ks_metric = metrics_data['ks_complement']
+                if ks_metric.get('status') == 'success':
+                    # Get aggregate score (None if no compatible columns)
+                    ks_score = ks_metric.get('aggregate_score')
+                    if ks_score is not None:
+                        metrics['ks_complement'] = ks_score
+
     # Detection metrics
     det_file = Path(
         f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json"
@@ -266,6 +282,8 @@ def display_chain_table(results: List[Dict]):
     table.add_column("Gen", justify="right", style="cyan")
     table.add_column("Alpha Precision", justify="right")
     table.add_column("PRDC Avg", justify="right")
+    table.add_column("TV Complement", justify="right")
+    table.add_column("KS Complement", justify="right")
     table.add_column("Detection Avg", justify="right")
     table.add_column("Model Size", justify="right", style="dim")
     table.add_column("Status", justify="center")
@@ -277,6 +295,8 @@ def display_chain_table(results: List[Dict]):
         # Format metrics with fallbacks
         alpha = f"{metrics.get('alpha_precision', 0):.3f}" if 'alpha_precision' in metrics else "—"
         prdc = f"{metrics.get('prdc_avg', 0):.3f}" if 'prdc_avg' in metrics else "—"
+        tv_comp = f"{metrics.get('tv_complement', 0):.3f}" if 'tv_complement' in metrics else "—"
+        ks_comp = f"{metrics.get('ks_complement', 0):.3f}" if 'ks_complement' in metrics else "—"
         det = f"{metrics.get('detection_avg', 0):.3f}" if 'detection_avg' in metrics else "—"
         
         # Model size
@@ -290,6 +310,8 @@ def display_chain_table(results: List[Dict]):
             str(gen),
             alpha,
             prdc,
+            tv_comp,
+            ks_comp,
             det,
             size,
             f"[{status_style}]{status}[/{status_style}]"
@@ -311,26 +333,28 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,prdc_avg,detection_avg,model_size_mb\n"
+        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,detection_avg,model_size_mb\n"
     
-    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,detection_avg,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,detection_avg,model_size_mb"]
     
     for r in results:
         gen = r['generation']
         model_id = r['model_id']
         metrics = r['metrics']
-        
+
         alpha = metrics.get('alpha_precision', '')
         prdc_avg = metrics.get('prdc_avg', '')
         prdc_p = metrics.get('prdc_precision', '')
         prdc_r = metrics.get('prdc_recall', '')
         prdc_d = metrics.get('prdc_density', '')
         prdc_c = metrics.get('prdc_coverage', '')
+        tv = metrics.get('tv_complement', '')
+        ks = metrics.get('ks_complement', '')        
         det = metrics.get('detection_avg', '')
         size = r['model_size_mb'] if r['model_exists'] else ''
-        
-        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{det},{size}")
-    
+
+        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{det},{size}")
+
     return "\n".join(lines)
 
 
@@ -386,18 +410,26 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
     # Extract metrics
     alpha = [r['metrics'].get('alpha_precision', None) for r in results]
     prdc = [r['metrics'].get('prdc_avg', None) for r in results]
+    tv = [r['metrics'].get('tv_complement', None) for r in results]
+    ks = [r['metrics'].get('ks_complement', None) for r in results]    
     det = [r['metrics'].get('detection_avg', None) for r in results]
-    
+
     # Create plot
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
+    fig, ax = plt.subplots(figsize=(12, 7))
+
     # Plot each metric if available
     if any(x is not None for x in alpha):
         ax.plot(generations, alpha, marker='o', label='Alpha Precision', linewidth=2)
     
     if any(x is not None for x in prdc):
         ax.plot(generations, prdc, marker='s', label='PRDC Avg', linewidth=2)
-    
+
+    if any(x is not None for x in tv):
+        ax.plot(generations, tv, marker='D', label='TV Complement', linewidth=2, linestyle='--')
+
+    if any(x is not None for x in ks):
+        ax.plot(generations, ks, marker='v', label='KS Complement', linewidth=2, linestyle='--')
+
     if any(x is not None for x in det):
         ax.plot(generations, det, marker='^', label='Detection Avg', linewidth=2)
     
