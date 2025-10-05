@@ -4,7 +4,7 @@
 # EXPERIMENT CONFIGURATION
 # =============================================================================
 experiment:
-  seed: 51
+  seed: 42
   generation: 0
   name: "{sdg.library}_{sdg.model_type}_{data.reference_hash}_{data.root_hash}_{data.training_hash}_gen_{experiment.generation}"
   description: "Testing"
@@ -16,12 +16,8 @@ experiment:
 # =============================================================================
 sdg:
   library: sdv
-  model_type: gaussian_copula
-  parameters:
-    smoothing: false
-    proper: false
-    minibucket: 5
-    tree_params: {}
+  model_type: gaussiancopula
+  parameters: {}
 
 # =============================================================================
 # DATA CONFIGURATION

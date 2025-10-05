@@ -12,7 +12,7 @@ console = Console()
 # Curated list of tested models with working configurations
 CURATED_MODELS = {
     "sdv": {
-        "gaussian_copula": {
+        "gaussiancopula": {
             "type": "Copula",
             "description": "Fast Gaussian copula model, good for tabular data",
             "tested": True,
@@ -69,7 +69,7 @@ CURATED_MODELS = {
                 "loss_factor": 2
             }
         },
-        "copula_gan": {
+        "copulagan": {
             "type": "Copula + GAN",
             "description": "A mix of classic (statistical) and GAN-based (deep learning) methods.", 
             "tested": True,
@@ -202,7 +202,7 @@ CURATED_MODELS = {
                # "device": "auto",  # Source default: DEVICE constant
             }
         },
-        "bayesian_network": {
+        "bayesiannetwork": {
             "type": "Probabilistic",
             "description": "Bayesian Network using probabilistic graphical models (pgmpy backend)",
             "tested": True,

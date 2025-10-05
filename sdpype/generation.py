@@ -32,8 +32,21 @@ def _get_config_hash() -> str:
 def main(cfg: DictConfig) -> None:
     """Generate synthetic data with unified model loading"""
 
-    # Set random seed for reproducibility
+    # Set all random seeds for reproducibility across libraries
     np.random.seed(cfg.experiment.seed)
+    
+    # Set PyTorch seed (SDV models use PyTorch)
+    try:
+        import torch
+        torch.manual_seed(cfg.experiment.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(cfg.experiment.seed)
+    except ImportError:
+        pass
+    
+    # Set Python's built-in random seed
+    import random
+    random.seed(cfg.experiment.seed)
 
     print("🎯 Generating synthetic data...")
     config_hash = _get_config_hash()

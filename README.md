@@ -1,95 +1,60 @@
+Here's the complete updated README.md:
+
+```markdown
 # SDPype - Synthetic Data Pipeline
 
-🚀 A pipeline for generating synthetic data with experiment tracking and comprehensive evaluation.
+Reproducible synthetic data generation pipeline with DVC and experiment tracking.
+
+## Features
+
+- Multiple SDG libraries (SDV, Synthcity, Synthpop)
+- DVC pipeline for reproducibility
+- Experiment versioning with metadata tracking
+- Statistical similarity evaluation
+- Detection-based quality assessment
+- Recursive training for multi-generation analysis
 
 ## Quick Start
 
-### Install
 ```bash
-# Clone and install
-git clone <your-repo>
-cd sdpype
-uv sync
-```
-
-### Setup Repository
-```bash
-# Initialize SDPype repository with sample data
+# Setup repository
 uv run sdpype setup
-```
 
-### Run Pipeline  
-```bash
-# SAFE WORKFLOW: Edit params.yaml first, then run pipeline
-# This avoids DVC file overwriting issues
-
-# 1. Edit params.yaml to set experiment.name and experiment.seed
+# Configure experiment in params.yaml
 vim params.yaml
 
-# 2. Run pipeline safely
+# Run pipeline
 uv run sdpype pipeline
 
-# Example: Multiple experiments
-# Edit params.yaml: experiment.name="baseline", experiment.seed=42
-uv run sdpype pipeline
-# Edit params.yaml: experiment.name="variant", experiment.seed=123  
-uv run sdpype pipeline
+# View available models
+uv run sdpype models
 ```
 
-### Check Status
+## Installation
+
 ```bash
-uv run sdpype status
-uv run sdpype model list
-```
+# Clone repository
+git clone <repository-url>
+cd sdpype
 
-## Experiment Management
+# Install with uv (recommended)
+uv sync
 
-**🎯 Key Concept**: Every model requires both an **experiment name** and **seed** for proper organization and isolation.
-
-**⚠️ IMPORTANT**: Always edit `params.yaml` first, then run `uv run sdpype pipeline`. Never use `dvc exp run` or `sdpype exp run` commands as they overwrite previous experiment files.
-
-### Safe Experiment Workflow
-```bash
-# 1. Edit params.yaml to configure your experiment
-vim params.yaml  # Set experiment.name, experiment.seed, and model parameters
-
-# 2. Run the pipeline
-uv run sdpype pipeline
-
-# 3. Check results
-uv run sdpype model list
-uv run sdpype status
-
-# 4. For next experiment, repeat:
-vim params.yaml  # Change experiment.name and/or experiment.seed
-uv run sdpype pipeline
-```
-
-### Model Management
-```bash
-# List all models (experiment names will be shown)
-uv run sdpype model list
-uv run sdpype model list --verbose
-
-# Get model information (both name and seed required)
-uv run sdpype model info 42 --name baseline --config
-uv run sdpype model info 123 --name variant
-
-# Validate model integrity
-uv run sdpype model validate 42 --name baseline
+# Or with pip
+pip install -e .
 ```
 
 ## Pipeline Stages
 
-1. **preprocess**: Clean and prepare data (optional)
-2. **train_sdg**: Train synthetic data generator
-3. **generate_synthetic**: Generate synthetic data
-4. **statistical_similarity**: Compare statistical similarity between original and synthetic data
-5. **detection_evaluation**: Assess synthetic data quality using classifier-based detection methods
+The pipeline consists of the following stages:
 
-synthetic data
+1. **train_sdg**: Train synthetic data generator
+2. **generate_synthetic**: Generate synthetic data
+3. **statistical_similarity**: Compare statistical similarity between original and synthetic data
+4. **detection_evaluation**: Assess synthetic data quality using classifier-based detection methods
 
 ### Running Individual Stages
+
 ```bash
 # Run specific stages (after editing params.yaml)
 uv run sdpype stage train_sdg
@@ -103,6 +68,7 @@ uv run sdpype stage detection_evaluation
 SDPype provides statistical similarity evaluation to assess the quality of synthetic data:
 
 ### Statistical Similarity Assessment
+
 ```bash
 # Run statistical similarity evaluation (after setting up experiment in params.yaml)
 uv run sdpype stage statistical_similarity
@@ -124,7 +90,6 @@ sdg:
   parameters:
     epochs: 500
     batch_size: 100
-
 ```
 
 ## Available Models
@@ -135,101 +100,182 @@ uv run sdpype models
 ```
 
 **SDV Models:**
-- `gaussian_copula` - Fast, good for tabular data
-- `ctgan` - High quality, slower training
+- `gaussiancopula` - Fast Gaussian copula model, good for tabular data
+- `ctgan` - High quality generative adversarial network
+- `tvae` - Tabular Variational Autoencoder
+- `copulagan` - Mix of copula and GAN methods
 
 **Synthcity Models:**
-- `synthcity_ctgan` - CTGAN implementation
-- `synthcity_tvae` - Tabular VAE
-- `synthcity_marginal_coupling` - Advanced copula method
-- `synthcity_nflow` - Normalizing flows
-- `synthcity_ddpm` - Diffusion model
+- `ctgan` - CTGAN implementation
+- `tvae` - Tabular VAE
+- `marginalcoupling` - Advanced copula method
+- `nflow` - Normalizing flows
+- `ddpm` - Diffusion model
 
 ## Project Structure
 
 ```
 sdpype/
 ├── experiments/
-│   ├── baseline/              # Experiment-specific directories
-│   │   ├── data/
-│   │   │   ├── processed/     # Preprocessed data
-│   │   │   └── synthetic/     # Generated synthetic data
-│   │   ├── models/            # Trained models (sdg_model_42.pkl)
-│   │   └── metrics/           # Evaluation results
-│   ├── variant/               # Another experiment
-│   │   ├── data/
-│   │   ├── models/
-│   │   └── metrics/
-│   └── data/
-│       └── raw/               # Shared raw data
+│   ├── data/
+│   │   ├── raw/               # Raw input data
+│   │   ├── processed/         # Preprocessed data
+│   │   └── synthetic/         # Generated synthetic data
+│   ├── models/                # Trained models
+│   └── metrics/               # Evaluation results
 ├── sdpype/                    # Source code
+│   ├── cli/                   # CLI commands
+│   ├── core/                  # Core functionality
+│   ├── evaluation/            # Evaluation metrics
+│   ├── training.py            # Model training
+│   ├── generation.py          # Data generation
+│   └── evaluate.py            # Evaluation pipeline
 ├── params.yaml                # Configuration
 ├── dvc.yaml                   # Pipeline definition
+├── recursive_train.py         # Recursive training script
+├── trace_chain.py             # Chain tracing utility
 └── README.md
 ```
 
 ## Example Workflows
 
 ### Basic Experiment
+
 ```bash
 # 1. Set up baseline experiment
 vim params.yaml  # Set: experiment.name="baseline", experiment.seed=42
 uv run sdpype pipeline
 
 # 2. Try different model
-vim params.yaml  # Set: experiment.name="ctgan_test", sdg.model_type="ctgan"
+vim params.yaml  # Set: sdg.model_type="gaussiancopula"
 uv run sdpype pipeline
 
-# 3. Test robustness with different seed
-vim params.yaml  # Set: experiment.name="baseline", experiment.seed=123
-uv run sdpype pipeline
-```
-
-### Model Comparison
-```bash
-# Compare multiple models for same data
-vim params.yaml  # baseline: gaussian_copula, seed=42
-uv run sdpype pipeline
-
-vim params.yaml  # variant: ctgan, seed=42  
-uv run sdpype pipeline
-
-# Check results
+# 3. Compare results
 uv run sdpype model list
 ```
 
-## Best Practices
+### Recursive Training
 
-1. **Always edit params.yaml first**: Set meaningful experiment.name and experiment.seed
-2. **Use descriptive experiment names**: `baseline`, `variant_ctgan`, `high_epochs`, etc.
-3. **Test with multiple seeds**: Use different seeds (42, 123, 456) to test robustness
-4. **Use the safe workflow**: `params.yaml` → `sdpype pipeline` → check results
-5. **Never use exp commands**: Avoid `dvc exp run` or `sdpype exp run` - they overwrite files
-6. **Organize experiments logically**: Group related experiments with similar names
-7. **Regular cleanup**: Use `sdpype model clean` to remove old models
-8. **Track results**: Use `sdpype eval status` to monitor evaluation completion
-
-## Troubleshooting
+Run multiple generations where each generation trains on synthetic data from the previous generation:
 
 ```bash
-# Check repository status
+# Run 10 generations
+python recursive_train.py --generations 10
+
+# Resume from checkpoint
+python recursive_train.py --generations 20 --resume
+
+# Resume specific chain
+python recursive_train.py --resume-from MODEL_ID --generations 20
+```
+
+### Chain Tracing
+
+Analyze metric degradation across generations:
+
+```bash
+# Trace a generation chain
+python trace_chain.py MODEL_ID
+
+# Export to CSV
+python trace_chain.py MODEL_ID --format csv --output chain.csv
+
+# Generate plot
+python trace_chain.py MODEL_ID --plot --plot-output degradation.png
+```
+
+## Model Management
+
+```bash
+# List all trained models
+uv run sdpype model list
+
+# Get detailed model info
+uv run sdpype model info MODEL_ID
+```
+
+## CLI Commands
+
+```bash
+# Setup repository
+uv run sdpype setup
+
+# Run complete pipeline
+uv run sdpype pipeline
+
+# Run specific stage
+uv run sdpype stage train_sdg
+
+# Show repository status
 uv run sdpype status
 
-# Validate specific model
-uv run sdpype model validate 42 --name baseline
+# List available models
+uv run sdpype models
 
-# See what models exist
+# Model management
 uv run sdpype model list
+uv run sdpype model info MODEL_ID
 
-# Clean and restart
-uv run sdpype nuke --yes
-uv run sdpype setup
+# Metrics inspection
+uv run sdpype metrics list
+uv run sdpype metrics compare MODEL_ID1 MODEL_ID2
+
+# Purge experiments (destructive)
+uv run sdpype purge --yes
 ```
 
-## Why This Workflow?
+## Model ID Format
 
-**Problem**: Commands like `dvc exp run` overwrite previous experiment files, even with different experiment names.
+Models are identified with the following format:
+```
+library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed
+```
 
-**Solution**: Edit `params.yaml` manually and use `sdpype pipeline`, which creates isolated directories for each experiment.name, preventing file conflicts.
+Example:
+```
+sdv_gaussiancopula_0cf8e0f5_852ba944_852ba944_gen_0_9eadbd5d_51
+```
 
-**Result**: Each experiment gets its own directory structure under `experiments/experiment_name/`, ensuring complete isolation and no data loss.
+Components:
+- `library`: SDG library (sdv, synthcity, etc.)
+- `modeltype`: Model type (gaussiancopula, ctgan, etc.)
+- `refhash`: Reference data hash
+- `roothash`: Root training data hash (generation 0)
+- `trnhash`: Current training data hash
+- `gen_N`: Generation number
+- `cfghash`: Configuration hash
+- `seed`: Random seed
+
+## Development
+
+```bash
+# Install development dependencies
+uv sync --all-extras
+
+# Run tests
+pytest
+
+# Format code
+ruff format .
+
+# Lint
+ruff check .
+```
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Citation
+
+If you use SDPype in your research, please cite:
+
+```bibtex
+@software{sdpype,
+  title = {SDPype: Synthetic Data Pipeline},
+  author = {Your Name},
+  year = {2024},
+  url = {https://github.com/yourusername/sdpype}
+}
+```
+```

@@ -10,7 +10,7 @@ steps:
       defaults:
         sdg_configs:
           - library: "sdv"
-            model_type: "gaussian_copula"
+            model_type: "gaussiancopula"
           - library: "sdv" 
             model_type: "ctgan"
           - library: "synthcity"

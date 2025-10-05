@@ -8,6 +8,7 @@ the synthetic data from the previous generation as training input.
 Usage:
     python recursive_train.py --generations 5
     python recursive_train.py --generations 10 --params custom_params.yaml
+    python recursive_train.py --resume-from MODEL_ID --generations 10
     python recursive_train.py --resume  # Resume from last checkpoint
 """
 
@@ -17,12 +18,17 @@ import json
 import subprocess
 from pathlib import Path
 from datetime import datetime
+from typing import Any, Dict, List, Tuple, Optional, Union
+
 
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.table import Table
 from ruamel.yaml import YAML
+
+# Import parse_model_id from trace_chain for consistent parsing
+from trace_chain import parse_model_id
 
 app = typer.Typer(help="Recursive training for SDPype")
 console = Console()
@@ -67,22 +73,43 @@ def run_pipeline() -> tuple[bool, float]:
         return False, elapsed
 
 
-def get_latest_model_id() -> str:
-    """Get model ID from most recently created model file"""
-    models_dir = Path("experiments/models")
-    if not models_dir.exists():
-        raise FileNotFoundError("No models directory found")
+def get_latest_model_id(generation: int) -> str:
+    """
+    Get model ID for a specific generation from the metrics files just created.
 
-    # Find all model files
-    model_files = list(models_dir.glob("sdg_model_*.pkl"))
-    if not model_files:
-        raise FileNotFoundError("No model files found")
+    This is more reliable than using filesystem modification times.
 
-    # Get most recent by modification time
-    latest_model = max(model_files, key=lambda p: p.stat().st_mtime)
+    Args:
+        generation: The generation number that just completed
 
-    # Extract model ID from filename: sdg_model_{model_id}.pkl
-    model_id = latest_model.stem.replace("sdg_model_", "")
+    Returns:
+        Model ID string
+
+    Raises:
+        FileNotFoundError: If no metrics found for this generation
+    """
+    metrics_dir = Path("experiments/metrics")
+
+    # Look for training metrics file (always created first)
+    # Pattern: training_*_gen_{generation}_*.json
+    pattern = f"training_*_gen_{generation}_*.json"
+    metric_files = list(metrics_dir.glob(pattern))
+
+    if not metric_files:
+        raise FileNotFoundError(f"No training metrics found for generation {generation}")
+
+    # Get most recent (in case multiple exist)
+    latest_metric = max(metric_files, key=lambda p: p.stat().st_mtime)
+
+    # Extract model_id from filename: training_{model_id}.json
+    filename = latest_metric.stem
+    model_id = filename.replace("training_", "")
+
+    # Validate by checking if model file exists
+    model_file = Path(f"experiments/models/sdg_model_{model_id}.pkl")
+    if not model_file.exists():
+        raise FileNotFoundError(f"Model file not found for model_id: {model_id}")
+
     return model_id
 
 
@@ -94,30 +121,18 @@ def get_synthetic_data_path(model_id: str) -> Path:
 def read_metrics(model_id: str, generation: int) -> dict:
     """Read key metrics from generation's output"""
 
-    # Debug: print what we're looking for
+    # Extract components using fixed positions
     parts = model_id.split("_")
-    seed = parts[-1]
-    config_hash = parts[-2]
-    experiment_name = "_".join(parts[:-4])
-    
+    seed = parts[8]
+    config_hash = parts[7]
+    experiment_name = "_".join(parts[:5])  # library_model_ref_root_trn
+
     stat_file = Path(f"experiments/metrics/statistical_similarity_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
     det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
-    
+
     console.print(f"[dim]Looking for metrics:[/dim]")
     console.print(f"[dim]  Stat: {stat_file} (exists: {stat_file.exists()})[/dim]")
     console.print(f"[dim]  Det: {det_file} (exists: {det_file.exists()})[/dim]")
-    
-    # New model_id format: library_model_refhash_roothash_trnhash_gen_N_cfghash_seed
-    parts = model_id.split("_")
-
-    # Extract components from end
-    seed = parts[-1]
-    config_hash = parts[-2]
-    # parts[-3] is generation number
-    # parts[-4] is "gen"
-
-    # Experiment name is everything except: _gen_N_cfghash_seed
-    experiment_name = "_".join(parts[:-4])
    
     metrics = {}
     
@@ -168,11 +183,18 @@ def read_metrics(model_id: str, generation: int) -> dict:
     return metrics
 
 
-def backup_params(params_file: Path, generation: int, checkpoint_dir: Path):
-    """Backup params.yaml for this generation"""
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    backup_file = checkpoint_dir / f"params_gen_{generation}.yaml"
+def backup_params(params_file: Path, generation: int, checkpoint_dir: Path, model_id: str):
+    """
+    Backup params.yaml for this generation and chain.
     
+    Params are backed up with chain_id to prevent different chains from overwriting each other.
+    """
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    # Include chain_id in filename to prevent overwriting between chains
+    chain_id = extract_chain_identifier(model_id)
+    backup_file = checkpoint_dir / f"params_{chain_id}_gen_{generation}.yaml"
+
     import shutil
     shutil.copy2(params_file, backup_file)
 
@@ -201,10 +223,39 @@ def update_params_for_next_generation(params_file: Path, synthetic_data_path: Pa
         yaml.dump(params, f)
 
 
-def save_checkpoint(checkpoint_dir: Path, generation: int, model_id: str, elapsed: float):
-    """Save checkpoint information for resume capability"""
-    checkpoint_file = checkpoint_dir / "checkpoint.json"
+def extract_chain_identifier(model_id: str) -> str:
+    """
+    Extract unique chain identifier from model_id.
+
+    Returns: library_modeltype_roothash_seed
+    This uniquely identifies a chain across all invariants.
+    """
+    parts = model_id.split("_")
+
+    # Fixed positions - simple extraction
+    library = parts[0]
+    model_type = parts[1]
+    root_hash = parts[3]
+    seed = parts[8]
+
+    return f"{library}_{model_type}_{root_hash}_{seed}"
+
+
+def save_checkpoint(checkpoint_dir: Path, model_id: str, generation: int, elapsed: float):
+    """
+    Save chain-specific checkpoint for resume capability.
+
+    Checkpoint filename format: checkpoint_{library}_{modeltype}_{roothash}_{seed}.json
+    This allows multiple chains to coexist without conflicts.
+    """
+    chain_id = extract_chain_identifier(model_id)
+    checkpoint_file = checkpoint_dir / f"checkpoint_{chain_id}.json"
+
+    parsed = parse_model_id(model_id)
     checkpoint_data = {
+        "chain_id": chain_id,
+        "root_hash": parsed['root_hash'],
+        "seed": parsed['seed'],
         "last_completed_generation": generation,
         "last_model_id": model_id,
         "elapsed_time": elapsed,        
@@ -231,43 +282,186 @@ def save_generation_timing(checkpoint_dir: Path, generation: int, elapsed: float
         json.dump(timings, f, indent=2)
 
 
-def load_checkpoint(checkpoint_dir: Path) -> dict:
-    """Load checkpoint to resume training"""
-    checkpoint_file = checkpoint_dir / "checkpoint.json"
-    if not checkpoint_file.exists():
+def load_checkpoint_for_chain(checkpoint_dir: Path, model_id: str) -> dict:
+    """
+    Load checkpoint for a specific chain identified by model_id.
+
+    Args:
+        checkpoint_dir: Directory containing checkpoints
+        model_id: Any model_id from the chain to resume
+
+    Returns:
+        Checkpoint dict or None if not found
+    """
+    chain_id = extract_chain_identifier(model_id)
+    checkpoint_file = checkpoint_dir / f"checkpoint_{chain_id}.json"
+
+    if checkpoint_file.exists():
+        with checkpoint_file.open() as f:
+            return json.load(f)
+    return None
+
+
+def find_latest_checkpoint(checkpoint_dir: Path) -> dict:
+    """
+    Find the most recent checkpoint when no specific chain is given.
+
+    Returns:
+        Most recent checkpoint dict or None if no checkpoints found
+    """
+    if not checkpoint_dir.exists():
         return None
-    
+
+    # Find all chain-specific checkpoints
+    checkpoint_files = list(checkpoint_dir.glob("checkpoint_*.json"))
+
+    if not checkpoint_files:
+        return None
+
+    if len(checkpoint_files) > 1:
+        console.print(f"[yellow]Found {len(checkpoint_files)} checkpoints. Please specify which chain to resume with --resume-from MODEL_ID[/yellow]")
+        console.print("[yellow]Available chains:[/yellow]")
+        for cp_file in checkpoint_files:
+            with cp_file.open() as f:
+                cp_data = json.load(f)
+                console.print(f"  • {cp_data.get('chain_id', 'unknown')}, gen={cp_data['last_completed_generation']}")
+        return None
+
+    # Single checkpoint found - use it
+    checkpoint_file = checkpoint_files[0]
     with checkpoint_file.open() as f:
-        return json.load(f)
+        checkpoint = json.load(f)
+
+    console.print(f"[cyan]Found checkpoint: root_hash={checkpoint['root_hash']}, seed={checkpoint['seed']}[/cyan]")
+    return checkpoint
 
 
-def load_all_generation_results(checkpoint_dir: Path, start_gen: int, end_gen: int) -> list:
-    """Load results from all completed generations in checkpoints"""
-    results = []
+def reconstruct_checkpoint_from_chain(model_id: str) -> dict:
+    """
+    Reconstruct checkpoint by tracing chain from metrics files.
     
-    for gen in range(start_gen, end_gen):
-        # Look specifically for statistical_similarity files (most reliable)
-        metrics_pattern = f"experiments/metrics/statistical_similarity_*_gen_{gen}_*.json"
-        metric_files = list(Path().glob(metrics_pattern))
-        
-        if metric_files:
-            # Extract model_id from filename by removing prefix and suffix
-            # Pattern: statistical_similarity_{model_id}.json
-            filename = metric_files[0].stem
+    Fallback when checkpoint file doesn't exist but generations have been completed.
 
-            # Remove "statistical_similarity_" prefix (22 chars + 1 underscore)
-            if filename.startswith("statistical_similarity_"):
-                model_id = filename[len("statistical_similarity_"):]
-            else:
-                console.print(f"[yellow]Warning: Unexpected filename format for gen {gen}[/yellow]")
+    Args:
+        model_id: Any model_id from the chain
+
+    Returns:
+        Reconstructed checkpoint dict
+
+    Raises:
+        ValueError: If no generations found for the chain
+    """
+    parsed = parse_model_id(model_id)
+    root_hash = parsed['root_hash']
+    seed = parsed['seed']
+    library = parsed['library']
+    model_type = parsed['model_type']
+    ref_hash = parsed['ref_hash']    
+
+    console.print(f"[yellow]No checkpoint found, reconstructing from metrics...[/yellow]")
+
+    # Find last completed generation
+    last_gen = -1
+    last_model_id = None
+
+    for gen in range(100):  # Max search
+        pattern = f"experiments/metrics/statistical_similarity_*_gen_{gen}_*_{seed}.json"
+        metric_files = list(Path().glob(pattern))
+
+        # Filter by all chain invariants
+        matching_model_id = None
+        for metric_file in metric_files:
+            filename = metric_file.stem
+            candidate_model_id = filename.replace("statistical_similarity_", "")
+
+            try:
+                parsed_candidate = parse_model_id(candidate_model_id)
+
+                if (parsed_candidate['library'] == library and
+                    parsed_candidate['model_type'] == model_type and
+                    parsed_candidate['ref_hash'] == ref_hash and
+                    parsed_candidate['root_hash'] == root_hash and
+                    parsed_candidate['seed'] == seed):
+                    matching_model_id = candidate_model_id
+                    break
+            except ValueError:
                 continue
 
+        if matching_model_id:
+            last_gen = gen
+            last_model_id = matching_model_id
+        else:
+            break
+
+    if last_gen == -1:
+        raise ValueError(f"No generations found for chain: root_hash={root_hash}, seed={seed}")
+
+    console.print(f"[green]Reconstructed: found {last_gen + 1} completed generations[/green]")
+
+    return {
+        "root_hash": root_hash,
+        "seed": seed,
+        "last_completed_generation": last_gen,
+        "last_model_id": last_model_id,
+        "elapsed_time": 0,  # Unknown
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+def load_all_generation_results(checkpoint_dir: Path, start_gen: int, end_gen: int, model_id: str) -> list:
+    """
+    Load results from all completed generations for a specific chain.
+
+    Args:
+        checkpoint_dir: Directory containing checkpoints
+        start_gen: Starting generation
+        end_gen: Ending generation (exclusive)
+        model_id: Model ID to identify which chain to load
+
+    Returns:
+        List of generation results for the specified chain only
+    """
+    # Parse model_id to get chain invariants
+    parsed = parse_model_id(model_id)
+    library = parsed['library']
+    model_type = parsed['model_type']
+    ref_hash = parsed['ref_hash']
+    root_hash = parsed['root_hash']
+    seed = parsed['seed']
+
+    results = []
+
+    for gen in range(start_gen, end_gen):
+        # Glob for generation + seed
+        metrics_pattern = f"experiments/metrics/statistical_similarity_*_gen_{gen}_*_{seed}.json"
+        metric_files = list(Path().glob(metrics_pattern))
+
+        # Filter by all chain invariants
+        matching_model_id = None
+        for metric_file in metric_files:
+            filename = metric_file.stem
+            candidate_model_id = filename.replace("statistical_similarity_", "")
+
+            try:
+                parsed_candidate = parse_model_id(candidate_model_id)
+
+                # All five invariants must match
+                if (parsed_candidate['library'] == library and
+                    parsed_candidate['model_type'] == model_type and
+                    parsed_candidate['ref_hash'] == ref_hash and
+                    parsed_candidate['root_hash'] == root_hash and
+                    parsed_candidate['seed'] == seed):
+                    matching_model_id = candidate_model_id
+                    break
+            except ValueError:
+                continue
+        if matching_model_id:
             elapsed = 0  # Will be loaded from timings file below
 
-            metrics = read_metrics(model_id, gen)
+            metrics = read_metrics(matching_model_id, gen)
             results.append({
                 'generation': gen,
-                'model_id': model_id,
+                'model_id': matching_model_id,
                 'metrics': metrics,
                 'elapsed': elapsed
             })
@@ -291,34 +485,87 @@ def run(
     params_file: Path = typer.Option("params.yaml", "--params", "-p", help="Path to params.yaml"),
     checkpoint_dir: Path = typer.Option("checkpoints", "--checkpoint-dir", help="Directory for checkpoints"),
     resume: bool = typer.Option(False, "--resume", "-r", help="Resume from last checkpoint"),
+    resume_from: Optional[str] = typer.Option(
+        None,
+        "--resume-from",
+        help="Resume specific chain by MODEL_ID (e.g., sdv_gaussiancopula_..._gen_5_..._51)"
+    ),    
 ):
-    """Run recursive training for N generations"""
+    """
+    Run recursive training for N generations.
+    
+    Use --resume to auto-resume the last checkpoint (if only one exists).
+    Use --resume-from MODEL_ID to explicitly resume a specific chain.
+    """
     
     # Check if resuming
     start_gen = 0
-    if resume:
-        checkpoint = load_checkpoint(checkpoint_dir)
+
+    # Handle --resume-from (explicit model_id)
+    if resume_from:
+        console.print(f"[cyan]Resuming from MODEL_ID: {resume_from}[/cyan]")
+        
+        try:
+            # Try to load checkpoint for this chain
+            checkpoint = load_checkpoint_for_chain(checkpoint_dir, resume_from)
+            
+            if not checkpoint:
+                # No checkpoint - try to reconstruct from metrics
+                checkpoint = reconstruct_checkpoint_from_chain(resume_from)
+        
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1)
+        
+        start_gen = checkpoint['last_completed_generation'] + 1
+        console.print(f"[green]Resuming from generation {start_gen}[/green]")
+        console.print(f"[dim]Last model: {checkpoint['last_model_id']}[/dim]")
+
+        if start_gen >= generations:
+            console.print(f"[yellow]Chain already completed {start_gen} generations (requested: {generations})[/yellow]")
+            console.print(f"[yellow]Increase --generations to continue training[/yellow]")
+            raise typer.Exit(0)
+        
+    # Handle --resume (auto-detect)
+    elif resume:
+        console.print("[cyan]Auto-resuming from last checkpoint...[/cyan]")
+        checkpoint = find_latest_checkpoint(checkpoint_dir)
+        
         if checkpoint:
             start_gen = checkpoint['last_completed_generation'] + 1
-            console.print(f"[yellow]Resuming from generation {start_gen}[/yellow]")
-            if start_gen >= generations:
-                console.print("[yellow]All generations already completed[/yellow]")
-                return
+            console.print(f"[green]Resuming from generation {start_gen}[/green]")
+            console.print(f"[dim]Last model: {checkpoint['last_model_id']}[/dim]")
 
-            # Restore params from last checkpoint
-            last_params = checkpoint_dir / f"params_gen_{checkpoint['last_completed_generation']}.yaml"
-            if last_params.exists():
-                import shutil
-                shutil.copy2(last_params, params_file)
-                console.print(f"[dim]Restored params from gen {checkpoint['last_completed_generation']}[/dim]")
-                
-                # Now update for next generation
-                last_model_id = checkpoint['last_model_id']
-                synthetic_path = get_synthetic_data_path(last_model_id)
-                update_params_for_next_generation(params_file, synthetic_path, start_gen)
-                console.print(f"[dim]Updated params for generation {start_gen}[/dim]")
+            if start_gen >= generations:
+                console.print(f"[yellow]Chain already completed {start_gen} generations (requested: {generations})[/yellow]")
+                console.print(f"[yellow]Increase --generations to continue training[/yellow]")
+                raise typer.Exit(0)
         else:
             console.print("[yellow]No checkpoint found, starting from generation 0[/yellow]")
+            checkpoint = None
+    else:
+        checkpoint = None
+    
+    # Restore params if resuming
+    if checkpoint:
+        last_gen = checkpoint['last_completed_generation']
+        chain_id = checkpoint.get('chain_id')
+        last_params = checkpoint_dir / f"params_{chain_id}_gen_{last_gen}.yaml"
+        console.print(f"[dim]Resuming chain: {checkpoint.get('chain_id', 'unknown')}[/dim]")
+
+        if last_params.exists():
+            import shutil
+            shutil.copy2(last_params, params_file)
+            console.print(f"[dim]Restored params from gen {last_gen}[/dim]")
+                 
+            # Now update for next generation
+            last_model_id = checkpoint['last_model_id']
+            synthetic_path = get_synthetic_data_path(last_model_id)
+            update_params_for_next_generation(params_file, synthetic_path, start_gen)
+            console.print(f"[dim]Updated params for generation {start_gen}[/dim]")
+        else:
+            console.print(f"[yellow]Warning: Params backup not found: {last_params.name}[/yellow]")
+            console.print("[yellow]Continuing with current params.yaml[/yellow]")
     
     # Validate initial params if starting fresh
     if start_gen == 0:
@@ -332,7 +579,7 @@ def run(
     overall_start = time.time()
     # Load previous generation results if resuming
     if start_gen > 0:
-        results = load_all_generation_results(checkpoint_dir, 0, start_gen)
+        results = load_all_generation_results(checkpoint_dir, 0, start_gen, checkpoint['last_model_id'])
 
     # Run generations
     for gen in range(start_gen, generations):
@@ -347,7 +594,7 @@ def run(
             raise typer.Exit(1)
         
         # Get model ID
-        model_id = get_latest_model_id()
+        model_id = get_latest_model_id(gen)
         synthetic_path = get_synthetic_data_path(model_id)
         
         # Verify synthetic data exists
@@ -379,10 +626,10 @@ def run(
         })
         
         # Backup params
-        backup_params(params_file, gen, checkpoint_dir)
+        backup_params(params_file, gen, checkpoint_dir, model_id)
         
         # Save checkpoint
-        save_checkpoint(checkpoint_dir, gen, model_id, elapsed)
+        save_checkpoint(checkpoint_dir, model_id, gen, elapsed)
 
         # Save timing separately for easy lookup
         save_generation_timing(checkpoint_dir, gen, elapsed)

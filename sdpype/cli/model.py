@@ -42,7 +42,7 @@ def list_models(
         else:
             _show_compact_model_list(models)
 
-        console.print(f"\n💡 Use [bold]sdpype model info <model_id>[/bold] for details (e.g., 'sdpype model info sdv_copula_gan_test_123')")
+        console.print(f"\n💡 Use [bold]sdpype model info <model_id>[/bold] for details (e.g., 'sdpype model info sdv_copulagan_test_123')")
         
     except Exception as e:
         console.print(f"❌ Error listing models: {e}", style="red")
@@ -50,7 +50,7 @@ def list_models(
 
 @model_app.command("info")
 def model_info(
-    model_id: str = typer.Argument(..., help="Model identifier (experiment_name_seed, e.g. 'sdv_copula_gan_test_123')"),
+    model_id: str = typer.Argument(..., help="Model identifier (experiment_name_seed, e.g. 'sdv_copulagan_test_123')"),
     export: bool = typer.Option(False, "--export", help="Export params.yaml to file"),
     export_file: Optional[str] = typer.Option(None, "--export-file", help="Custom filename for export (default: params_{model_id}.yaml)"),
     model_dir: Optional[str] = typer.Option(None, "--model-dir", help="Custom model directory")
@@ -154,7 +154,7 @@ def _show_compact_model_list(models):
     """Show models in a compact table format"""
 
     table = Table(show_header=True, header_style="bold blue")
-    table.add_column("Experiment", style="cyan")
+    # table.add_column("Experiment", style="cyan")
     # table.add_column("Seed", style="magenta")
     # table.add_column("Model", style="green")
     table.add_column("Dataset", style="yellow")
@@ -180,7 +180,7 @@ def _show_compact_model_list(models):
             # Extract date from ISO timestamp
             created = created.split('T')[0]
 
-        table.add_row(name, dataset_name, model_id, created)
+        table.add_row(dataset_name, model_id, created)
 
     console.print(table)
 

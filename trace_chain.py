@@ -5,7 +5,7 @@ Traces all generations in a recursive training chain given a model ID.
 Extracts metrics from each generation for analysis.
 
 Usage:
-    python trace_chain.py sdv_gaussian_copula_0cf8e0f5_852ba944_852ba944_gen_0_9eadbd5d_51
+    python trace_chain.py sdv_gaussiancopula_0cf8e0f5_852ba944_852ba944_gen_0_9eadbd5d_51
     python trace_chain.py MODEL_ID --format csv
     python trace_chain.py MODEL_ID --format json > chain.json
     python trace_chain.py MODEL_ID --plot
@@ -28,8 +28,8 @@ def parse_model_id(model_id: str) -> Dict[str, str]:
     """
     Parse model_id into components for chain tracing.
     
-    Format: library_model_refhash_roothash_trnhash_gen_N_cfghash_seed
-    Example: sdv_gaussian_copula_0cf8e0f5_852ba944_852ba944_gen_0_9eadbd5d_51
+    Format: library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed
+    Example: sdv_gaussiancopula_0cf8e0f5_852ba944_852ba944_gen_0_9eadbd5d_51
     
     Args:
         model_id: Full model identifier string
@@ -42,36 +42,42 @@ def parse_model_id(model_id: str) -> Dict[str, str]:
     """
     parts = model_id.split("_")
     
-    # Validate minimum length: library_model_refhash_roothash_trnhash_gen_N_cfghash_seed
+    # Validate length: library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed = 9 parts minimum
     if len(parts) < 9:
         raise ValueError(
             f"Invalid model_id format (expected at least 9 components): {model_id}\n"
-            f"Expected format: library_model_refhash_roothash_trnhash_gen_N_cfghash_seed"
+            f"Expected format: library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed"
         )
     
     try:
-        # Extract from the end
-        seed = parts[-1]
-        config_hash = parts[-2]
-        generation_num = int(parts[-3])
-        gen_marker = parts[-4]
+        # Fixed positions - no detection needed!
+        library = parts[0]
+        model_type = parts[1]
+        ref_hash = parts[2]
+        root_hash = parts[3]
+        training_hash = parts[4]
+        gen_marker = parts[5]
+        generation_num = int(parts[6])
+        config_hash = parts[7]
+        seed = parts[8]
         
         # Validate "gen" marker
         if gen_marker != "gen":
-            raise ValueError(f"Expected 'gen' marker at position -4, got: {gen_marker}")
-        
-        # Extract root_hash (4th component, index 3)
-        root_hash = parts[3]
+            raise ValueError(f"Expected 'gen' marker at position 5, got: {gen_marker}")
         
         # Experiment name is everything except: _gen_N_cfghash_seed
-        experiment_name = "_".join(parts[:-4])
-        
+        experiment_name = "_".join(parts[:5])
+
         return {
+            "library": library,
+            "model_type": model_type,
+            "ref_hash": ref_hash,
             "root_hash": root_hash,
-            "seed": seed,
+            "training_hash": training_hash,
             "generation": generation_num,
+            "config_hash": config_hash,
+            "seed": seed,
             "experiment_name": experiment_name,
-            "config_hash": config_hash
         }
         
     except (ValueError, IndexError) as e:
@@ -91,11 +97,11 @@ def read_metrics(model_id: str, generation: int) -> Dict:
     Returns:
         Dict with metrics: α (Alpha Precision), PRDC (avg), Det (avg)
     """
-    # Parse model_id to extract components
+    # Extract components using fixed positions
     parts = model_id.split("_")
-    seed = parts[-1]
-    config_hash = parts[-2]
-    experiment_name = "_".join(parts[:-4])
+    seed = parts[8]
+    config_hash = parts[7]
+    experiment_name = "_".join(parts[:5])  # library_model_ref_root_trn
     
     metrics = {}
     
@@ -178,32 +184,56 @@ def trace_chain(model_id: str, max_generations: int = 100) -> List[Dict]:
     # Parse input model_id
     try:
         parsed = parse_model_id(model_id)
+        library = parsed['library']
+        model_type = parsed['model_type']
+        ref_hash = parsed['ref_hash']        
         root_hash = parsed['root_hash']
         seed = parsed['seed']
     except ValueError as e:
         console.print(f"[red]Error parsing model_id: {e}[/red]")
         raise typer.Exit(1)
     
-    console.print(f"[cyan]Tracing chain:[/cyan] root_hash={root_hash}, seed={seed}")
+    console.print(f"[cyan]Tracing chain:[/cyan] {library}/{model_type}, ref_hash={ref_hash}, root_hash={root_hash}, seed={seed}")
     
     results = []
     
     # Search for each generation
     for gen in range(max_generations):
-        # Look for statistical_similarity metrics (most reliable indicator)
-        # Pattern: statistical_similarity_*_{root_hash}_*_gen_{gen}_*_{seed}.json
-        pattern = f"experiments/metrics/statistical_similarity_*_{root_hash}_*_gen_{gen}_*_{seed}.json"
+        # Glob broadly for generation + seed, then filter by root_hash
+        # This is more reliable because training_hash changes each generation
+        pattern = f"experiments/metrics/statistical_similarity_*_gen_{gen}_*_{seed}.json"
         metric_files = list(Path().glob(pattern))
         
         if not metric_files:
             # No more generations found
             break
         
-        # Extract full model_id from metrics filename
-        # Filename format: statistical_similarity_{model_id}.json
-        filename = metric_files[0].stem
-        model_id_for_gen = filename.replace("statistical_similarity_", "")
+        # Filter by all five invariants: library, model_type, ref_hash, root_hash, seed
+        matching_model_id = None
+        for metric_file in metric_files:
+            filename = metric_file.stem
+            candidate_model_id = filename.replace("statistical_similarity_", "")
+            
+            # Parse and check if all invariants match
+            try:
+                parsed_candidate = parse_model_id(candidate_model_id)
+
+                # All five invariants must match for same chain
+                if (parsed_candidate['library'] == library and
+                    parsed_candidate['model_type'] == model_type and
+                    parsed_candidate['ref_hash'] == ref_hash and
+                    parsed_candidate['root_hash'] == root_hash and
+                    parsed_candidate['seed'] == seed):
+                    matching_model_id = candidate_model_id
+                    break
+            except ValueError:
+                continue
         
+        if not matching_model_id:
+            break
+        
+        model_id_for_gen = matching_model_id
+
         # Read metrics
         metrics = read_metrics(model_id_for_gen, gen)
         

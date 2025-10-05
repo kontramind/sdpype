@@ -66,7 +66,7 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
     match cfg.sdg.model_type:
-        case "gaussian_copula":
+        case "gaussiancopula":
             return GaussianCopulaSynthesizer(
                 metadata,
                 enforce_min_max_values=model_params.get("enforce_min_max_values", True),
@@ -113,7 +113,7 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
                 loss_factor=model_params.get("loss_factor", 2)
             )
 
-        case "copula_gan":
+        case "copulagan":
             return CopulaGANSynthesizer(
                 metadata,
                 enforce_min_max_values=model_params.get("enforce_min_max_values", True),
@@ -165,7 +165,7 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     # Training configuration
                     n_iter=model_params.get("n_iter", 2000),
                     batch_size=model_params.get("batch_size", 200),
-                    random_state=model_params.get("random_state", 0),
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
 
                     # Generator architecture
                     generator_n_layers_hidden=model_params.get("generator_n_layers_hidden", 2),
@@ -222,7 +222,7 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     lr=model_params.get("lr", 0.002),
                     weight_decay=model_params.get("weight_decay", 1e-4),
                     batch_size=model_params.get("batch_size", 1024),
-                    random_state=model_params.get("random_state", 0),
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
 
                     # Task configuration
                     is_classification=model_params.get("is_classification", False),
@@ -260,13 +260,13 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                 )
                 return model
 
-            case "bayesian_network":
+            case "bayesiannetwork":
                 # Map common parameters that might have different names
                 # Handle epochs -> struct_learning_n_iter mapping (if needed)
                 if 'epochs' in all_params and 'struct_learning_n_iter' not in model_params:
                     model_params['struct_learning_n_iter'] = all_params['epochs']
 
-                model = Plugins().get("bayesian_network",
+                model = Plugins().get("bayesiannetwork",
                     # Structure learning parameters
                     struct_learning_n_iter=model_params.get("struct_learning_n_iter", 1000),
                     struct_learning_search_method=model_params.get("struct_learning_search_method", "tree_search"),
@@ -278,7 +278,7 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     encoder_noise_scale=model_params.get("encoder_noise_scale", 0.1),
 
                     # Core plugin settings
-                    random_state=model_params.get("random_state", 0),
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
                     compress_dataset=model_params.get("compress_dataset", False),
                     sampling_patience=model_params.get("sampling_patience", 500),
 
@@ -406,6 +406,9 @@ def main(cfg: DictConfig) -> None:
         print(f"🔄 Using SDPype preprocessing for synthpop...")
         model._sdpype_metadata = synthpop_metadata
         model.fit(training_data)
+    elif library == "sdv":
+        model.fit(training_data)
+        model._set_random_state(cfg.experiment.seed)
     else:
         model.fit(training_data)
 

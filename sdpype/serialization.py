@@ -411,7 +411,7 @@ def create_model_metadata(
     
     Args:
         cfg: Hydra configuration
-        model_type: Type of model (e.g., 'ctgan', 'gaussian_copula')
+        model_type: Type of model (e.g., 'ctgan', 'gaussiancopula')
         library: Library name ('sdv', 'synthcity')
         experiment_seed: Experiment seed
         training_time: Training time in seconds
