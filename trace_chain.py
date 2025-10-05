@@ -140,6 +140,13 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                     metrics['prdc_density'] = prdc_metric.get('density', 0)
                     metrics['prdc_coverage'] = prdc_metric.get('coverage', 0)
 
+        # Wasserstein Distance - lower is better
+        if 'wasserstein_distance' in metrics_data:
+            wd_metric = metrics_data['wasserstein_distance']
+            if wd_metric.get('status') == 'success':
+                # Store distance (lower = more similar distributions)
+                metrics['wasserstein_dist'] = wd_metric.get('joint_distance', 1.0)
+
             if 'tv_complement' in metrics_data:
                 tv_metric = metrics_data['tv_complement']
                 if tv_metric.get('status') == 'success':
@@ -284,6 +291,7 @@ def display_chain_table(results: List[Dict]):
     table.add_column("PRDC Avg", justify="right")
     table.add_column("TV Complement", justify="right")
     table.add_column("KS Complement", justify="right")
+    table.add_column("Wasserstein Dist", justify="right")    
     table.add_column("Detection Avg", justify="right")
     table.add_column("Model Size", justify="right", style="dim")
     table.add_column("Status", justify="center")
@@ -297,6 +305,7 @@ def display_chain_table(results: List[Dict]):
         prdc = f"{metrics.get('prdc_avg', 0):.3f}" if 'prdc_avg' in metrics else "—"
         tv_comp = f"{metrics.get('tv_complement', 0):.3f}" if 'tv_complement' in metrics else "—"
         ks_comp = f"{metrics.get('ks_complement', 0):.3f}" if 'ks_complement' in metrics else "—"
+        wd = f"{metrics.get('wasserstein_dist', 0):.6f}" if 'wasserstein_dist' in metrics else "—"
         det = f"{metrics.get('detection_avg', 0):.3f}" if 'detection_avg' in metrics else "—"
         
         # Model size
@@ -312,6 +321,7 @@ def display_chain_table(results: List[Dict]):
             prdc,
             tv_comp,
             ks_comp,
+            wd,
             det,
             size,
             f"[{status_style}]{status}[/{status_style}]"
@@ -333,9 +343,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,detection_avg,model_size_mb\n"
+        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,detection_avg,model_size_mb\n"
     
-    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,detection_avg,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,detection_avg,model_size_mb"]
     
     for r in results:
         gen = r['generation']
@@ -349,12 +359,12 @@ def export_csv(results: List[Dict]) -> str:
         prdc_d = metrics.get('prdc_density', '')
         prdc_c = metrics.get('prdc_coverage', '')
         tv = metrics.get('tv_complement', '')
-        ks = metrics.get('ks_complement', '')        
+        ks = metrics.get('ks_complement', '')
+        wd = metrics.get('wasserstein_dist', '')
         det = metrics.get('detection_avg', '')
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{det},{size}")
-
+        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{det},{size}")
     return "\n".join(lines)
 
 
@@ -411,7 +421,8 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
     alpha = [r['metrics'].get('alpha_precision', None) for r in results]
     prdc = [r['metrics'].get('prdc_avg', None) for r in results]
     tv = [r['metrics'].get('tv_complement', None) for r in results]
-    ks = [r['metrics'].get('ks_complement', None) for r in results]    
+    ks = [r['metrics'].get('ks_complement', None) for r in results]
+    wd = [r['metrics'].get('wasserstein_dist', None) for r in results]
     det = [r['metrics'].get('detection_avg', None) for r in results]
 
     # Create plot
@@ -433,6 +444,14 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
     if any(x is not None for x in det):
         ax.plot(generations, det, marker='^', label='Detection Avg', linewidth=2)
     
+    # Wasserstein on secondary y-axis (lower is better)
+    if any(x is not None for x in wd):
+        ax2 = ax.twinx()
+        ax2.plot(generations, wd, marker='x', label='Wasserstein Dist', 
+                 linewidth=2, linestyle=':', color='red', alpha=0.7)
+        ax2.set_ylabel('Wasserstein Distance (lower is better)', fontsize=10, color='red')
+        ax2.tick_params(axis='y', labelcolor='red')
+
     ax.set_xlabel('Generation', fontsize=12)
     ax.set_ylabel('Score', fontsize=12)
     ax.set_title('Metric Degradation Across Generations', fontsize=14, fontweight='bold')

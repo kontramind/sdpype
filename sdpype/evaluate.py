@@ -371,6 +371,30 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ PRDC Score failed", style="bold red")
 
+    # Wasserstein Distance results table
+    if "wasserstein_distance" in metrics and metrics["wasserstein_distance"]["status"] == "success":
+        wd_result = metrics["wasserstein_distance"]
+
+        # Get parameters info for display
+        params_info = wd_result["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
+
+        # Create Wasserstein Distance results table
+        wd_table = Table(title=f"✅ Wasserstein Distance Results ({params_display})", show_header=True, header_style="bold blue")
+        wd_table.add_column("Metric", style="cyan", no_wrap=True)
+        wd_table.add_column("Score", style="bright_green", justify="right")
+        wd_table.add_column("Interpretation", style="yellow")
+
+        distance = wd_result['joint_distance']
+        interpretation = "Identical" if distance < 0.01 else "Very Similar" if distance < 0.05 else "Similar" if distance < 0.1 else "Different"
+        
+        wd_table.add_row("Joint Distance", f"{distance:.6f}", interpretation)
+        wd_table.add_row("", "", "Lower is better")
+
+        console.print(wd_table)
+    else:
+        console.print("❌ Wasserstein Distance failed", style="bold red")
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 

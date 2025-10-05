@@ -31,6 +31,14 @@ AVAILABLE_METRICS = {
             "outputs": ["precision", "recall", "density", "coverage"],
             "reference": "Kynkäänniemi et al. 2019 - Improved precision and recall metric"
         },
+        "wasserstein_distance": {
+            "description": "Wasserstein distance (Earth Mover's Distance) between distributions",
+            "library": "synthcity",
+            "parameters": {},  # No configurable parameters
+            "outputs": ["joint_distance"],
+            "reference": "Optimal transport distance - lower values indicate more similar distributions",
+            "direction": "minimize",
+        },        
         "new_row_synthesis": {
             "description": "Measures whether each synthetic row is new or matches real data exactly",
             "library": "sdmetrics",

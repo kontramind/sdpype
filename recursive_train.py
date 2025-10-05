@@ -153,7 +153,7 @@ def read_metrics(model_id: str, generation: int) -> dict:
             # PRDC - average of precision, recall, density, coverage
             if 'prdc_score' in metrics_data:
                prdc_metric = metrics_data['prdc_score']
-            if prdc_metric.get('status') == 'success':
+               if prdc_metric.get('status') == 'success':
                     prdc_avg = sum([
                         prdc_metric.get('precision', 0),
                         prdc_metric.get('recall', 0),
@@ -161,7 +161,14 @@ def read_metrics(model_id: str, generation: int) -> dict:
                         prdc_metric.get('coverage', 0)
                     ]) / 4
                     metrics['PRDC'] = prdc_avg
-    
+            
+            # Wasserstein Distance - lower is better
+            if 'wasserstein_distance' in metrics_data:
+                wd_metric = metrics_data['wasserstein_distance']
+                if wd_metric.get('status') == 'success':
+                    # Store distance (lower = more similar distributions)
+                    metrics['WD'] = wd_metric.get('joint_distance', 1.0)
+  
     # Detection metrics
     det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
     if det_file.exists():
@@ -612,6 +619,7 @@ def run(
         metrics_str = " ".join([
             f"α={metrics.get('α', 0):.3f}" if 'α' in metrics else "",
             f"PRDC={metrics.get('PRDC', 0):.3f}" if 'PRDC' in metrics else "",
+            f"WD={metrics.get('WD', 0):.6f}" if 'WD' in metrics else "",            
             f"Det={metrics.get('Det', 0):.3f}" if 'Det' in metrics else "",
         ]).strip()
         
@@ -655,6 +663,7 @@ def run(
         table.add_column("Gen", justify="right", style="cyan")
         table.add_column("Alpha Precision", justify="right")
         table.add_column("PRDC Avg", justify="right")
+        table.add_column("Wasserstein Dist", justify="right")        
         table.add_column("Detection Avg", justify="right")
         table.add_column("Time", justify="right", style="dim")
         
@@ -664,6 +673,7 @@ def run(
                 str(r['generation']),
                 f"{metrics.get('α', 0):.3f}" if 'α' in metrics else "—",
                 f"{metrics.get('PRDC', 0):.3f}" if 'PRDC' in metrics else "—",
+                f"{metrics.get('WD', 0):.6f}" if 'WD' in metrics else "—",                
                 f"{metrics.get('Det', 0):.3f}" if 'Det' in metrics else "—",
                 f"{r['elapsed']:.0f}s" if r['elapsed'] > 0 else "—"
             )

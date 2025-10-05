@@ -15,6 +15,7 @@ from sdv.metadata import SingleTableMetadata
 from synthcity.plugins.core.dataloader import GenericDataLoader
 from synthcity.metrics.eval_statistical import AlphaPrecision
 from synthcity.metrics.eval_statistical import PRDCScore
+from synthcity.metrics.eval_statistical import WassersteinDistance
 
 # SDMetrics imports
 from sdmetrics.single_table import TableStructure
@@ -135,6 +136,42 @@ class PRDCScoreMetric:
                 "recall": 0.0,
                 "density": 0.0,
                 "coverage": 0.0,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+
+class WassersteinDistanceMetric:
+    """Wasserstein Distance metric implementation"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        self.evaluator = WassersteinDistance()
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+        """Evaluate Wasserstein Distance metric"""
+        start_time = time.time()
+
+        try:
+            # Create data loaders
+            real_loader = GenericDataLoader(original)
+            synth_loader = GenericDataLoader(synthetic)
+
+            # Run evaluation
+            result = self.evaluator.evaluate(real_loader, synth_loader)
+
+            # Wasserstein returns a dict with joint distance
+            return {
+                "joint_distance": float(result.get("joint", 0.0)),
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "joint_distance": 0.0,
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "error",
@@ -664,6 +701,8 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return AlphaPrecisionMetric(**parameters)
         case "prdc_score":
             return PRDCScoreMetric(**parameters)
+        case "wasserstein_distance":
+            return WassersteinDistanceMetric(**parameters)        
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -729,6 +768,24 @@ Metrics Results
         else:
             report += f"""PRDC Score: ERROR
   Error: {prdc_result.get('error_message', 'Unknown error')}
+"""
+
+    # Wasserstein Distance results
+    if "wasserstein_distance" in metrics:
+        wd_result = metrics["wasserstein_distance"]
+        if wd_result["status"] == "success":
+            report += f"""Wasserstein Distance Results:
+  Parameters: {wd_result['parameters'] if wd_result['parameters'] else 'default settings'}
+  Execution time: {wd_result['execution_time']:.2f}s
+
+  Distance Score:
+  → Joint Distance: {wd_result['joint_distance']:.6f}
+  
+  Note: Lower values indicate more similar distributions (0 = identical)
+"""
+        else:
+            report += f"""Wasserstein Distance: ERROR
+  Error: {wd_result.get('error_message', 'Unknown error')}
 """
 
     # NewRowSynthesis results
@@ -914,7 +971,6 @@ Metrics Results
         recall = prdc["recall"]
         coverage = prdc["coverage"]
 
-        # Overall PRDC assessment based on average
         prdc_avg = (precision + recall + coverage) / 3  # Density often lower, so exclude
         if prdc_avg >= 0.8:
             insights.append("Strong PRDC performance")
@@ -922,6 +978,17 @@ Metrics Results
             insights.append("Moderate PRDC performance")
         else:
             insights.append("Low PRDC performance")
+
+    if "wasserstein_distance" in metrics and metrics["wasserstein_distance"]["status"] == "success":
+        wd_distance = metrics["wasserstein_distance"]["joint_distance"]
+        if wd_distance < 0.01:
+            insights.append("Excellent distributional similarity (Wasserstein)")
+        elif wd_distance < 0.05:
+            insights.append("Good distributional similarity (Wasserstein)")
+        elif wd_distance < 0.1:
+            insights.append("Moderate distributional similarity (Wasserstein)")
+        else:
+            insights.append("Poor distributional similarity (Wasserstein)")
 
     if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
         nrs_score = metrics["new_row_synthesis"]["score"]
