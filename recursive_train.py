@@ -168,7 +168,14 @@ def read_metrics(model_id: str, generation: int) -> dict:
                 if wd_metric.get('status') == 'success':
                     # Store distance (lower = more similar distributions)
                     metrics['WD'] = wd_metric.get('joint_distance', 1.0)
-  
+
+            # Maximum Mean Discrepancy - lower is better
+            if 'maximum_mean_discrepancy' in metrics_data:
+                mmd_metric = metrics_data['maximum_mean_discrepancy']
+                if mmd_metric.get('status') == 'success':
+                    # Store distance (lower = more similar distributions)
+                    metrics['MMD'] = mmd_metric.get('joint_distance', 1.0)
+ 
     # Detection metrics
     det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
     if det_file.exists():
@@ -619,7 +626,8 @@ def run(
         metrics_str = " ".join([
             f"α={metrics.get('α', 0):.3f}" if 'α' in metrics else "",
             f"PRDC={metrics.get('PRDC', 0):.3f}" if 'PRDC' in metrics else "",
-            f"WD={metrics.get('WD', 0):.6f}" if 'WD' in metrics else "",            
+            f"WD={metrics.get('WD', 0):.6f}" if 'WD' in metrics else "",
+            f"MMD={metrics.get('MMD', 0):.6f}" if 'MMD' in metrics else "",
             f"Det={metrics.get('Det', 0):.3f}" if 'Det' in metrics else "",
         ]).strip()
         
@@ -663,7 +671,8 @@ def run(
         table.add_column("Gen", justify="right", style="cyan")
         table.add_column("Alpha Precision", justify="right")
         table.add_column("PRDC Avg", justify="right")
-        table.add_column("Wasserstein Dist", justify="right")        
+        table.add_column("Wasserstein Dist", justify="right")
+        table.add_column("MMD", justify="right")
         table.add_column("Detection Avg", justify="right")
         table.add_column("Time", justify="right", style="dim")
         
@@ -673,7 +682,8 @@ def run(
                 str(r['generation']),
                 f"{metrics.get('α', 0):.3f}" if 'α' in metrics else "—",
                 f"{metrics.get('PRDC', 0):.3f}" if 'PRDC' in metrics else "—",
-                f"{metrics.get('WD', 0):.6f}" if 'WD' in metrics else "—",                
+                f"{metrics.get('WD', 0):.6f}" if 'WD' in metrics else "—",
+                f"{metrics.get('MMD', 0):.6f}" if 'MMD' in metrics else "—",
                 f"{metrics.get('Det', 0):.3f}" if 'Det' in metrics else "—",
                 f"{r['elapsed']:.0f}s" if r['elapsed'] > 0 else "—"
             )

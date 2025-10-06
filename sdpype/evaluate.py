@@ -395,6 +395,31 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ Wasserstein Distance failed", style="bold red")
 
+    # Maximum Mean Discrepancy results table
+    if "maximum_mean_discrepancy" in metrics and metrics["maximum_mean_discrepancy"]["status"] == "success":
+        mmd_result = metrics["maximum_mean_discrepancy"]
+
+        # Get parameters info for display
+        params_info = mmd_result["parameters"]
+        kernel = mmd_result.get("kernel", "rbf")
+        params_display = f"kernel={kernel}"
+
+        # Create MMD results table
+        mmd_table = Table(title=f"✅ Maximum Mean Discrepancy Results ({params_display})", show_header=True, header_style="bold blue")
+        mmd_table.add_column("Metric", style="cyan", no_wrap=True)
+        mmd_table.add_column("Score", style="bright_green", justify="right")
+        mmd_table.add_column("Interpretation", style="yellow")
+
+        distance = mmd_result['joint_distance']
+        interpretation = "Identical" if distance < 0.001 else "Very Similar" if distance < 0.01 else "Similar" if distance < 0.1 else "Different"
+        
+        mmd_table.add_row("Joint Distance", f"{distance:.6f}", interpretation)
+        mmd_table.add_row("", "", "Lower is better")
+
+        console.print(mmd_table)
+    else:
+        console.print("❌ Maximum Mean Discrepancy failed", style="bold red")
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 

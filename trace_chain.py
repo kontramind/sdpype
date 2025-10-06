@@ -147,6 +147,13 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                 # Store distance (lower = more similar distributions)
                 metrics['wasserstein_dist'] = wd_metric.get('joint_distance', 1.0)
 
+        # Maximum Mean Discrepancy - lower is better
+        if 'maximum_mean_discrepancy' in metrics_data:
+            mmd_metric = metrics_data['maximum_mean_discrepancy']
+            if mmd_metric.get('status') == 'success':
+                # Store distance (lower = more similar distributions)
+                metrics['mmd'] = mmd_metric.get('joint_distance', 1.0)
+
             if 'tv_complement' in metrics_data:
                 tv_metric = metrics_data['tv_complement']
                 if tv_metric.get('status') == 'success':
@@ -291,7 +298,8 @@ def display_chain_table(results: List[Dict]):
     table.add_column("PRDC Avg", justify="right")
     table.add_column("TV Complement", justify="right")
     table.add_column("KS Complement", justify="right")
-    table.add_column("Wasserstein Dist", justify="right")    
+    table.add_column("Wasserstein Dist", justify="right")
+    table.add_column("MMD", justify="right")
     table.add_column("Detection Avg", justify="right")
     table.add_column("Model Size", justify="right", style="dim")
     table.add_column("Status", justify="center")
@@ -306,6 +314,7 @@ def display_chain_table(results: List[Dict]):
         tv_comp = f"{metrics.get('tv_complement', 0):.3f}" if 'tv_complement' in metrics else "—"
         ks_comp = f"{metrics.get('ks_complement', 0):.3f}" if 'ks_complement' in metrics else "—"
         wd = f"{metrics.get('wasserstein_dist', 0):.6f}" if 'wasserstein_dist' in metrics else "—"
+        mmd_val = f"{metrics.get('mmd', 0):.6f}" if 'mmd' in metrics else "—"
         det = f"{metrics.get('detection_avg', 0):.3f}" if 'detection_avg' in metrics else "—"
         
         # Model size
@@ -322,6 +331,7 @@ def display_chain_table(results: List[Dict]):
             tv_comp,
             ks_comp,
             wd,
+            mmd_val,
             det,
             size,
             f"[{status_style}]{status}[/{status_style}]"
@@ -343,9 +353,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,detection_avg,model_size_mb\n"
+        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,detection_avg,model_size_mb\n"
     
-    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,detection_avg,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,detection_avg,model_size_mb"]
     
     for r in results:
         gen = r['generation']
@@ -361,10 +371,12 @@ def export_csv(results: List[Dict]) -> str:
         tv = metrics.get('tv_complement', '')
         ks = metrics.get('ks_complement', '')
         wd = metrics.get('wasserstein_dist', '')
+        mmd_val = metrics.get('mmd', '')
         det = metrics.get('detection_avg', '')
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{det},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{det},{size}")
+
     return "\n".join(lines)
 
 
@@ -423,6 +435,7 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
     tv = [r['metrics'].get('tv_complement', None) for r in results]
     ks = [r['metrics'].get('ks_complement', None) for r in results]
     wd = [r['metrics'].get('wasserstein_dist', None) for r in results]
+    mmd = [r['metrics'].get('mmd', None) for r in results]
     det = [r['metrics'].get('detection_avg', None) for r in results]
 
     # Create plot
@@ -449,8 +462,23 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
         ax2 = ax.twinx()
         ax2.plot(generations, wd, marker='x', label='Wasserstein Dist', 
                  linewidth=2, linestyle=':', color='red', alpha=0.7)
-        ax2.set_ylabel('Wasserstein Distance (lower is better)', fontsize=10, color='red')
+
+        # Add MMD to same secondary axis if available
+        if any(x is not None for x in mmd):
+            ax2.plot(generations, mmd, marker='+', label='MMD', 
+                     linewidth=2, linestyle=':', color='darkred', alpha=0.7)
+        
+        ax2.set_ylabel('Distance Metrics (lower is better)', fontsize=10, color='red')
         ax2.tick_params(axis='y', labelcolor='red')
+        ax2.legend(loc='upper right')
+    elif any(x is not None for x in mmd):
+        # MMD only (no Wasserstein)
+        ax2 = ax.twinx()
+        ax2.plot(generations, mmd, marker='+', label='MMD', 
+                 linewidth=2, linestyle=':', color='darkred', alpha=0.7)
+        ax2.set_ylabel('MMD Distance (lower is better)', fontsize=10, color='darkred')
+        ax2.tick_params(axis='y', labelcolor='darkred')
+        ax2.legend(loc='upper right')
 
     ax.set_xlabel('Generation', fontsize=12)
     ax.set_ylabel('Score', fontsize=12)

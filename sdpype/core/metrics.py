@@ -38,7 +38,27 @@ AVAILABLE_METRICS = {
             "outputs": ["joint_distance"],
             "reference": "Optimal transport distance - lower values indicate more similar distributions",
             "direction": "minimize",
-        },        
+        },
+        "maximum_mean_discrepancy": {
+            "description": "Maximum Mean Discrepancy (MMD) between distributions using kernel methods",
+            "library": "synthcity",
+            "parameters": {
+                "kernel": {
+                    "type": "str",
+                    "default": "rbf",
+                    "options": ["rbf", "linear", "polynomial"],
+                    "description": "Kernel function for MMD computation"
+                }
+            },
+            "outputs": ["joint_distance"],
+            "reference": "Kernel two-sample test - lower values indicate more similar distributions",
+            "direction": "minimize",
+            "interpretation": {
+                "excellent": "< 0.001",
+                "good": "< 0.01",
+                "moderate": "< 0.1"
+            }
+        },
         "new_row_synthesis": {
             "description": "Measures whether each synthetic row is new or matches real data exactly",
             "library": "sdmetrics",

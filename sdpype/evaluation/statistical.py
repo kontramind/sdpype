@@ -16,6 +16,7 @@ from synthcity.plugins.core.dataloader import GenericDataLoader
 from synthcity.metrics.eval_statistical import AlphaPrecision
 from synthcity.metrics.eval_statistical import PRDCScore
 from synthcity.metrics.eval_statistical import WassersteinDistance
+from synthcity.metrics.eval_statistical import MaximumMeanDiscrepancy
 
 # SDMetrics imports
 from sdmetrics.single_table import TableStructure
@@ -172,6 +173,45 @@ class WassersteinDistanceMetric:
         except Exception as e:
             return {
                 "joint_distance": 0.0,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+
+class MaximumMeanDiscrepancyMetric:
+    """Maximum Mean Discrepancy metric implementation"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        kernel = parameters.get("kernel", "rbf")
+        self.evaluator = MaximumMeanDiscrepancy(kernel=kernel)
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+        """Evaluate Maximum Mean Discrepancy metric"""
+        start_time = time.time()
+
+        try:
+            # Create data loaders
+            real_loader = GenericDataLoader(original)
+            synth_loader = GenericDataLoader(synthetic)
+
+            # Run evaluation
+            result = self.evaluator.evaluate(real_loader, synth_loader)
+
+            # MMD returns a dict with joint distance
+            return {
+                "joint_distance": float(result.get("joint", 0.0)),
+                "kernel": self.parameters.get("kernel", "rbf"),
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "joint_distance": 0.0,
+                "kernel": self.parameters.get("kernel", "rbf"),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "error",
@@ -702,7 +742,9 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
         case "prdc_score":
             return PRDCScoreMetric(**parameters)
         case "wasserstein_distance":
-            return WassersteinDistanceMetric(**parameters)        
+            return WassersteinDistanceMetric(**parameters)
+        case "maximum_mean_discrepancy":
+            return MaximumMeanDiscrepancyMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -786,6 +828,24 @@ Metrics Results
         else:
             report += f"""Wasserstein Distance: ERROR
   Error: {wd_result.get('error_message', 'Unknown error')}
+"""
+
+    # Maximum Mean Discrepancy results
+    if "maximum_mean_discrepancy" in metrics:
+        mmd_result = metrics["maximum_mean_discrepancy"]
+        if mmd_result["status"] == "success":
+            report += f"""Maximum Mean Discrepancy Results:
+  Parameters: kernel={mmd_result['kernel']}
+  Execution time: {mmd_result['execution_time']:.2f}s
+
+  Distance Score:
+  → Joint Distance: {mmd_result['joint_distance']:.6f}
+  
+  Note: Lower values indicate more similar distributions (0 = identical)
+"""
+        else:
+            report += f"""Maximum Mean Discrepancy: ERROR
+  Error: {mmd_result.get('error_message', 'Unknown error')}
 """
 
     # NewRowSynthesis results
@@ -989,6 +1049,17 @@ Metrics Results
             insights.append("Moderate distributional similarity (Wasserstein)")
         else:
             insights.append("Poor distributional similarity (Wasserstein)")
+
+    if "maximum_mean_discrepancy" in metrics and metrics["maximum_mean_discrepancy"]["status"] == "success":
+        mmd_distance = metrics["maximum_mean_discrepancy"]["joint_distance"]
+        if mmd_distance < 0.001:
+            insights.append("Excellent distributional similarity (MMD)")
+        elif mmd_distance < 0.01:
+            insights.append("Good distributional similarity (MMD)")
+        elif mmd_distance < 0.1:
+            insights.append("Moderate distributional similarity (MMD)")
+        else:
+            insights.append("Poor distributional similarity (MMD)")
 
     if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
         nrs_score = metrics["new_row_synthesis"]["score"]

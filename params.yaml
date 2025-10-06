@@ -16,7 +16,7 @@ experiment:
 # =============================================================================
 sdg:
   library: sdv
-  model_type: gaussiancopula
+  model_type: ctgan
   parameters: {}
 
 # =============================================================================
@@ -54,6 +54,9 @@ evaluation:
         nearest_k: 5
     - name: "wasserstein_distance"
       parameters: {}
+    - name: "maximum_mean_discrepancy"
+      parameters:
+        kernel: rbf  # Options: rbf, linear, polynomial      
     - name: "new_row_synthesis"
       parameters:
         numerical_match_tolerance: 0.01
