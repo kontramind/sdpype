@@ -176,19 +176,19 @@ def read_metrics(model_id: str, generation: int) -> dict:
                     # Store distance (lower = more similar distributions)
                     metrics['MMD'] = mmd_metric.get('joint_distance', 1.0)
 
-            # Jensen-Shannon Distance (Synthcity) - lower is better
+            # Jensen-Shannon (Synthcity) - higher is better (similarity score)
             if 'jensenshannon_synthcity' in metrics_data:
                 jsd_sc_metric = metrics_data['jensenshannon_synthcity']
                 if jsd_sc_metric.get('status') == 'success':
-                    # Store distance (lower = more similar distributions)
-                    metrics['JSD_SC'] = jsd_sc_metric.get('marginal_distance', 1.0)
+                    # Store similarity score (higher = more similar distributions)
+                    metrics['JSD_SC'] = jsd_sc_metric.get('similarity_score', 0.0)
 
-            # Jensen-Shannon Distance (SYNDAT) - lower is better
+            # Jensen-Shannon (SYNDAT) - higher is better (similarity score)
             if 'jensenshannon_syndat' in metrics_data:
                 jsd_sd_metric = metrics_data['jensenshannon_syndat']
                 if jsd_sd_metric.get('status') == 'success':
-                    # Store distance (lower = more similar distributions)
-                    metrics['JSD_SD'] = jsd_sd_metric.get('marginal_distance', 1.0)
+                    # Store similarity score (higher = more similar distributions)
+                    metrics['JSD_SD'] = jsd_sd_metric.get('similarity_score', 0.0)
 
     # Detection metrics
     det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")

@@ -436,11 +436,11 @@ def main(cfg: DictConfig) -> None:
         jsd_sc_table.add_column("Score", style="bright_green", justify="right")
         jsd_sc_table.add_column("Interpretation", style="yellow")
 
-        distance = jsd_sc_result['marginal_distance']
-        interpretation = "Identical" if distance < 0.01 else "Very Similar" if distance < 0.05 else "Similar" if distance < 0.1 else "Different"
+        similarity = jsd_sc_result['similarity_score']
+        interpretation = "Identical" if similarity > 0.99 else "Very Similar" if similarity > 0.95 else "Similar" if similarity > 0.9 else "Different"
         
-        jsd_sc_table.add_row("Marginal Distance", f"{distance:.6f}", interpretation)
-        jsd_sc_table.add_row("", "", "Lower is better")
+        jsd_sc_table.add_row("Distribution Similarity", f"{similarity:.3f}", interpretation)
+        jsd_sc_table.add_row("", "", "Higher is better")
 
         console.print(jsd_sc_table)
     else:
@@ -461,11 +461,11 @@ def main(cfg: DictConfig) -> None:
         jsd_sd_table.add_column("Score", style="bright_green", justify="right")
         jsd_sd_table.add_column("Interpretation", style="yellow")
 
-        distance = jsd_sd_result['marginal_distance']
-        interpretation = "Identical" if distance < 0.01 else "Very Similar" if distance < 0.05 else "Similar" if distance < 0.1 else "Different"
+        similarity = jsd_sd_result['similarity_score']
+        interpretation = "Identical" if similarity > 0.99 else "Very Similar" if similarity > 0.95 else "Similar" if similarity > 0.9 else "Different"
         
-        jsd_sd_table.add_row("Marginal Distance", f"{distance:.6f}", interpretation)
-        jsd_sd_table.add_row("", "", "Lower is better")
+        jsd_sd_table.add_row("Distribution Similarity", f"{similarity:.3f}", interpretation)
+        jsd_sd_table.add_row("", "", "Higher is better")
 
         console.print(jsd_sd_table)
     else:

@@ -154,19 +154,19 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                 # Store distance (lower = more similar distributions)
                 metrics['mmd'] = mmd_metric.get('joint_distance', 1.0)
 
-        # Jensen-Shannon Distance (Synthcity) - lower is better
+        # Jensen-Shannon (Synthcity) - higher is better (similarity score)
         if 'jensenshannon_synthcity' in metrics_data:
             jsd_sc_metric = metrics_data['jensenshannon_synthcity']
             if jsd_sc_metric.get('status') == 'success':
-                # Store distance (lower = more similar distributions)
-                metrics['jsd_synthcity'] = jsd_sc_metric.get('marginal_distance', 1.0)
+                # Store similarity score (higher = more similar distributions)
+                metrics['jsd_synthcity'] = jsd_sc_metric.get('similarity_score', 0.0)
         
-        # Jensen-Shannon Distance (SYNDAT) - lower is better
+        # Jensen-Shannon (SYNDAT) - higher is better (similarity score)
         if 'jensenshannon_syndat' in metrics_data:
             jsd_sd_metric = metrics_data['jensenshannon_syndat']
             if jsd_sd_metric.get('status') == 'success':
-                # Store distance (lower = more similar distributions)
-                metrics['jsd_syndat'] = jsd_sd_metric.get('marginal_distance', 1.0)
+                # Store similarity score (higher = more similar distributions)
+                metrics['jsd_syndat'] = jsd_sd_metric.get('similarity_score', 0.0)
 
             if 'tv_complement' in metrics_data:
                 tv_metric = metrics_data['tv_complement']
@@ -314,8 +314,8 @@ def display_chain_table(results: List[Dict]):
     table.add_column("KS Complement", justify="right")
     table.add_column("Wasserstein Dist", justify="right")
     table.add_column("MMD", justify="right")
-    table.add_column("JSD (Synthcity)", justify="right")
-    table.add_column("JSD (SYNDAT)", justify="right")    
+    table.add_column("JS Sim (Synthcity)", justify="right")
+    table.add_column("JS Sim (SYNDAT)", justify="right")
     table.add_column("Detection Avg", justify="right")
     table.add_column("Model Size", justify="right", style="dim")
     table.add_column("Status", justify="center")
@@ -331,8 +331,8 @@ def display_chain_table(results: List[Dict]):
         ks_comp = f"{metrics.get('ks_complement', 0):.3f}" if 'ks_complement' in metrics else "—"
         wd = f"{metrics.get('wasserstein_dist', 0):.6f}" if 'wasserstein_dist' in metrics else "—"
         mmd_val = f"{metrics.get('mmd', 0):.6f}" if 'mmd' in metrics else "—"
-        jsd_sc = f"{metrics.get('jsd_synthcity', 0):.6f}" if 'jsd_synthcity' in metrics else "—"
-        jsd_sd = f"{metrics.get('jsd_syndat', 0):.6f}" if 'jsd_syndat' in metrics else "—"        
+        jsd_sc = f"{metrics.get('jsd_synthcity', 0):.3f}" if 'jsd_synthcity' in metrics else "—"
+        jsd_sd = f"{metrics.get('jsd_syndat', 0):.3f}" if 'jsd_syndat' in metrics else "—"
         det = f"{metrics.get('detection_avg', 0):.3f}" if 'detection_avg' in metrics else "—"
         
         # Model size
@@ -480,8 +480,15 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
 
     if any(x is not None for x in det):
         ax.plot(generations, det, marker='^', label='Detection Avg', linewidth=2)
-    
-    # Wasserstein on secondary y-axis (lower is better)
+
+    # JSD metrics on primary axis (now similarity scores, higher is better)
+    if any(x is not None for x in jsd_sc):
+        ax.plot(generations, jsd_sc, marker='*', label='JSD (Synthcity)', linewidth=2)
+
+    if any(x is not None for x in jsd_sd):
+        ax.plot(generations, jsd_sd, marker='d', label='JSD (SYNDAT)', linewidth=2)
+
+    # Distance metrics on secondary y-axis (lower is better)
     if any(x is not None for x in wd):
         ax2 = ax.twinx()
         ax2.plot(generations, wd, marker='x', label='Wasserstein Dist', 
@@ -491,15 +498,6 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
         if any(x is not None for x in mmd):
             ax2.plot(generations, mmd, marker='+', label='MMD', 
                      linewidth=2, linestyle=':', color='darkred', alpha=0.7)
-        
-        # Add JSD metrics to same secondary axis if available
-        if any(x is not None for x in jsd_sc):
-            ax2.plot(generations, jsd_sc, marker='*', label='JSD (Synthcity)', 
-                     linewidth=2, linestyle=':', color='orange', alpha=0.7)
-        
-        if any(x is not None for x in jsd_sd):
-            ax2.plot(generations, jsd_sd, marker='d', label='JSD (SYNDAT)', 
-                     linewidth=2, linestyle=':', color='darkorange', alpha=0.7)
        
         ax2.set_ylabel('Distance Metrics (lower is better)', fontsize=10, color='red')
         ax2.tick_params(axis='y', labelcolor='red')

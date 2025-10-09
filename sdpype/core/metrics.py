@@ -74,13 +74,13 @@ AVAILABLE_METRICS = {
                     "description": "Number of histogram bins for continuous variables"
                 }
             },
-            "outputs": ["marginal_distance"],
-            "reference": "Symmetric measure of similarity between probability distributions",
-            "direction": "minimize",
+            "outputs": ["similarity_score"],
+            "reference": "Symmetric measure of similarity between probability distributions (converted to 0-1 similarity)",
+            "direction": "maximize",
             "interpretation": {
-                "excellent": "< 0.01",
-                "good": "< 0.05",
-                "moderate": "< 0.1"
+                "excellent": ">= 0.99",
+                "good": ">= 0.95",
+                "moderate": ">= 0.9"
             }
         },
         "jensenshannon_syndat": {
@@ -93,13 +93,13 @@ AVAILABLE_METRICS = {
                     "description": "Max unique values for ordinal treatment"
                 }
             },
-            "outputs": ["marginal_distance"],
-            "reference": "Symmetric measure of similarity between probability distributions",
-            "direction": "minimize",
+            "outputs": ["similarity_score"],
+            "reference": "Symmetric measure of similarity between probability distributions (converted to 0-1 similarity)",
+            "direction": "maximize"
             "interpretation": {
-                "excellent": "< 0.01",
-                "good": "< 0.05",
-                "moderate": "< 0.1"
+                "excellent": ">= 0.99",
+                "good": ">= 0.95",
+                "moderate": ">= 0.9"
             }
         },
         "new_row_synthesis": {
