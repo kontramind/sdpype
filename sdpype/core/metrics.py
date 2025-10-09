@@ -59,6 +59,49 @@ AVAILABLE_METRICS = {
                 "moderate": "< 0.1"
             }
         },
+        "jensenshannon_synthcity": {
+            "description": "Jensen-Shannon Distance between distributions (Synthcity implementation)",
+            "library": "synthcity",
+            "parameters": {
+                "normalize": {
+                    "type": "bool",
+                    "default": True,
+                    "description": "Whether to normalize distributions before computing JSD"
+                },
+                "n_histogram_bins": {
+                    "type": "int",
+                    "default": 10,
+                    "description": "Number of histogram bins for continuous variables"
+                }
+            },
+            "outputs": ["marginal_distance"],
+            "reference": "Symmetric measure of similarity between probability distributions",
+            "direction": "minimize",
+            "interpretation": {
+                "excellent": "< 0.01",
+                "good": "< 0.05",
+                "moderate": "< 0.1"
+            }
+        },
+        "jensenshannon_syndat": {
+            "description": "Jensen-Shannon Distance between distributions (SYNDAT implementation)",
+            "library": "syndat",
+            "parameters": {
+                "n_unique_threshold": {
+                    "type": "int",
+                    "default": 10,
+                    "description": "Max unique values for ordinal treatment"
+                }
+            },
+            "outputs": ["marginal_distance"],
+            "reference": "Symmetric measure of similarity between probability distributions",
+            "direction": "minimize",
+            "interpretation": {
+                "excellent": "< 0.01",
+                "good": "< 0.05",
+                "moderate": "< 0.1"
+            }
+        },
         "new_row_synthesis": {
             "description": "Measures whether each synthetic row is new or matches real data exactly",
             "library": "sdmetrics",

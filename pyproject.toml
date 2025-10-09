@@ -34,6 +34,7 @@ dependencies = [
     "pyarrow>=12.0.0",
     "pypyr>=5.9.1",
     "python-synthpop>=0.1.2",
+    "syndat>=0.13.4",
 ]
 
 [project.scripts]

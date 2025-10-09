@@ -61,6 +61,13 @@ evaluation:
       parameters:
         numerical_match_tolerance: 0.01
         synthetic_sample_size:
+    - name: "jensenshannon_synthcity"
+      parameters:
+        normalize: true
+        n_histogram_bins: 10
+    - name: "jensenshannon_syndat"
+      parameters:
+        n_unique_threshold: 10
     - name: "ks_complement"
       parameters:
         target_columns:

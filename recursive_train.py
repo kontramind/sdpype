@@ -175,7 +175,21 @@ def read_metrics(model_id: str, generation: int) -> dict:
                 if mmd_metric.get('status') == 'success':
                     # Store distance (lower = more similar distributions)
                     metrics['MMD'] = mmd_metric.get('joint_distance', 1.0)
- 
+
+            # Jensen-Shannon Distance (Synthcity) - lower is better
+            if 'jensenshannon_synthcity' in metrics_data:
+                jsd_sc_metric = metrics_data['jensenshannon_synthcity']
+                if jsd_sc_metric.get('status') == 'success':
+                    # Store distance (lower = more similar distributions)
+                    metrics['JSD_SC'] = jsd_sc_metric.get('marginal_distance', 1.0)
+
+            # Jensen-Shannon Distance (SYNDAT) - lower is better
+            if 'jensenshannon_syndat' in metrics_data:
+                jsd_sd_metric = metrics_data['jensenshannon_syndat']
+                if jsd_sd_metric.get('status') == 'success':
+                    # Store distance (lower = more similar distributions)
+                    metrics['JSD_SD'] = jsd_sd_metric.get('marginal_distance', 1.0)
+
     # Detection metrics
     det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
     if det_file.exists():
@@ -628,6 +642,8 @@ def run(
             f"PRDC={metrics.get('PRDC', 0):.3f}" if 'PRDC' in metrics else "",
             f"WD={metrics.get('WD', 0):.6f}" if 'WD' in metrics else "",
             f"MMD={metrics.get('MMD', 0):.6f}" if 'MMD' in metrics else "",
+            f"JSD_SC={metrics.get('JSD_SC', 0):.6f}" if 'JSD_SC' in metrics else "",
+            f"JSD_SD={metrics.get('JSD_SD', 0):.6f}" if 'JSD_SD' in metrics else "",            
             f"Det={metrics.get('Det', 0):.3f}" if 'Det' in metrics else "",
         ]).strip()
         
@@ -673,6 +689,8 @@ def run(
         table.add_column("PRDC Avg", justify="right")
         table.add_column("Wasserstein Dist", justify="right")
         table.add_column("MMD", justify="right")
+        table.add_column("JSD (Synthcity)", justify="right")
+        table.add_column("JSD (SYNDAT)", justify="right")        
         table.add_column("Detection Avg", justify="right")
         table.add_column("Time", justify="right", style="dim")
         
@@ -684,6 +702,8 @@ def run(
                 f"{metrics.get('PRDC', 0):.3f}" if 'PRDC' in metrics else "—",
                 f"{metrics.get('WD', 0):.6f}" if 'WD' in metrics else "—",
                 f"{metrics.get('MMD', 0):.6f}" if 'MMD' in metrics else "—",
+                f"{metrics.get('JSD_SC', 0):.6f}" if 'JSD_SC' in metrics else "—",
+                f"{metrics.get('JSD_SD', 0):.6f}" if 'JSD_SD' in metrics else "—",                
                 f"{metrics.get('Det', 0):.3f}" if 'Det' in metrics else "—",
                 f"{r['elapsed']:.0f}s" if r['elapsed'] > 0 else "—"
             )

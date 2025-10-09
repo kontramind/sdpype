@@ -420,6 +420,57 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ Maximum Mean Discrepancy failed", style="bold red")
 
+    # Jensen-Shannon Distance (Synthcity) results table
+    if "jensenshannon_synthcity" in metrics and metrics["jensenshannon_synthcity"]["status"] == "success":
+        jsd_sc_result = metrics["jensenshannon_synthcity"]
+
+        # Get parameters info for display
+        params_info = jsd_sc_result["parameters"]
+        normalize = jsd_sc_result.get("normalize", True)
+        n_histogram_bins = jsd_sc_result.get("n_histogram_bins", 10)
+        params_display = f"normalize={normalize}, n_histogram_bins={n_histogram_bins}"
+
+        # Create JSD Synthcity results table
+        jsd_sc_table = Table(title=f"✅ Jensen-Shannon Distance (Synthcity) Results ({params_display})", show_header=True, header_style="bold blue")
+        jsd_sc_table.add_column("Metric", style="cyan", no_wrap=True)
+        jsd_sc_table.add_column("Score", style="bright_green", justify="right")
+        jsd_sc_table.add_column("Interpretation", style="yellow")
+
+        distance = jsd_sc_result['marginal_distance']
+        interpretation = "Identical" if distance < 0.01 else "Very Similar" if distance < 0.05 else "Similar" if distance < 0.1 else "Different"
+        
+        jsd_sc_table.add_row("Marginal Distance", f"{distance:.6f}", interpretation)
+        jsd_sc_table.add_row("", "", "Lower is better")
+
+        console.print(jsd_sc_table)
+    else:
+        console.print("❌ Jensen-Shannon Distance (Synthcity) failed", style="bold red")
+
+    # Jensen-Shannon Distance (SYNDAT) results table
+    if "jensenshannon_syndat" in metrics and metrics["jensenshannon_syndat"]["status"] == "success":
+        jsd_sd_result = metrics["jensenshannon_syndat"]
+
+        # Get parameters info for display
+        params_info = jsd_sd_result["parameters"]
+        n_unique_threshold = jsd_sd_result.get("n_unique_threshold", 10)
+        params_display = f"n_unique_threshold={n_unique_threshold}"
+
+        # Create JSD SYNDAT results table
+        jsd_sd_table = Table(title=f"✅ Jensen-Shannon Distance (SYNDAT) Results ({params_display})", show_header=True, header_style="bold blue")
+        jsd_sd_table.add_column("Metric", style="cyan", no_wrap=True)
+        jsd_sd_table.add_column("Score", style="bright_green", justify="right")
+        jsd_sd_table.add_column("Interpretation", style="yellow")
+
+        distance = jsd_sd_result['marginal_distance']
+        interpretation = "Identical" if distance < 0.01 else "Very Similar" if distance < 0.05 else "Similar" if distance < 0.1 else "Different"
+        
+        jsd_sd_table.add_row("Marginal Distance", f"{distance:.6f}", interpretation)
+        jsd_sd_table.add_row("", "", "Lower is better")
+
+        console.print(jsd_sd_table)
+    else:
+        console.print("❌ Jensen-Shannon Distance (SYNDAT) failed", style="bold red")
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 

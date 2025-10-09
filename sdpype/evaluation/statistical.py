@@ -17,6 +17,7 @@ from synthcity.metrics.eval_statistical import AlphaPrecision
 from synthcity.metrics.eval_statistical import PRDCScore
 from synthcity.metrics.eval_statistical import WassersteinDistance
 from synthcity.metrics.eval_statistical import MaximumMeanDiscrepancy
+from synthcity.metrics.eval_statistical import JensenShannonDistance
 
 # SDMetrics imports
 from sdmetrics.single_table import TableStructure
@@ -25,6 +26,9 @@ from sdmetrics.single_column import CategoryAdherence
 from sdmetrics.single_column import KSComplement
 from sdmetrics.single_column import TVComplement
 from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
+
+# SYNDAT imports for alternative implementations
+from syndat.metrics import jensen_shannon_distance as syndat_jsd
 
 import warnings
 
@@ -212,6 +216,85 @@ class MaximumMeanDiscrepancyMetric:
             return {
                 "joint_distance": 0.0,
                 "kernel": self.parameters.get("kernel", "rbf"),
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+
+class JensenShannonSynthcityMetric:
+    """Jensen-Shannon Distance metric implementation (Synthcity)"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        normalize = parameters.get("normalize", True)
+        n_histogram_bins = parameters.get("n_histogram_bins", 10)
+        self.evaluator = JensenShannonDistance(normalize=normalize, n_histogram_bins=n_histogram_bins)
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+        """Evaluate Jensen-Shannon Distance metric using Synthcity"""
+        start_time = time.time()
+
+        try:
+            # Create data loaders
+            real_loader = GenericDataLoader(original)
+            synth_loader = GenericDataLoader(synthetic)
+
+            # Run evaluation
+            result = self.evaluator.evaluate(real_loader, synth_loader)
+
+            # JSD returns a dict with marginal distance (average across columns)
+            return {
+                "marginal_distance": float(result.get("marginal", 0.0)),
+                "normalize": self.parameters.get("normalize", True),
+                "n_histogram_bins": self.parameters.get("n_histogram_bins", 10),
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "marginal_distance": 0.0,
+                "normalize": self.parameters.get("normalize", True),
+                "n_histogram_bins": self.parameters.get("n_histogram_bins", 10),                
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+
+class JensenShannonSyndatMetric:
+    """Jensen-Shannon Distance metric implementation (SYNDAT)"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+        self.n_unique_threshold = parameters.get("n_unique_threshold", 10)
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+        """Evaluate Jensen-Shannon Distance metric using SYNDAT"""
+        start_time = time.time()
+
+        try:
+            # SYNDAT works directly with DataFrames
+            # Returns per-column JSD scores
+            jsd_per_column = syndat_jsd(original, synthetic, n_unique_threshold=self.n_unique_threshold)
+
+            # Calculate aggregate score (mean across columns) to match Synthcity output
+            aggregate_distance = float(np.mean(list(jsd_per_column.values())))
+
+            return {
+                "marginal_distance": aggregate_distance,
+                "n_unique_threshold": self.n_unique_threshold,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "marginal_distance": 0.0,
+                "n_unique_threshold": self.n_unique_threshold,
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "error",
@@ -745,6 +828,10 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return WassersteinDistanceMetric(**parameters)
         case "maximum_mean_discrepancy":
             return MaximumMeanDiscrepancyMetric(**parameters)
+        case "jensenshannon_synthcity":
+            return JensenShannonSynthcityMetric(**parameters)
+        case "jensenshannon_syndat":
+            return JensenShannonSyndatMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -846,6 +933,42 @@ Metrics Results
         else:
             report += f"""Maximum Mean Discrepancy: ERROR
   Error: {mmd_result.get('error_message', 'Unknown error')}
+"""
+
+    # Jensen-Shannon Distance (Synthcity) results
+    if "jensenshannon_synthcity" in metrics:
+        jsd_sc_result = metrics["jensenshannon_synthcity"]
+        if jsd_sc_result["status"] == "success":
+            report += f"""Jensen-Shannon Distance (Synthcity) Results:
+  Parameters: normalize={jsd_sc_result.get('normalize', True)}, n_histogram_bins={jsd_sc_result.get('n_histogram_bins', 10)}
+  Execution time: {jsd_sc_result['execution_time']:.2f}s
+
+  Distance Score:
+  → Marginal Distance: {jsd_sc_result['marginal_distance']:.6f}
+  
+  Note: Lower values indicate more similar distributions (0 = identical, 1 = maximally different)
+"""
+        else:
+            report += f"""Jensen-Shannon Distance (Synthcity): ERROR
+  Error: {jsd_sc_result.get('error_message', 'Unknown error')}
+"""
+
+    # Jensen-Shannon Distance (SYNDAT) results
+    if "jensenshannon_syndat" in metrics:
+        jsd_sd_result = metrics["jensenshannon_syndat"]
+        if jsd_sd_result["status"] == "success":
+            report += f"""Jensen-Shannon Distance (SYNDAT) Results:
+  Parameters: n_unique_threshold={jsd_sd_result.get('n_unique_threshold', 10)}
+  Execution time: {jsd_sd_result['execution_time']:.2f}s
+
+  Distance Score:
+  → Marginal Distance: {jsd_sd_result['marginal_distance']:.6f}
+  
+  Note: Lower values indicate more similar distributions (0 = identical, 1 = maximally different)
+"""
+        else:
+            report += f"""Jensen-Shannon Distance (SYNDAT): ERROR
+  Error: {jsd_sd_result.get('error_message', 'Unknown error')}
 """
 
     # NewRowSynthesis results
@@ -1060,6 +1183,28 @@ Metrics Results
             insights.append("Moderate distributional similarity (MMD)")
         else:
             insights.append("Poor distributional similarity (MMD)")
+
+    if "jensenshannon_synthcity" in metrics and metrics["jensenshannon_synthcity"]["status"] == "success":
+        jsd_sc_distance = metrics["jensenshannon_synthcity"]["marginal_distance"]
+        if jsd_sc_distance < 0.01:
+            insights.append("Excellent distributional similarity (JS-Synthcity)")
+        elif jsd_sc_distance < 0.05:
+            insights.append("Good distributional similarity (JS-Synthcity)")
+        elif jsd_sc_distance < 0.1:
+            insights.append("Moderate distributional similarity (JS-Synthcity)")
+        else:
+            insights.append("Poor distributional similarity (JS-Synthcity)")
+
+    if "jensenshannon_syndat" in metrics and metrics["jensenshannon_syndat"]["status"] == "success":
+        jsd_sd_distance = metrics["jensenshannon_syndat"]["marginal_distance"]
+        if jsd_sd_distance < 0.01:
+            insights.append("Excellent distributional similarity (JS-SYNDAT)")
+        elif jsd_sd_distance < 0.05:
+            insights.append("Good distributional similarity (JS-SYNDAT)")
+        elif jsd_sd_distance < 0.1:
+            insights.append("Moderate distributional similarity (JS-SYNDAT)")
+        else:
+            insights.append("Poor distributional similarity (JS-SYNDAT)")
 
     if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
         nrs_score = metrics["new_row_synthesis"]["score"]

@@ -154,6 +154,20 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                 # Store distance (lower = more similar distributions)
                 metrics['mmd'] = mmd_metric.get('joint_distance', 1.0)
 
+        # Jensen-Shannon Distance (Synthcity) - lower is better
+        if 'jensenshannon_synthcity' in metrics_data:
+            jsd_sc_metric = metrics_data['jensenshannon_synthcity']
+            if jsd_sc_metric.get('status') == 'success':
+                # Store distance (lower = more similar distributions)
+                metrics['jsd_synthcity'] = jsd_sc_metric.get('marginal_distance', 1.0)
+        
+        # Jensen-Shannon Distance (SYNDAT) - lower is better
+        if 'jensenshannon_syndat' in metrics_data:
+            jsd_sd_metric = metrics_data['jensenshannon_syndat']
+            if jsd_sd_metric.get('status') == 'success':
+                # Store distance (lower = more similar distributions)
+                metrics['jsd_syndat'] = jsd_sd_metric.get('marginal_distance', 1.0)
+
             if 'tv_complement' in metrics_data:
                 tv_metric = metrics_data['tv_complement']
                 if tv_metric.get('status') == 'success':
@@ -300,6 +314,8 @@ def display_chain_table(results: List[Dict]):
     table.add_column("KS Complement", justify="right")
     table.add_column("Wasserstein Dist", justify="right")
     table.add_column("MMD", justify="right")
+    table.add_column("JSD (Synthcity)", justify="right")
+    table.add_column("JSD (SYNDAT)", justify="right")    
     table.add_column("Detection Avg", justify="right")
     table.add_column("Model Size", justify="right", style="dim")
     table.add_column("Status", justify="center")
@@ -315,6 +331,8 @@ def display_chain_table(results: List[Dict]):
         ks_comp = f"{metrics.get('ks_complement', 0):.3f}" if 'ks_complement' in metrics else "—"
         wd = f"{metrics.get('wasserstein_dist', 0):.6f}" if 'wasserstein_dist' in metrics else "—"
         mmd_val = f"{metrics.get('mmd', 0):.6f}" if 'mmd' in metrics else "—"
+        jsd_sc = f"{metrics.get('jsd_synthcity', 0):.6f}" if 'jsd_synthcity' in metrics else "—"
+        jsd_sd = f"{metrics.get('jsd_syndat', 0):.6f}" if 'jsd_syndat' in metrics else "—"        
         det = f"{metrics.get('detection_avg', 0):.3f}" if 'detection_avg' in metrics else "—"
         
         # Model size
@@ -332,6 +350,8 @@ def display_chain_table(results: List[Dict]):
             ks_comp,
             wd,
             mmd_val,
+            jsd_sc,
+            jsd_sd,            
             det,
             size,
             f"[{status_style}]{status}[/{status_style}]"
@@ -353,9 +373,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,detection_avg,model_size_mb\n"
+        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,detection_avg,model_size_mb\n"
     
-    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,detection_avg,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,detection_avg,model_size_mb"]
     
     for r in results:
         gen = r['generation']
@@ -372,10 +392,12 @@ def export_csv(results: List[Dict]) -> str:
         ks = metrics.get('ks_complement', '')
         wd = metrics.get('wasserstein_dist', '')
         mmd_val = metrics.get('mmd', '')
+        jsd_sc = metrics.get('jsd_synthcity', '')
+        jsd_sd = metrics.get('jsd_syndat', '')        
         det = metrics.get('detection_avg', '')
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{det},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{det},{size}")
 
     return "\n".join(lines)
 
@@ -436,6 +458,8 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
     ks = [r['metrics'].get('ks_complement', None) for r in results]
     wd = [r['metrics'].get('wasserstein_dist', None) for r in results]
     mmd = [r['metrics'].get('mmd', None) for r in results]
+    jsd_sc = [r['metrics'].get('jsd_synthcity', None) for r in results]
+    jsd_sd = [r['metrics'].get('jsd_syndat', None) for r in results]
     det = [r['metrics'].get('detection_avg', None) for r in results]
 
     # Create plot
@@ -468,6 +492,15 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
             ax2.plot(generations, mmd, marker='+', label='MMD', 
                      linewidth=2, linestyle=':', color='darkred', alpha=0.7)
         
+        # Add JSD metrics to same secondary axis if available
+        if any(x is not None for x in jsd_sc):
+            ax2.plot(generations, jsd_sc, marker='*', label='JSD (Synthcity)', 
+                     linewidth=2, linestyle=':', color='orange', alpha=0.7)
+        
+        if any(x is not None for x in jsd_sd):
+            ax2.plot(generations, jsd_sd, marker='d', label='JSD (SYNDAT)', 
+                     linewidth=2, linestyle=':', color='darkorange', alpha=0.7)
+       
         ax2.set_ylabel('Distance Metrics (lower is better)', fontsize=10, color='red')
         ax2.tick_params(axis='y', labelcolor='red')
         ax2.legend(loc='upper right')
