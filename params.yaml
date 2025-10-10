@@ -68,6 +68,8 @@ evaluation:
     - name: "jensenshannon_syndat"
       parameters:
         n_unique_threshold: 10
+    - name: "jensenshannon_nannyml"
+      parameters: {}  # Uses adaptive Doane's formula binning
     - name: "ks_complement"
       parameters:
         target_columns:

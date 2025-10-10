@@ -168,6 +168,13 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                 # Store similarity score (higher = more similar distributions)
                 metrics['jsd_syndat'] = jsd_sd_metric.get('similarity_score', 0.0)
 
+        # Jensen-Shannon (NannyML) - higher is better (similarity score)
+        if 'jensenshannon_nannyml' in metrics_data:
+            jsd_nm_metric = metrics_data['jensenshannon_nannyml']
+            if jsd_nm_metric.get('status') == 'success':
+                # Store similarity score (higher = more similar distributions)
+                metrics['jsd_nannyml'] = jsd_nm_metric.get('similarity_score', 0.0)
+
             if 'tv_complement' in metrics_data:
                 tv_metric = metrics_data['tv_complement']
                 if tv_metric.get('status') == 'success':
@@ -316,6 +323,7 @@ def display_chain_table(results: List[Dict]):
     table.add_column("MMD", justify="right")
     table.add_column("JS Sim (Synthcity)", justify="right")
     table.add_column("JS Sim (SYNDAT)", justify="right")
+    table.add_column("JS Sim (NannyML)", justify="right")
     table.add_column("Detection Avg", justify="right")
     table.add_column("Model Size", justify="right", style="dim")
     table.add_column("Status", justify="center")
@@ -333,6 +341,7 @@ def display_chain_table(results: List[Dict]):
         mmd_val = f"{metrics.get('mmd', 0):.6f}" if 'mmd' in metrics else "—"
         jsd_sc = f"{metrics.get('jsd_synthcity', 0):.3f}" if 'jsd_synthcity' in metrics else "—"
         jsd_sd = f"{metrics.get('jsd_syndat', 0):.3f}" if 'jsd_syndat' in metrics else "—"
+        jsd_nm = f"{metrics.get('jsd_nannyml', 0):.3f}" if 'jsd_nannyml' in metrics else "—"
         det = f"{metrics.get('detection_avg', 0):.3f}" if 'detection_avg' in metrics else "—"
         
         # Model size
@@ -351,7 +360,8 @@ def display_chain_table(results: List[Dict]):
             wd,
             mmd_val,
             jsd_sc,
-            jsd_sd,            
+            jsd_sd,
+            jsd_nm,
             det,
             size,
             f"[{status_style}]{status}[/{status_style}]"
@@ -373,9 +383,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,detection_avg,model_size_mb\n"
+        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,model_size_mb\n"
     
-    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,detection_avg,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,model_size_mb"]
     
     for r in results:
         gen = r['generation']
@@ -393,11 +403,12 @@ def export_csv(results: List[Dict]) -> str:
         wd = metrics.get('wasserstein_dist', '')
         mmd_val = metrics.get('mmd', '')
         jsd_sc = metrics.get('jsd_synthcity', '')
-        jsd_sd = metrics.get('jsd_syndat', '')        
+        jsd_sd = metrics.get('jsd_syndat', '')
+        jsd_nm = metrics.get('jsd_nannyml', '')
         det = metrics.get('detection_avg', '')
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{det},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{size}")
 
     return "\n".join(lines)
 
@@ -460,6 +471,7 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
     mmd = [r['metrics'].get('mmd', None) for r in results]
     jsd_sc = [r['metrics'].get('jsd_synthcity', None) for r in results]
     jsd_sd = [r['metrics'].get('jsd_syndat', None) for r in results]
+    jsd_nm = [r['metrics'].get('jsd_nannyml', None) for r in results]
     det = [r['metrics'].get('detection_avg', None) for r in results]
 
     # Create plot
@@ -487,6 +499,10 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
 
     if any(x is not None for x in jsd_sd):
         ax.plot(generations, jsd_sd, marker='d', label='JSD (SYNDAT)', linewidth=2)
+
+    # JSD NannyML on primary axis (similarity score, higher is better)
+    if any(x is not None for x in jsd_nm):
+        ax.plot(generations, jsd_nm, marker='p', label='JSD (NannyML)', linewidth=2)
 
     # Distance metrics on secondary y-axis (lower is better)
     if any(x is not None for x in wd):

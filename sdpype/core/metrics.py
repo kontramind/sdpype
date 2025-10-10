@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 console = Console()
 
 # Available evaluation metrics registry
+# Available evaluation metrics registry
 AVAILABLE_METRICS = {
     "statistical": {
         "alpha_precision": {
@@ -83,6 +84,19 @@ AVAILABLE_METRICS = {
                 "moderate": ">= 0.9"
             }
         },
+        "jensenshannon_nannyml": {
+            "description": "Jensen-Shannon Distance between distributions (NannyML implementation with adaptive binning)",
+            "library": "nannyml",
+            "parameters": {},  # Uses adaptive Doane's formula for binning
+            "outputs": ["similarity_score"],
+            "reference": "Production-grade implementation with Doane's formula binning (converted to 0-1 similarity)",
+            "direction": "maximize",
+            "interpretation": {
+                "excellent": ">= 0.99",
+                "good": ">= 0.95",
+                "moderate": ">= 0.9"
+            }
+        },
         "jensenshannon_syndat": {
             "description": "Jensen-Shannon Distance between distributions (SYNDAT implementation)",
             "library": "syndat",
@@ -95,7 +109,7 @@ AVAILABLE_METRICS = {
             },
             "outputs": ["similarity_score"],
             "reference": "Symmetric measure of similarity between probability distributions (converted to 0-1 similarity)",
-            "direction": "maximize"
+            "direction": "maximize",
             "interpretation": {
                 "excellent": ">= 0.99",
                 "good": ">= 0.95",
@@ -183,6 +197,7 @@ AVAILABLE_METRICS = {
         }
     }
 }
+
 
 def show_available_metrics(show_params: bool = False, metric_type: Optional[str] = None):
     """Show available evaluation metrics"""

@@ -471,6 +471,30 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ Jensen-Shannon Distance (SYNDAT) failed", style="bold red")
 
+    # Jensen-Shannon Distance (NannyML) results table
+    if "jensenshannon_nannyml" in metrics and metrics["jensenshannon_nannyml"]["status"] == "success":
+        jsd_nm_result = metrics["jensenshannon_nannyml"]
+
+        # Get parameters info for display
+        params_info = jsd_nm_result["parameters"]
+        params_display = str(params_info) if params_info else "adaptive binning (Doane's formula)"
+
+        # Create JSD NannyML results table
+        jsd_nm_table = Table(title=f"✅ Jensen-Shannon Distance (NannyML) Results ({params_display})", show_header=True, header_style="bold blue")
+        jsd_nm_table.add_column("Metric", style="cyan", no_wrap=True)
+        jsd_nm_table.add_column("Score", style="bright_green", justify="right")
+        jsd_nm_table.add_column("Interpretation", style="yellow")
+
+        similarity = jsd_nm_result['similarity_score']
+        interpretation = "Identical" if similarity > 0.99 else "Very Similar" if similarity > 0.95 else "Similar" if similarity > 0.9 else "Different"
+
+        jsd_nm_table.add_row("Distribution Similarity", f"{similarity:.3f}", interpretation)
+        jsd_nm_table.add_row("", "", "Higher is better")
+
+        console.print(jsd_nm_table)
+    else:
+        console.print("❌ Jensen-Shannon Distance (NannyML) failed", style="bold red")
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 

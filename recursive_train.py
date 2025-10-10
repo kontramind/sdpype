@@ -190,6 +190,13 @@ def read_metrics(model_id: str, generation: int) -> dict:
                     # Store similarity score (higher = more similar distributions)
                     metrics['JSD_SD'] = jsd_sd_metric.get('similarity_score', 0.0)
 
+            # Jensen-Shannon (NannyML) - higher is better (similarity score)
+            if 'jensenshannon_nannyml' in metrics_data:
+                jsd_nm_metric = metrics_data['jensenshannon_nannyml']
+                if jsd_nm_metric.get('status') == 'success':
+                    # Store similarity score (higher = more similar distributions)
+                    metrics['JSD_NM'] = jsd_nm_metric.get('similarity_score', 0.0)
+
     # Detection metrics
     det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
     if det_file.exists():
@@ -643,7 +650,8 @@ def run(
             f"WD={metrics.get('WD', 0):.6f}" if 'WD' in metrics else "",
             f"MMD={metrics.get('MMD', 0):.6f}" if 'MMD' in metrics else "",
             f"JSD_SC={metrics.get('JSD_SC', 0):.6f}" if 'JSD_SC' in metrics else "",
-            f"JSD_SD={metrics.get('JSD_SD', 0):.6f}" if 'JSD_SD' in metrics else "",            
+            f"JSD_SD={metrics.get('JSD_SD', 0):.6f}" if 'JSD_SD' in metrics else "",
+            f"JSD_NM={metrics.get('JSD_NM', 0):.6f}" if 'JSD_NM' in metrics else "",
             f"Det={metrics.get('Det', 0):.3f}" if 'Det' in metrics else "",
         ]).strip()
         
@@ -690,7 +698,8 @@ def run(
         table.add_column("Wasserstein Dist", justify="right")
         table.add_column("MMD", justify="right")
         table.add_column("JSD (Synthcity)", justify="right")
-        table.add_column("JSD (SYNDAT)", justify="right")        
+        table.add_column("JSD (SYNDAT)", justify="right")
+        table.add_column("JSD (NannyML)", justify="right")
         table.add_column("Detection Avg", justify="right")
         table.add_column("Time", justify="right", style="dim")
         
@@ -703,7 +712,8 @@ def run(
                 f"{metrics.get('WD', 0):.6f}" if 'WD' in metrics else "—",
                 f"{metrics.get('MMD', 0):.6f}" if 'MMD' in metrics else "—",
                 f"{metrics.get('JSD_SC', 0):.6f}" if 'JSD_SC' in metrics else "—",
-                f"{metrics.get('JSD_SD', 0):.6f}" if 'JSD_SD' in metrics else "—",                
+                f"{metrics.get('JSD_SD', 0):.6f}" if 'JSD_SD' in metrics else "—",
+                f"{metrics.get('JSD_NM', 0):.3f}" if 'JSD_NM' in metrics else "—",
                 f"{metrics.get('Det', 0):.3f}" if 'Det' in metrics else "—",
                 f"{r['elapsed']:.0f}s" if r['elapsed'] > 0 else "—"
             )

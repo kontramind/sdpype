@@ -30,6 +30,10 @@ from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
 # SYNDAT imports for alternative implementations
 from syndat.metrics import jensen_shannon_distance as syndat_jsd
 
+# NannyML imports for alternative implementations
+from nannyml.drift.univariate.methods import MethodFactory
+
+
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -299,6 +303,92 @@ class JensenShannonSyndatMetric:
             return {
                 "similarity_score": 0.0,
                 "n_unique_threshold": self.n_unique_threshold,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+
+class JensenShannonNannyMLMetric:
+    """Jensen-Shannon Distance metric implementation (NannyML)"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+        """Evaluate Jensen-Shannon Distance metric using NannyML's binning methodology"""
+        start_time = time.time()
+
+        try:
+            column_scores = {}
+            
+            for column in original.columns:
+                try:
+                    # Determine if column is continuous or categorical
+                    if pd.api.types.is_numeric_dtype(original[column]):
+                        # Continuous feature - use Doane's formula for binning
+                        n_bins = int(1 + np.log2(len(original)) + np.log2(1 + np.abs(original[column].skew()) / np.sqrt(6 * (len(original) - 2) / ((len(original) + 1) * (len(original) + 3)))))
+                        n_bins = max(10, min(n_bins, 50))  # Bound bins between 10-50
+                        
+                        # Create bins from original (reference)
+                        bins = np.histogram_bin_edges(original[column].dropna(), bins=n_bins)
+                        
+                        # Calculate histograms
+                        orig_hist, _ = np.histogram(original[column].dropna(), bins=bins)
+                        synth_hist, _ = np.histogram(synthetic[column].dropna(), bins=bins)
+                        
+                        # Normalize to get probabilities
+                        orig_prob = orig_hist / orig_hist.sum() if orig_hist.sum() > 0 else orig_hist
+                        synth_prob = synth_hist / synth_hist.sum() if synth_hist.sum() > 0 else synth_hist
+                        
+                        # Compute JSD
+                        from scipy.spatial.distance import jensenshannon
+                        jsd = jensenshannon(orig_prob, synth_prob)
+                        
+                    else:
+                        # Categorical feature - use frequency counts
+                        orig_counts = original[column].value_counts(normalize=True)
+                        synth_counts = synthetic[column].value_counts(normalize=True)
+                        
+                        # Align categories
+                        all_cats = orig_counts.index.union(synth_counts.index)
+                        orig_prob = orig_counts.reindex(all_cats, fill_value=0).values
+                        synth_prob = synth_counts.reindex(all_cats, fill_value=0).values
+                        
+                        from scipy.spatial.distance import jensenshannon
+                        jsd = jensenshannon(orig_prob, synth_prob)
+                    
+                    column_scores[column] = float(jsd)
+
+                except Exception as e:
+                    # print(f"🔴 Column '{column}' failed: {e}")
+                    # import traceback
+                    # traceback.print_exc()
+                    continue
+
+            # Calculate aggregate distance, then convert to similarity (0-1, higher=better)
+            if column_scores:
+                raw_distance = float(np.mean(list(column_scores.values())))
+                similarity_score = 1 - raw_distance
+            else:
+                similarity_score = 0.0
+
+            return {
+                "similarity_score": similarity_score,
+                "n_columns_evaluated": len(column_scores),
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            # print(f"\n🔴 NannyML ERROR: {e}")
+            # import traceback
+            # traceback.print_exc()
+
+            return {
+                "similarity_score": 0.0,
+                "n_columns_evaluated": 0,
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "error",
@@ -836,6 +926,8 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return JensenShannonSynthcityMetric(**parameters)
         case "jensenshannon_syndat":
             return JensenShannonSyndatMetric(**parameters)
+        case "jensenshannon_nannyml":
+            return JensenShannonNannyMLMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -973,6 +1065,25 @@ Metrics Results
         else:
             report += f"""Jensen-Shannon Distance (SYNDAT): ERROR
   Error: {jsd_sd_result.get('error_message', 'Unknown error')}
+"""
+
+    # Jensen-Shannon Distance (NannyML) results
+    if "jensenshannon_nannyml" in metrics:
+        jsd_nm_result = metrics["jensenshannon_nannyml"]
+        if jsd_nm_result["status"] == "success":
+            report += f"""Jensen-Shannon Distance (NannyML) Results:
+  Parameters: {jsd_nm_result['parameters'] if jsd_nm_result['parameters'] else 'default settings'}
+  Execution time: {jsd_nm_result['execution_time']:.2f}s
+
+  Similarity Score:
+  → Distribution Similarity: {jsd_nm_result['similarity_score']:.3f}
+  → Columns Evaluated: {jsd_nm_result['n_columns_evaluated']}
+
+  Note: Higher values indicate more similar distributions (0 = different, 1 = identical)
+"""
+        else:
+            report += f"""Jensen-Shannon Distance (NannyML): ERROR
+  Error: {jsd_nm_result.get('error_message', 'Unknown error')}
 """
 
     # NewRowSynthesis results
@@ -1209,6 +1320,17 @@ Metrics Results
             insights.append("Moderate distributional similarity (JS-SYNDAT)")
         else:
             insights.append("Poor distributional similarity (JS-SYNDAT)")
+
+    if "jensenshannon_nannyml" in metrics and metrics["jensenshannon_nannyml"]["status"] == "success":
+        jsd_nm_similarity = metrics["jensenshannon_nannyml"]["similarity_score"]
+        if jsd_nm_similarity >= 0.99:
+            insights.append("Excellent distributional similarity (JS-NannyML)")
+        elif jsd_nm_similarity >= 0.95:
+            insights.append("Good distributional similarity (JS-NannyML)")
+        elif jsd_nm_similarity >= 0.9:
+            insights.append("Moderate distributional similarity (JS-NannyML)")
+        else:
+            insights.append("Poor distributional similarity (JS-NannyML)")
 
     if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
         nrs_score = metrics["new_row_synthesis"]["score"]

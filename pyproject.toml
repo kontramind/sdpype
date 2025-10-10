@@ -35,6 +35,8 @@ dependencies = [
     "pypyr>=5.9.1",
     "python-synthpop>=0.1.2",
     "syndat>=0.13.4",
+    "kaleido==0.2.1",
+    "nannyml>=0.13.1",
 ]
 
 [project.scripts]
