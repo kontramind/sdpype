@@ -248,12 +248,11 @@ class JensenShannonSynthcityMetric:
             # Run evaluation
             result = self.evaluator.evaluate(real_loader, synth_loader)
 
-            # JSD returns raw distance (0-1), convert to similarity score (0-1, higher=better)
+            # JSD returns raw distance (0-1, lower=better)
             raw_distance = float(result.get("marginal", 0.0))
-            similarity_score = 1 - raw_distance
 
             return {
-                "similarity_score": similarity_score,
+                "distance_score": raw_distance,
                 "normalize": self.parameters.get("normalize", True),
                 "n_histogram_bins": self.parameters.get("n_histogram_bins", 10),
                 "parameters": self.parameters,
@@ -262,7 +261,7 @@ class JensenShannonSynthcityMetric:
             }
         except Exception as e:
             return {
-                "similarity_score": 0.0,
+                "distance_score": 1.0,
                 "normalize": self.parameters.get("normalize", True),
                 "n_histogram_bins": self.parameters.get("n_histogram_bins", 10),                
                 "parameters": self.parameters,
@@ -288,12 +287,11 @@ class JensenShannonSyndatMetric:
             # Returns per-column JSD scores
             jsd_per_column = syndat_jsd(original, synthetic, n_unique_threshold=self.n_unique_threshold)
 
-            # Calculate aggregate distance (mean across columns), then convert to similarity (0-1, higher=better)
+            # Calculate aggregate distance (mean across columns), lower=better
             raw_distance = float(np.mean(list(jsd_per_column.values())))
-            similarity_score = 1 - raw_distance
 
             return {
-                "similarity_score": similarity_score,
+                "distance_score": raw_distance,
                 "n_unique_threshold": self.n_unique_threshold,
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
@@ -301,7 +299,7 @@ class JensenShannonSyndatMetric:
             }
         except Exception as e:
             return {
-                "similarity_score": 0.0,
+                "distance_score": 1.0,
                 "n_unique_threshold": self.n_unique_threshold,
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
@@ -367,15 +365,14 @@ class JensenShannonNannyMLMetric:
                     # traceback.print_exc()
                     continue
 
-            # Calculate aggregate distance, then convert to similarity (0-1, higher=better)
+            # Calculate aggregate distance, lower=better
             if column_scores:
                 raw_distance = float(np.mean(list(column_scores.values())))
-                similarity_score = 1 - raw_distance
             else:
-                similarity_score = 0.0
+                raw_distance = 1.0
 
             return {
-                "similarity_score": similarity_score,
+                "distance_score": raw_distance,
                 "n_columns_evaluated": len(column_scores),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
@@ -387,7 +384,7 @@ class JensenShannonNannyMLMetric:
             # traceback.print_exc()
 
             return {
-                "similarity_score": 0.0,
+                "distance_score": 1.0,
                 "n_columns_evaluated": 0,
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
@@ -1039,10 +1036,10 @@ Metrics Results
   Parameters: normalize={jsd_sc_result.get('normalize', True)}, n_histogram_bins={jsd_sc_result.get('n_histogram_bins', 10)}
   Execution time: {jsd_sc_result['execution_time']:.2f}s
 
-  Similarity Score:
-  → Distribution Similarity: {jsd_sc_result['similarity_score']:.3f}
+  Distance Score:
+  → Joint Distance: {jsd_sc_result['distance_score']:.6f}
   
-  Note: Higher values indicate more similar distributions (0 = different, 1 = identical)
+  Note: Lower values indicate more similar distributions (0 = identical)
 """
         else:
             report += f"""Jensen-Shannon Distance (Synthcity): ERROR
@@ -1057,10 +1054,10 @@ Metrics Results
   Parameters: n_unique_threshold={jsd_sd_result.get('n_unique_threshold', 10)}
   Execution time: {jsd_sd_result['execution_time']:.2f}s
 
-  Similarity Score:
-  → Distribution Similarity: {jsd_sd_result['similarity_score']:.3f}
+  Distance Score:
+  → Joint Distance: {jsd_sd_result['distance_score']:.6f}
   
-  Note: Higher values indicate more similar distributions (0 = different, 1 = identical)
+  Note: Lower values indicate more similar distributions (0 = identical)
 """
         else:
             report += f"""Jensen-Shannon Distance (SYNDAT): ERROR
@@ -1075,11 +1072,11 @@ Metrics Results
   Parameters: {jsd_nm_result['parameters'] if jsd_nm_result['parameters'] else 'default settings'}
   Execution time: {jsd_nm_result['execution_time']:.2f}s
 
-  Similarity Score:
-  → Distribution Similarity: {jsd_nm_result['similarity_score']:.3f}
+  Distance Score:
+  → Joint Distance: {jsd_nm_result['distance_score']:.6f}
   → Columns Evaluated: {jsd_nm_result['n_columns_evaluated']}
 
-  Note: Higher values indicate more similar distributions (0 = different, 1 = identical)
+  Note: Lower values indicate more similar distributions (0 = identical)
 """
         else:
             report += f"""Jensen-Shannon Distance (NannyML): ERROR
@@ -1300,34 +1297,34 @@ Metrics Results
             insights.append("Poor distributional similarity (MMD)")
 
     if "jensenshannon_synthcity" in metrics and metrics["jensenshannon_synthcity"]["status"] == "success":
-        jsd_sc_similarity = metrics["jensenshannon_synthcity"]["similarity_score"]
-        if jsd_sc_similarity >= 0.99:
+        jsd_distance = metrics["jensenshannon_synthcity"]["distance_score"]
+        if jsd_distance < 0.01:
             insights.append("Excellent distributional similarity (JS-Synthcity)")
-        elif jsd_sc_similarity >= 0.95:
+        elif jsd_distance < 0.05:
             insights.append("Good distributional similarity (JS-Synthcity)")
-        elif jsd_sc_similarity >= 0.9:
+        elif jsd_distance < 0.1:
             insights.append("Moderate distributional similarity (JS-Synthcity)")
         else:
             insights.append("Poor distributional similarity (JS-Synthcity)")
 
     if "jensenshannon_syndat" in metrics and metrics["jensenshannon_syndat"]["status"] == "success":
-        jsd_sd_similarity = metrics["jensenshannon_syndat"]["similarity_score"]
-        if jsd_sd_similarity >= 0.99:
+        jsd_distance = metrics["jensenshannon_syndat"]["distance_score"]
+        if jsd_distance < 0.01:
             insights.append("Excellent distributional similarity (JS-SYNDAT)")
-        elif jsd_sd_similarity >= 0.95:
+        elif jsd_distance < 0.05:
             insights.append("Good distributional similarity (JS-SYNDAT)")
-        elif jsd_sd_similarity >= 0.9:
+        elif jsd_distance < 0.1:
             insights.append("Moderate distributional similarity (JS-SYNDAT)")
         else:
             insights.append("Poor distributional similarity (JS-SYNDAT)")
 
     if "jensenshannon_nannyml" in metrics and metrics["jensenshannon_nannyml"]["status"] == "success":
-        jsd_nm_similarity = metrics["jensenshannon_nannyml"]["similarity_score"]
-        if jsd_nm_similarity >= 0.99:
+        jsd_distance = metrics["jensenshannon_nannyml"]["distance_score"]
+        if jsd_distance < 0.01:
             insights.append("Excellent distributional similarity (JS-NannyML)")
-        elif jsd_nm_similarity >= 0.95:
+        elif jsd_distance < 0.05:
             insights.append("Good distributional similarity (JS-NannyML)")
-        elif jsd_nm_similarity >= 0.9:
+        elif jsd_distance < 0.1:
             insights.append("Moderate distributional similarity (JS-NannyML)")
         else:
             insights.append("Poor distributional similarity (JS-NannyML)")

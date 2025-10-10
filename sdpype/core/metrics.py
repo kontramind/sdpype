@@ -75,26 +75,26 @@ AVAILABLE_METRICS = {
                     "description": "Number of histogram bins for continuous variables"
                 }
             },
-            "outputs": ["similarity_score"],
-            "reference": "Symmetric measure of similarity between probability distributions (converted to 0-1 similarity)",
-            "direction": "maximize",
+            "outputs": ["distance_score"],
+            "reference": "Symmetric measure of distance between probability distributions",
+            "direction": "minimize",
             "interpretation": {
-                "excellent": ">= 0.99",
-                "good": ">= 0.95",
-                "moderate": ">= 0.9"
+                "excellent": "< 0.01",
+                "good": "< 0.05",
+                "moderate": "< 0.1"
             }
         },
         "jensenshannon_nannyml": {
             "description": "Jensen-Shannon Distance between distributions (NannyML implementation with adaptive binning)",
             "library": "nannyml",
             "parameters": {},  # Uses adaptive Doane's formula for binning
-            "outputs": ["similarity_score"],
-            "reference": "Production-grade implementation with Doane's formula binning (converted to 0-1 similarity)",
-            "direction": "maximize",
+            "outputs": ["distance_score"],
+            "reference": "Production-grade implementation with Doane's formula binning",
+            "direction": "minimize",
             "interpretation": {
-                "excellent": ">= 0.99",
-                "good": ">= 0.95",
-                "moderate": ">= 0.9"
+                "excellent": "< 0.01",
+                "good": "< 0.05",
+                "moderate": "< 0.1"
             }
         },
         "jensenshannon_syndat": {
@@ -107,13 +107,13 @@ AVAILABLE_METRICS = {
                     "description": "Max unique values for ordinal treatment"
                 }
             },
-            "outputs": ["similarity_score"],
-            "reference": "Symmetric measure of similarity between probability distributions (converted to 0-1 similarity)",
-            "direction": "maximize",
+            "outputs": ["distance_score"],
+            "reference": "Symmetric measure of distance between probability distributions",
+            "direction": "minimize",
             "interpretation": {
-                "excellent": ">= 0.99",
-                "good": ">= 0.95",
-                "moderate": ">= 0.9"
+                "excellent": "< 0.01",
+                "good": "< 0.05",
+                "moderate": "< 0.1"
             }
         },
         "new_row_synthesis": {

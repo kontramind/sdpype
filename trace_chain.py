@@ -158,22 +158,22 @@ def read_metrics(model_id: str, generation: int) -> Dict:
         if 'jensenshannon_synthcity' in metrics_data:
             jsd_sc_metric = metrics_data['jensenshannon_synthcity']
             if jsd_sc_metric.get('status') == 'success':
-                # Store similarity score (higher = more similar distributions)
-                metrics['jsd_synthcity'] = jsd_sc_metric.get('similarity_score', 0.0)
+                # Store distance score (lower = more similar distributions)
+                metrics['jsd_synthcity'] = jsd_sc_metric.get('distance_score', 1.0)
         
         # Jensen-Shannon (SYNDAT) - higher is better (similarity score)
         if 'jensenshannon_syndat' in metrics_data:
             jsd_sd_metric = metrics_data['jensenshannon_syndat']
             if jsd_sd_metric.get('status') == 'success':
-                # Store similarity score (higher = more similar distributions)
-                metrics['jsd_syndat'] = jsd_sd_metric.get('similarity_score', 0.0)
+                # Store distance score (lower = more similar distributions)
+                metrics['jsd_syndat'] = jsd_sd_metric.get('distance_score', 1.0)
 
         # Jensen-Shannon (NannyML) - higher is better (similarity score)
         if 'jensenshannon_nannyml' in metrics_data:
             jsd_nm_metric = metrics_data['jensenshannon_nannyml']
             if jsd_nm_metric.get('status') == 'success':
-                # Store similarity score (higher = more similar distributions)
-                metrics['jsd_nannyml'] = jsd_nm_metric.get('similarity_score', 0.0)
+                # Store distance score (lower = more similar distributions)
+                metrics['jsd_nannyml'] = jsd_nm_metric.get('distance_score', 1.0)
 
             if 'tv_complement' in metrics_data:
                 tv_metric = metrics_data['tv_complement']

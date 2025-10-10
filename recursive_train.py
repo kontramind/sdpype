@@ -180,22 +180,22 @@ def read_metrics(model_id: str, generation: int) -> dict:
             if 'jensenshannon_synthcity' in metrics_data:
                 jsd_sc_metric = metrics_data['jensenshannon_synthcity']
                 if jsd_sc_metric.get('status') == 'success':
-                    # Store similarity score (higher = more similar distributions)
-                    metrics['JSD_SC'] = jsd_sc_metric.get('similarity_score', 0.0)
+                    # Store distance score (lower = more similar distributions)
+                    metrics['JSD_SC'] = jsd_sc_metric.get('distance_score', 1.0)
 
             # Jensen-Shannon (SYNDAT) - higher is better (similarity score)
             if 'jensenshannon_syndat' in metrics_data:
                 jsd_sd_metric = metrics_data['jensenshannon_syndat']
                 if jsd_sd_metric.get('status') == 'success':
-                    # Store similarity score (higher = more similar distributions)
-                    metrics['JSD_SD'] = jsd_sd_metric.get('similarity_score', 0.0)
+                    # Store distance score (lower = more similar distributions)
+                    metrics['JSD_SD'] = jsd_sd_metric.get('distance_score', 1.0)
 
             # Jensen-Shannon (NannyML) - higher is better (similarity score)
             if 'jensenshannon_nannyml' in metrics_data:
                 jsd_nm_metric = metrics_data['jensenshannon_nannyml']
                 if jsd_nm_metric.get('status') == 'success':
-                    # Store similarity score (higher = more similar distributions)
-                    metrics['JSD_NM'] = jsd_nm_metric.get('similarity_score', 0.0)
+                    # Store distance score (lower = more similar distributions)
+                    metrics['JSD_NM'] = jsd_nm_metric.get('distance_score', 1.0)
 
     # Detection metrics
     det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
