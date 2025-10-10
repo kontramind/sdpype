@@ -442,7 +442,7 @@ def export_json(results: List[Dict]) -> str:
     return json.dumps(export_data, indent=2)
 
 
-def plot_chain(results: List[Dict], output_file: Optional[str] = None):
+def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     """
     Plot metrics degradation across generations.
     
@@ -558,6 +558,306 @@ def plot_chain(results: List[Dict], output_file: Optional[str] = None):
     plt.close()
 
 
+"""
+Enhanced trace_chain.py plotting with Plotly for interactive visualization.
+
+Replace the plot_chain() function in trace_chain.py with this version.
+"""
+
+from typing import Dict, List, Optional
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+
+"""
+Enhanced trace_chain.py plotting with Plotly for interactive visualization.
+
+Replace the plot_chain() function in trace_chain.py with this version.
+"""
+
+from typing import Dict, List, Optional
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+
+def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = None):
+    """
+    Plot metrics degradation across generations with interactive Plotly.
+    
+    Features:
+    - Click legend items to toggle visibility
+    - Hover for exact values
+    - Zoom and pan
+    - Export as standalone HTML
+    
+    Args:
+        results: Chain results from trace_chain()
+        output_file: Optional filename to save plot (e.g., 'chain.html')
+    """
+    try:
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+    except ImportError:
+        console.print("[red]plotly not installed. Install with: pip install plotly[/red]")
+        raise typer.Exit(1)
+    
+    if not results:
+        console.print("[yellow]No data to plot[/yellow]")
+        return
+    
+    generations = [r['generation'] for r in results]
+    
+    # Extract metrics
+    alpha = [r['metrics'].get('alpha_precision', None) for r in results]
+    prdc = [r['metrics'].get('prdc_avg', None) for r in results]
+    tv = [r['metrics'].get('tv_complement', None) for r in results]
+    ks = [r['metrics'].get('ks_complement', None) for r in results]
+    wd = [r['metrics'].get('wasserstein_dist', None) for r in results]
+    mmd = [r['metrics'].get('mmd', None) for r in results]
+    jsd_sc = [r['metrics'].get('jsd_synthcity', None) for r in results]
+    jsd_sd = [r['metrics'].get('jsd_syndat', None) for r in results]
+    jsd_nm = [r['metrics'].get('jsd_nannyml', None) for r in results]
+    det = [r['metrics'].get('detection_avg', None) for r in results]
+    
+    # Create figure with secondary y-axis for distance metrics
+    fig = make_subplots(
+        specs=[[{"secondary_y": True}]],
+        subplot_titles=["Metric Degradation Across Generations"]
+    )
+    
+    # Color scheme
+    colors = {
+        'alpha': '#1f77b4',
+        'prdc': '#ff7f0e',
+        'tv': '#2ca02c',
+        'ks': '#d62728',
+        'det': '#9467bd',
+        'jsd_sc': '#8c564b',
+        'jsd_sd': '#e377c2',
+        'jsd_nm': '#7f7f7f',
+        'wd': '#ff0000',
+        'mmd': '#8b0000'
+    }
+    
+    # Primary axis: Similarity scores (higher is better)
+    if any(x is not None for x in alpha):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=alpha,
+                mode='lines+markers',
+                name='Alpha Precision',
+                line=dict(color=colors['alpha'], width=2),
+                marker=dict(size=8, symbol='circle'),
+                hovertemplate='Gen %{x}<br>Alpha: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+    
+    if any(x is not None for x in prdc):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=prdc,
+                mode='lines+markers',
+                name='PRDC Avg',
+                line=dict(color=colors['prdc'], width=2),
+                marker=dict(size=8, symbol='square'),
+                hovertemplate='Gen %{x}<br>PRDC: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+    
+    if any(x is not None for x in tv):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=tv,
+                mode='lines+markers',
+                name='TV Complement',
+                line=dict(color=colors['tv'], width=2, dash='dash'),
+                marker=dict(size=8, symbol='diamond'),
+                hovertemplate='Gen %{x}<br>TV: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+    
+    if any(x is not None for x in ks):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=ks,
+                mode='lines+markers',
+                name='KS Complement',
+                line=dict(color=colors['ks'], width=2, dash='dash'),
+                marker=dict(size=8, symbol='triangle-down'),
+                hovertemplate='Gen %{x}<br>KS: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+    
+    if any(x is not None for x in det):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=det,
+                mode='lines+markers',
+                name='Detection Avg',
+                line=dict(color=colors['det'], width=2),
+                marker=dict(size=8, symbol='triangle-up'),
+                hovertemplate='Gen %{x}<br>Detection: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+    
+    if any(x is not None for x in jsd_sc):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=jsd_sc,
+                mode='lines+markers',
+                name='JSD (Synthcity)',
+                line=dict(color=colors['jsd_sc'], width=2),
+                marker=dict(size=8, symbol='star'),
+                hovertemplate='Gen %{x}<br>JSD SC: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+    
+    if any(x is not None for x in jsd_sd):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=jsd_sd,
+                mode='lines+markers',
+                name='JSD (SYNDAT)',
+                line=dict(color=colors['jsd_sd'], width=2),
+                marker=dict(size=8, symbol='diamond'),
+                hovertemplate='Gen %{x}<br>JSD SD: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+    
+    if any(x is not None for x in jsd_nm):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=jsd_nm,
+                mode='lines+markers',
+                name='JSD (NannyML)',
+                line=dict(color=colors['jsd_nm'], width=2),
+                marker=dict(size=8, symbol='pentagon'),
+                hovertemplate='Gen %{x}<br>JSD NM: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+    
+    # Secondary axis: Distance metrics (lower is better)
+    if any(x is not None for x in wd):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=wd,
+                mode='lines+markers',
+                name='Wasserstein Dist',
+                line=dict(color=colors['wd'], width=2, dash='dot'),
+                marker=dict(size=8, symbol='x'),
+                hovertemplate='Gen %{x}<br>Wasserstein: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=True
+        )
+    
+    if any(x is not None for x in mmd):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=mmd,
+                mode='lines+markers',
+                name='MMD',
+                line=dict(color=colors['mmd'], width=2, dash='dot'),
+                marker=dict(size=8, symbol='cross'),
+                hovertemplate='Gen %{x}<br>MMD: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=True
+        )
+    
+    # Update axes
+    fig.update_xaxes(
+        title_text="Generation",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+    
+    fig.update_yaxes(
+        title_text="Similarity Score (higher is better)",
+        secondary_y=False,
+        range=[0, 1.05],
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+    
+    fig.update_yaxes(
+        title_text="Distance (lower is better)",
+        secondary_y=True,
+        showgrid=False
+    )
+    
+    # Update layout
+    fig.update_layout(
+        title={
+            'text': 'Metric Degradation Across Generations<br><sub>Click legend items to toggle visibility</sub>',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'family': 'Arial, sans-serif'}
+        },
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="right",
+            x=1.15,
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="rgba(0, 0, 0, 0.2)",
+            borderwidth=1
+        ),
+        plot_bgcolor='white',
+        height=700,
+        width=1200,
+        margin=dict(r=200)  # Extra space for legend
+    )
+    
+    # Add annotation if alpha precision data available
+    if alpha and alpha[0] is not None and alpha[-1] is not None:
+        degradation = alpha[0] - alpha[-1]
+        fig.add_annotation(
+            x=generations[-1],
+            y=alpha[-1],
+            text=f"Δ Alpha = {degradation:.3f}",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1,
+            arrowwidth=2,
+            arrowcolor="rgba(0, 0, 0, 0.5)",
+            ax=40,
+            ay=-40,
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="rgba(0, 0, 0, 0.2)",
+            borderwidth=1
+        )
+    
+    # Save or show
+    if output_file:
+        # Default to .html extension
+        if not output_file.endswith('.html'):
+            output_file = output_file.rsplit('.', 1)[0] + '.html'
+        
+        fig.write_html(
+            output_file,
+            config={
+                'displayModeBar': True,
+                'displaylogo': False,
+                'modeBarButtonsToRemove': ['select2d', 'lasso2d']
+            }
+        )
+        console.print(f"[green]Interactive plot saved to: {output_file}[/green]")
+        console.print(f"[dim]Open in browser to interact with the plot[/dim]")
+    else:
+        fig.show()
+
+
 @app.command()
 def main(
     model_id: str = typer.Argument(..., help="Model ID from any generation in the chain"),
@@ -634,7 +934,7 @@ def main(
     
     # Generate plot if requested
     if plot:
-        plot_chain(results, plot_output)
+        plot_chain_interactive(results, plot_output)
 
 
 if __name__ == "__main__":
