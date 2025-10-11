@@ -121,7 +121,16 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                 if ap.get('status') == 'success':
                     scores = ap.get('scores', {})
                     metrics['alpha_precision'] = scores.get('authenticity_OC', 0)
-            
+
+                    # Store all alpha precision components for detailed plotting
+                    metrics['alpha_delta_precision_OC'] = scores.get('delta_precision_alpha_OC', 0)
+                    metrics['alpha_delta_coverage_OC'] = scores.get('delta_coverage_beta_OC', 0)
+                    metrics['alpha_authenticity_OC'] = scores.get('authenticity_OC', 0)
+
+                    metrics['alpha_delta_precision_naive'] = scores.get('delta_precision_alpha_naive', 0)
+                    metrics['alpha_delta_coverage_naive'] = scores.get('delta_coverage_beta_naive', 0)
+                    metrics['alpha_authenticity_naive'] = scores.get('authenticity_naive', 0)
+ 
             # PRDC - average of precision, recall, density, coverage
             if 'prdc_score' in metrics_data:
                 prdc_metric = metrics_data['prdc_score']
@@ -474,10 +483,20 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     jsd_nm = [r['metrics'].get('jsd_nannyml', None) for r in results]
     det = [r['metrics'].get('detection_avg', None) for r in results]
 
-    # Create plot
-    fig, ax = plt.subplots(figsize=(12, 7))
+    # Extract alpha precision components for second subplot
+    alpha_components = {
+        'OC': {k.replace('alpha_', ''): [r['metrics'].get(k, None) for r in results] 
+               for k in ['alpha_delta_precision_OC', 'alpha_delta_coverage_OC', 'alpha_authenticity_OC']},
+        'naive': {k.replace('alpha_', ''): [r['metrics'].get(k, None) for r in results]
+                  for k in ['alpha_delta_precision_naive', 'alpha_delta_coverage_naive', 'alpha_authenticity_naive']}
+    }
+
+    # Create figure with 2 subplots (main metrics on top, alpha components on bottom)
+    fig, (ax, ax_alpha) = plt.subplots(2, 1, figsize=(14, 10), 
+                                        gridspec_kw={'height_ratios': [2, 1]})
 
     # Plot each metric if available
+    # TOP SUBPLOT: Main metrics    
     if any(x is not None for x in alpha):
         ax.plot(generations, alpha, marker='o', label='Alpha Precision', linewidth=2)
     
@@ -558,7 +577,46 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
             fontsize=9,
             alpha=0.7
         )
-    
+
+    # BOTTOM SUBPLOT: Alpha Precision Components
+    ax_alpha.set_title('Alpha Precision Components', fontsize=12, fontweight='bold', pad=10)
+
+    # Plot OC variant components
+    if any(x is not None for x in alpha_components['OC']['delta_precision_OC']):
+        ax_alpha.plot(generations, alpha_components['OC']['delta_precision_OC'], 
+                      marker='o', label='δ Precision (OC)', linewidth=2, color='#1f77b4')
+
+    if any(x is not None for x in alpha_components['OC']['delta_coverage_OC']):
+        ax_alpha.plot(generations, alpha_components['OC']['delta_coverage_OC'], 
+                      marker='s', label='δ Coverage (OC)', linewidth=2, color='#ff7f0e')
+
+    if any(x is not None for x in alpha_components['OC']['authenticity_OC']):
+        ax_alpha.plot(generations, alpha_components['OC']['authenticity_OC'], 
+                      marker='^', label='Authenticity (OC)', linewidth=2, color='#2ca02c')
+
+    # Plot naive variant components with dashed lines
+    if any(x is not None for x in alpha_components['naive']['delta_precision_naive']):
+        ax_alpha.plot(generations, alpha_components['naive']['delta_precision_naive'], 
+                      marker='o', label='δ Precision (Naive)', linewidth=2, 
+                      linestyle='--', color='#1f77b4', alpha=0.6)
+
+    if any(x is not None for x in alpha_components['naive']['delta_coverage_naive']):
+        ax_alpha.plot(generations, alpha_components['naive']['delta_coverage_naive'], 
+                      marker='s', label='δ Coverage (Naive)', linewidth=2, 
+                      linestyle='--', color='#ff7f0e', alpha=0.6)
+
+    if any(x is not None for x in alpha_components['naive']['authenticity_naive']):
+        ax_alpha.plot(generations, alpha_components['naive']['authenticity_naive'], 
+                      marker='^', label='Authenticity (Naive)', linewidth=2, 
+                      linestyle='--', color='#2ca02c', alpha=0.6)
+
+    ax_alpha.set_xlabel('Generation', fontsize=12)
+    ax_alpha.set_ylabel('Score', fontsize=12)
+    ax_alpha.legend(loc='best', fontsize=9)
+    ax_alpha.grid(True, alpha=0.3)
+    ax_alpha.set_xlim(left=-0.5)
+    ax_alpha.set_ylim(0, 1.05)
+
     plt.tight_layout()
     
     if output_file:
@@ -596,8 +654,12 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     """
     Plot metrics degradation across generations with interactive Plotly.
     
+    Creates two independent plots in a single HTML file:
+    1. Main metrics degradation plot (with dual Y-axes)
+    2. Alpha precision components breakdown
+    
     Features:
-    - Click legend items to toggle visibility
+    - Click legend items to toggle visibility independently
     - Hover for exact values
     - Zoom and pan
     - Export as standalone HTML
@@ -630,13 +692,15 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     jsd_sd = [r['metrics'].get('jsd_syndat', None) for r in results]
     jsd_nm = [r['metrics'].get('jsd_nannyml', None) for r in results]
     det = [r['metrics'].get('detection_avg', None) for r in results]
-    
-    # Create figure with secondary y-axis for distance metrics
-    fig = make_subplots(
-        specs=[[{"secondary_y": True}]],
-        subplot_titles=["Metric Degradation Across Generations"]
-    )
-    
+
+    # Extract alpha precision components for second subplot
+    alpha_components = {
+        'OC': {k.replace('alpha_', ''): [r['metrics'].get(k, None) for r in results] 
+               for k in ['alpha_delta_precision_OC', 'alpha_delta_coverage_OC', 'alpha_authenticity_OC']},
+        'naive': {k.replace('alpha_', ''): [r['metrics'].get(k, None) for r in results]
+                  for k in ['alpha_delta_precision_naive', 'alpha_delta_coverage_naive', 'alpha_authenticity_naive']}
+    }
+
     # Color scheme
     colors = {
         'alpha': '#1f77b4',
@@ -644,16 +708,18 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         'tv': '#2ca02c',
         'ks': '#d62728',
         'det': '#9467bd',
-        'jsd_sc': '#8c564b',
-        'jsd_sd': '#e377c2',
-        'jsd_nm': '#7f7f7f',
         'wd': '#ff0000',
         'mmd': '#8b0000'
     }
     
+    # ========================================
+    # PLOT 1: Main Metrics with Dual Y-Axes
+    # ========================================
+    fig1 = make_subplots(specs=[[{"secondary_y": True}]])
+    
     # Primary axis: Similarity scores (higher is better)
     if any(x is not None for x in alpha):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=alpha,
                 mode='lines+markers',
@@ -666,7 +732,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         )
     
     if any(x is not None for x in prdc):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=prdc,
                 mode='lines+markers',
@@ -679,7 +745,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         )
     
     if any(x is not None for x in tv):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=tv,
                 mode='lines+markers',
@@ -692,7 +758,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         )
     
     if any(x is not None for x in ks):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=ks,
                 mode='lines+markers',
@@ -705,7 +771,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         )
     
     if any(x is not None for x in det):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=det,
                 mode='lines+markers',
@@ -717,9 +783,9 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
             secondary_y=False
         )
     
-    # Secondary axis: Distance metrics (lower is better) - WD, MMD, and JSD
+    # Secondary axis: Distance metrics (lower is better)
     if any(x is not None for x in wd):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=wd,
                 mode='lines+markers',
@@ -729,10 +795,10 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                 hovertemplate='Gen %{x}<br>Wasserstein: %{y:.4f}<extra></extra>'
             ),
             secondary_y=True
-         )
+        )
 
     if any(x is not None for x in mmd):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=mmd,
                 mode='lines+markers',
@@ -746,7 +812,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
 
     # JSD metrics with dashed lines on secondary axis
     if any(x is not None for x in jsd_sc):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=jsd_sc,
                 mode='lines+markers',
@@ -759,7 +825,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         )
      
     if any(x is not None for x in jsd_sd):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=jsd_sd,
                 mode='lines+markers',
@@ -772,7 +838,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         )
      
     if any(x is not None for x in jsd_nm):
-        fig.add_trace(
+        fig1.add_trace(
             go.Scatter(
                 x=generations, y=jsd_nm,
                 mode='lines+markers',
@@ -783,16 +849,16 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
             ),
             secondary_y=True
         )
-    
-    # Update axes
-    fig.update_xaxes(
+
+    # Configure axes for Plot 1
+    fig1.update_xaxes(
         title_text="Generation",
         showgrid=True,
         gridwidth=1,
         gridcolor='rgba(128, 128, 128, 0.2)'
     )
     
-    fig.update_yaxes(
+    fig1.update_yaxes(
         title_text="Similarity Score (higher is better)",
         secondary_y=False,
         range=[0, 1.05],
@@ -801,16 +867,16 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         gridcolor='rgba(128, 128, 128, 0.2)'
     )
     
-    fig.update_yaxes(
+    fig1.update_yaxes(
         title_text="Distance (lower is better)",
         secondary_y=True,
         showgrid=False
     )
-    
-    # Update layout
-    fig.update_layout(
+
+    # Layout for Plot 1
+    fig1.update_layout(
         title={
-            'text': 'Metric Degradation Across Generations<br><sub>Click legend items to toggle visibility</sub>',
+            'text': 'Metric Degradation Across Generations',
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18, 'family': 'Arial, sans-serif'}
@@ -820,22 +886,22 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
             orientation="v",
             yanchor="top",
             y=0.99,
-            xanchor="right",
-            x=1.15,
-            bgcolor="rgba(255, 255, 255, 0.8)",
-            bordercolor="rgba(0, 0, 0, 0.2)",
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="rgba(0, 0, 0, 0.3)",
             borderwidth=1
         ),
         plot_bgcolor='white',
-        height=700,
-        width=1200,
-        margin=dict(r=200)  # Extra space for legend
+        height=550,
+        width=1400,
+        margin=dict(r=250, l=80, t=80, b=60)
     )
     
     # Add annotation if alpha precision data available
     if alpha and alpha[0] is not None and alpha[-1] is not None:
         degradation = alpha[0] - alpha[-1]
-        fig.add_annotation(
+        fig1.add_annotation(
             x=generations[-1],
             y=alpha[-1],
             text=f"Δ Alpha = {degradation:.3f}",
@@ -851,25 +917,172 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
             borderwidth=1
         )
     
-    # Save or show
+    # ========================================
+    # PLOT 2: Alpha Precision Components
+    # ========================================
+    fig2 = go.Figure()
+    
+    # OC variant - solid lines
+    if any(x is not None for x in alpha_components['OC']['delta_precision_OC']):
+        fig2.add_trace(
+            go.Scatter(
+                x=generations, y=alpha_components['OC']['delta_precision_OC'],
+                mode='lines+markers',
+                name='δ Precision (OC)',
+                line=dict(color='#1f77b4', width=2),
+                marker=dict(size=7, symbol='circle'),
+                hovertemplate='Gen %{x}<br>δ Prec (OC): %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in alpha_components['OC']['delta_coverage_OC']):
+        fig2.add_trace(
+            go.Scatter(
+                x=generations, y=alpha_components['OC']['delta_coverage_OC'],
+                mode='lines+markers',
+                name='δ Coverage (OC)',
+                line=dict(color='#ff7f0e', width=2),
+                marker=dict(size=7, symbol='square'),
+                hovertemplate='Gen %{x}<br>δ Cov (OC): %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in alpha_components['OC']['authenticity_OC']):
+        fig2.add_trace(
+            go.Scatter(
+                x=generations, y=alpha_components['OC']['authenticity_OC'],
+                mode='lines+markers',
+                name='Authenticity (OC)',
+                line=dict(color='#2ca02c', width=2),
+                marker=dict(size=7, symbol='triangle-up'),
+                hovertemplate='Gen %{x}<br>Auth (OC): %{y:.4f}<extra></extra>'
+            )
+        )
+
+    # Naive variant - dashed lines
+    if any(x is not None for x in alpha_components['naive']['delta_precision_naive']):
+        fig2.add_trace(
+            go.Scatter(
+                x=generations, y=alpha_components['naive']['delta_precision_naive'],
+                mode='lines+markers',
+                name='δ Precision (Naive)',
+                line=dict(color='#1f77b4', width=2, dash='dash'),
+                marker=dict(size=7, symbol='circle'),
+                hovertemplate='Gen %{x}<br>δ Prec (Naive): %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in alpha_components['naive']['delta_coverage_naive']):
+        fig2.add_trace(
+            go.Scatter(
+                x=generations, y=alpha_components['naive']['delta_coverage_naive'],
+                mode='lines+markers',
+                name='δ Coverage (Naive)',
+                line=dict(color='#ff7f0e', width=2, dash='dash'),
+                marker=dict(size=7, symbol='square'),
+                hovertemplate='Gen %{x}<br>δ Cov (Naive): %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in alpha_components['naive']['authenticity_naive']):
+        fig2.add_trace(
+            go.Scatter(
+                x=generations, y=alpha_components['naive']['authenticity_naive'],
+                mode='lines+markers',
+                name='Authenticity (Naive)',
+                line=dict(color='#2ca02c', width=2, dash='dash'),
+                marker=dict(size=7, symbol='triangle-up'),
+                hovertemplate='Gen %{x}<br>Auth (Naive): %{y:.4f}<extra></extra>'
+            )
+        )
+
+    # Configure axes for Plot 2
+    fig2.update_xaxes(
+        title_text="Generation",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    fig2.update_yaxes(
+        title_text="Score",
+        range=[0, 1.05],
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    # Layout for Plot 2
+    fig2.update_layout(
+        title={
+            'text': 'Alpha Precision Components',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'family': 'Arial, sans-serif'}
+        },
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="rgba(0, 0, 0, 0.3)",
+            borderwidth=1
+        ),
+        plot_bgcolor='white',
+        height=450,
+        width=1400,
+        margin=dict(r=250, l=80, t=80, b=60)
+    )
+    
+    # ========================================
+    # Save or show both plots
+    # ========================================
     if output_file:
         # Default to .html extension
         if not output_file.endswith('.html'):
             output_file = output_file.rsplit('.', 1)[0] + '.html'
         
-        fig.write_html(
-            output_file,
-            config={
-                'displayModeBar': True,
-                'displaylogo': False,
-                'modeBarButtonsToRemove': ['select2d', 'lasso2d']
-            }
-        )
-        console.print(f"[green]Interactive plot saved to: {output_file}[/green]")
-        console.print(f"[dim]Open in browser to interact with the plot[/dim]")
+        # Combine both figures into a single HTML file
+        with open(output_file, 'w') as f:
+            f.write('<html><head><meta charset="utf-8" /></head><body>\n')
+            f.write('<h1 style="text-align: center; font-family: Arial, sans-serif;">Chain Metrics Analysis</h1>\n')
+            f.write('<p style="text-align: center; color: #666; font-family: Arial, sans-serif;">Click legend items to toggle visibility. Hover over lines for exact values.</p>\n')
+            
+            # Write first plot
+            f.write(fig1.to_html(
+                full_html=False,
+                include_plotlyjs='cdn',
+                config={
+                    'displayModeBar': True,
+                    'displaylogo': False,
+                    'modeBarButtonsToRemove': ['select2d', 'lasso2d']
+                }
+            ))
+            
+            f.write('<br><hr style="margin: 40px auto; width: 80%; border: 1px solid #ddd;"><br>\n')
+            
+            # Write second plot
+            f.write(fig2.to_html(
+                full_html=False,
+                include_plotlyjs=False,
+                config={
+                    'displayModeBar': True,
+                    'displaylogo': False,
+                    'modeBarButtonsToRemove': ['select2d', 'lasso2d']
+                }
+            ))
+            
+            f.write('</body></html>')
+        
+        console.print(f"[green]Interactive plots saved to: {output_file}[/green]")
+        console.print(f"[dim]Open in browser to interact with the plots[/dim]")
     else:
-        fig.show()
-
+        # Show plots sequentially
+        fig1.show()
+        fig2.show()
 
 @app.command()
 def main(
