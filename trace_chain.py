@@ -154,21 +154,21 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                 # Store distance (lower = more similar distributions)
                 metrics['mmd'] = mmd_metric.get('joint_distance', 1.0)
 
-        # Jensen-Shannon (Synthcity) - higher is better (similarity score)
+        # Jensen-Shannon (Synthcity) - lower is better
         if 'jensenshannon_synthcity' in metrics_data:
             jsd_sc_metric = metrics_data['jensenshannon_synthcity']
             if jsd_sc_metric.get('status') == 'success':
                 # Store distance score (lower = more similar distributions)
                 metrics['jsd_synthcity'] = jsd_sc_metric.get('distance_score', 1.0)
         
-        # Jensen-Shannon (SYNDAT) - higher is better (similarity score)
+        # Jensen-Shannon (SYNDAT) - lower is better
         if 'jensenshannon_syndat' in metrics_data:
             jsd_sd_metric = metrics_data['jensenshannon_syndat']
             if jsd_sd_metric.get('status') == 'success':
                 # Store distance score (lower = more similar distributions)
                 metrics['jsd_syndat'] = jsd_sd_metric.get('distance_score', 1.0)
 
-        # Jensen-Shannon (NannyML) - higher is better (similarity score)
+        # Jensen-Shannon (NannyML) - lower is better
         if 'jensenshannon_nannyml' in metrics_data:
             jsd_nm_metric = metrics_data['jensenshannon_nannyml']
             if jsd_nm_metric.get('status') == 'success':
@@ -493,28 +493,40 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     if any(x is not None for x in det):
         ax.plot(generations, det, marker='^', label='Detection Avg', linewidth=2)
 
-    # JSD metrics on primary axis (now similarity scores, higher is better)
-    if any(x is not None for x in jsd_sc):
-        ax.plot(generations, jsd_sc, marker='*', label='JSD (Synthcity)', linewidth=2)
-
-    if any(x is not None for x in jsd_sd):
-        ax.plot(generations, jsd_sd, marker='d', label='JSD (SYNDAT)', linewidth=2)
-
-    # JSD NannyML on primary axis (similarity score, higher is better)
-    if any(x is not None for x in jsd_nm):
-        ax.plot(generations, jsd_nm, marker='p', label='JSD (NannyML)', linewidth=2)
-
-    # Distance metrics on secondary y-axis (lower is better)
-    if any(x is not None for x in wd):
+    # Distance metrics on secondary y-axis (lower is better) - WD, MMD, and JSD
+    # Check if we need to create secondary axis
+    has_distance_metrics = (any(x is not None for x in wd) or 
+                           any(x is not None for x in mmd) or
+                           any(x is not None for x in jsd_sc) or 
+                           any(x is not None for x in jsd_sd) or 
+                           any(x is not None for x in jsd_nm))
+    
+    if has_distance_metrics:
         ax2 = ax.twinx()
-        ax2.plot(generations, wd, marker='x', label='Wasserstein Dist', 
-                 linewidth=2, linestyle=':', color='red', alpha=0.7)
-
-        # Add MMD to same secondary axis if available
+        
+        # Wasserstein Distance
+        if any(x is not None for x in wd):
+            ax2.plot(generations, wd, marker='x', label='Wasserstein Dist', 
+                     linewidth=2, linestyle=':', color='red', alpha=0.7)
+        
+        # MMD
         if any(x is not None for x in mmd):
             ax2.plot(generations, mmd, marker='+', label='MMD', 
                      linewidth=2, linestyle=':', color='darkred', alpha=0.7)
-       
+        
+        # Jensen-Shannon distances with dashed lines (similar style to WD/MMD)
+        if any(x is not None for x in jsd_sc):
+            ax2.plot(generations, jsd_sc, marker='*', label='JSD (Synthcity)', 
+                     linewidth=2, linestyle='--', color='orange', alpha=0.7)
+        
+        if any(x is not None for x in jsd_sd):
+            ax2.plot(generations, jsd_sd, marker='d', label='JSD (SYNDAT)', 
+                     linewidth=2, linestyle='--', color='darkorange', alpha=0.7)
+        
+        if any(x is not None for x in jsd_nm):
+            ax2.plot(generations, jsd_nm, marker='p', label='JSD (NannyML)', 
+                     linewidth=2, linestyle='--', color='coral', alpha=0.7)
+        
         ax2.set_ylabel('Distance Metrics (lower is better)', fontsize=10, color='red')
         ax2.tick_params(axis='y', labelcolor='red')
         ax2.legend(loc='upper right')
@@ -705,46 +717,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
             secondary_y=False
         )
     
-    if any(x is not None for x in jsd_sc):
-        fig.add_trace(
-            go.Scatter(
-                x=generations, y=jsd_sc,
-                mode='lines+markers',
-                name='JSD (Synthcity)',
-                line=dict(color=colors['jsd_sc'], width=2),
-                marker=dict(size=8, symbol='star'),
-                hovertemplate='Gen %{x}<br>JSD SC: %{y:.4f}<extra></extra>'
-            ),
-            secondary_y=False
-        )
-    
-    if any(x is not None for x in jsd_sd):
-        fig.add_trace(
-            go.Scatter(
-                x=generations, y=jsd_sd,
-                mode='lines+markers',
-                name='JSD (SYNDAT)',
-                line=dict(color=colors['jsd_sd'], width=2),
-                marker=dict(size=8, symbol='diamond'),
-                hovertemplate='Gen %{x}<br>JSD SD: %{y:.4f}<extra></extra>'
-            ),
-            secondary_y=False
-        )
-    
-    if any(x is not None for x in jsd_nm):
-        fig.add_trace(
-            go.Scatter(
-                x=generations, y=jsd_nm,
-                mode='lines+markers',
-                name='JSD (NannyML)',
-                line=dict(color=colors['jsd_nm'], width=2),
-                marker=dict(size=8, symbol='pentagon'),
-                hovertemplate='Gen %{x}<br>JSD NM: %{y:.4f}<extra></extra>'
-            ),
-            secondary_y=False
-        )
-    
-    # Secondary axis: Distance metrics (lower is better)
+    # Secondary axis: Distance metrics (lower is better) - WD, MMD, and JSD
     if any(x is not None for x in wd):
         fig.add_trace(
             go.Scatter(
@@ -756,8 +729,8 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                 hovertemplate='Gen %{x}<br>Wasserstein: %{y:.4f}<extra></extra>'
             ),
             secondary_y=True
-        )
-    
+         )
+
     if any(x is not None for x in mmd):
         fig.add_trace(
             go.Scatter(
@@ -767,6 +740,46 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                 line=dict(color=colors['mmd'], width=2, dash='dot'),
                 marker=dict(size=8, symbol='cross'),
                 hovertemplate='Gen %{x}<br>MMD: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=True
+        )
+
+    # JSD metrics with dashed lines on secondary axis
+    if any(x is not None for x in jsd_sc):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=jsd_sc,
+                mode='lines+markers',
+                name='JSD (Synthcity)',
+                line=dict(color='orange', width=2, dash='dash'),
+                marker=dict(size=8, symbol='star'),
+                hovertemplate='Gen %{x}<br>JSD SC: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=True
+        )
+     
+    if any(x is not None for x in jsd_sd):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=jsd_sd,
+                mode='lines+markers',
+                name='JSD (SYNDAT)',
+                line=dict(color='darkorange', width=2, dash='dash'),
+                marker=dict(size=8, symbol='diamond'),
+                hovertemplate='Gen %{x}<br>JSD SD: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=True
+        )
+     
+    if any(x is not None for x in jsd_nm):
+        fig.add_trace(
+            go.Scatter(
+                x=generations, y=jsd_nm,
+                mode='lines+markers',
+                name='JSD (NannyML)',
+                line=dict(color='coral', width=2, dash='dash'),
+                marker=dict(size=8, symbol='pentagon'),
+                hovertemplate='Gen %{x}<br>JSD NM: %{y:.4f}<extra></extra>'
             ),
             secondary_y=True
         )
