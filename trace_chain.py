@@ -491,9 +491,18 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
                   for k in ['alpha_delta_precision_naive', 'alpha_delta_coverage_naive', 'alpha_authenticity_naive']}
     }
 
-    # Create figure with 2 subplots (main metrics on top, alpha components on bottom)
-    fig, (ax, ax_alpha) = plt.subplots(2, 1, figsize=(14, 10), 
-                                        gridspec_kw={'height_ratios': [2, 1]})
+    # Extract PRDC components for third subplot
+    prdc_components = {
+        'precision': [r['metrics'].get('prdc_precision', None) for r in results],
+        'recall': [r['metrics'].get('prdc_recall', None) for r in results],
+        'density': [r['metrics'].get('prdc_density', None) for r in results],
+        'coverage': [r['metrics'].get('prdc_coverage', None) for r in results]
+    }
+
+    # Create figure with 3 subplots (main, alpha components, PRDC components)
+    fig, (ax, ax_alpha, ax_prdc) = plt.subplots(3, 1, figsize=(14, 13), 
+                                        gridspec_kw={'height_ratios': [2, 1, 1]})
+
 
     # Plot each metric if available
     # TOP SUBPLOT: Main metrics    
@@ -617,6 +626,33 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     ax_alpha.set_xlim(left=-0.5)
     ax_alpha.set_ylim(0, 1.05)
 
+    # THIRD SUBPLOT: PRDC Components
+    ax_prdc.set_title('PRDC Components', fontsize=12, fontweight='bold', pad=10)
+
+    # Plot PRDC components
+    if any(x is not None for x in prdc_components['precision']):
+        ax_prdc.plot(generations, prdc_components['precision'], 
+                     marker='o', label='Precision', linewidth=2, color='#e377c2')
+
+    if any(x is not None for x in prdc_components['recall']):
+        ax_prdc.plot(generations, prdc_components['recall'], 
+                     marker='s', label='Recall', linewidth=2, color='#7f7f7f')
+
+    if any(x is not None for x in prdc_components['density']):
+        ax_prdc.plot(generations, prdc_components['density'], 
+                     marker='D', label='Density', linewidth=2, color='#bcbd22')
+
+    if any(x is not None for x in prdc_components['coverage']):
+        ax_prdc.plot(generations, prdc_components['coverage'], 
+                     marker='^', label='Coverage', linewidth=2, color='#17becf')
+
+    ax_prdc.set_xlabel('Generation', fontsize=12)
+    ax_prdc.set_ylabel('Score', fontsize=12)
+    ax_prdc.legend(loc='best', fontsize=9)
+    ax_prdc.grid(True, alpha=0.3)
+    ax_prdc.set_xlim(left=-0.5)
+    ax_prdc.set_ylim(0, 1.05)
+
     plt.tight_layout()
     
     if output_file:
@@ -699,6 +735,14 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                for k in ['alpha_delta_precision_OC', 'alpha_delta_coverage_OC', 'alpha_authenticity_OC']},
         'naive': {k.replace('alpha_', ''): [r['metrics'].get(k, None) for r in results]
                   for k in ['alpha_delta_precision_naive', 'alpha_delta_coverage_naive', 'alpha_authenticity_naive']}
+    }
+
+    # Extract PRDC components for third plot
+    prdc_components = {
+        'precision': [r['metrics'].get('prdc_precision', None) for r in results],
+        'recall': [r['metrics'].get('prdc_recall', None) for r in results],
+        'density': [r['metrics'].get('prdc_density', None) for r in results],
+        'coverage': [r['metrics'].get('prdc_coverage', None) for r in results]
     }
 
     # Color scheme
@@ -1036,16 +1080,110 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         width=1400,
         margin=dict(r=250, l=80, t=80, b=60)
     )
-    
+
     # ========================================
-    # Save or show both plots
+    # PLOT 3: PRDC Components
+    # ========================================
+    fig3 = go.Figure()
+    
+    if any(x is not None for x in prdc_components['precision']):
+        fig3.add_trace(
+            go.Scatter(
+                x=generations, y=prdc_components['precision'],
+                mode='lines+markers',
+                name='Precision',
+                line=dict(color='#e377c2', width=2),
+                marker=dict(size=7, symbol='circle'),
+                hovertemplate='Gen %{x}<br>Precision: %{y:.4f}<extra></extra>'
+            )
+        )
+    
+    if any(x is not None for x in prdc_components['recall']):
+        fig3.add_trace(
+            go.Scatter(
+                x=generations, y=prdc_components['recall'],
+                mode='lines+markers',
+                name='Recall',
+                line=dict(color='#7f7f7f', width=2),
+                marker=dict(size=7, symbol='square'),
+                hovertemplate='Gen %{x}<br>Recall: %{y:.4f}<extra></extra>'
+            )
+        )
+    
+    if any(x is not None for x in prdc_components['density']):
+        fig3.add_trace(
+            go.Scatter(
+                x=generations, y=prdc_components['density'],
+                mode='lines+markers',
+                name='Density',
+                line=dict(color='#bcbd22', width=2),
+                marker=dict(size=7, symbol='diamond'),
+                hovertemplate='Gen %{x}<br>Density: %{y:.4f}<extra></extra>'
+            )
+        )
+    
+    if any(x is not None for x in prdc_components['coverage']):
+        fig3.add_trace(
+            go.Scatter(
+                x=generations, y=prdc_components['coverage'],
+                mode='lines+markers',
+                name='Coverage',
+                line=dict(color='#17becf', width=2),
+                marker=dict(size=7, symbol='triangle-up'),
+                hovertemplate='Gen %{x}<br>Coverage: %{y:.4f}<extra></extra>'
+            )
+        )
+    
+    # Configure axes for Plot 3
+    fig3.update_xaxes(
+        title_text="Generation",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+    
+    fig3.update_yaxes(
+        title_text="Score",
+        range=[0, 1.05],
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    # Layout for Plot 3
+    fig3.update_layout(
+        title={
+            'text': 'PRDC Components',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'family': 'Arial, sans-serif'}
+        },
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="rgba(0, 0, 0, 0.3)",
+            borderwidth=1
+        ),
+        plot_bgcolor='white',
+        height=450,
+        width=1400,
+        margin=dict(r=250, l=80, t=80, b=60)
+    )
+
+    # ========================================
+    # Save or show all three plots
     # ========================================
     if output_file:
         # Default to .html extension
         if not output_file.endswith('.html'):
             output_file = output_file.rsplit('.', 1)[0] + '.html'
         
-        # Combine both figures into a single HTML file
+        # Combine all three figures into a single HTML file
         with open(output_file, 'w') as f:
             f.write('<html><head><meta charset="utf-8" /></head><body>\n')
             f.write('<h1 style="text-align: center; font-family: Arial, sans-serif;">Chain Metrics Analysis</h1>\n')
@@ -1074,15 +1212,29 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                     'modeBarButtonsToRemove': ['select2d', 'lasso2d']
                 }
             ))
-            
+
+            f.write('<br><hr style="margin: 40px auto; width: 80%; border: 1px solid #ddd;"><br>\n')
+
+            # Write third plot
+            f.write(fig3.to_html(
+                full_html=False,
+                include_plotlyjs=False,
+                config={
+                    'displayModeBar': True,
+                    'displaylogo': False,
+                    'modeBarButtonsToRemove': ['select2d', 'lasso2d']
+                }
+            ))
+
             f.write('</body></html>')
         
         console.print(f"[green]Interactive plots saved to: {output_file}[/green]")
         console.print(f"[dim]Open in browser to interact with the plots[/dim]")
     else:
-        # Show plots sequentially
+        # Show all plots sequentially
         fig1.show()
         fig2.show()
+        fig3.show()
 
 @app.command()
 def main(
