@@ -499,6 +499,14 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
                    r['metrics'].get('alpha_authenticity_OC')]
         alpha_oc_avg.append(sum(v for v in oc_vals if v is not None) / len([v for v in oc_vals if v is not None]) if any(v is not None for v in oc_vals) else None)
 
+    # Calculate average of JS distances from different libraries for main plot
+    js_avg = []
+    for r in results:
+        js_vals = [r['metrics'].get('jsd_synthcity'),
+                   r['metrics'].get('jsd_syndat'),
+                   r['metrics'].get('jsd_nannyml')]
+        js_avg.append(sum(v for v in js_vals if v is not None) / len([v for v in js_vals if v is not None]) if any(v is not None for v in js_vals) else None)
+
     # Extract PRDC components for third subplot
     prdc_components = {
         'precision': [r['metrics'].get('prdc_precision', None) for r in results],
@@ -507,10 +515,9 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
         'coverage': [r['metrics'].get('prdc_coverage', None) for r in results]
     }
 
-    # Create figure with 3 subplots (main, alpha components, PRDC components)
-    fig, (ax, ax_alpha, ax_prdc) = plt.subplots(3, 1, figsize=(14, 13), 
-                                        gridspec_kw={'height_ratios': [2, 1, 1]})
-
+    # Create figure with 4 subplots (main, alpha components, PRDC components, JS components)
+    fig, (ax, ax_alpha, ax_prdc, ax_js) = plt.subplots(4, 1, figsize=(14, 16), 
+                                        gridspec_kw={'height_ratios': [2, 1, 1, 1]})
 
     # Plot each metric if available
     # TOP SUBPLOT: Main metrics
@@ -544,24 +551,16 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
         if any(x is not None for x in wd):
             ax2.plot(generations, wd, marker='x', label='Wasserstein Dist', 
                      linewidth=2, linestyle=':', color='red', alpha=0.7)
-        
+
         # MMD
         if any(x is not None for x in mmd):
             ax2.plot(generations, mmd, marker='+', label='MMD', 
                      linewidth=2, linestyle=':', color='darkred', alpha=0.7)
-        
-        # Jensen-Shannon distances with dashed lines (similar style to WD/MMD)
-        if any(x is not None for x in jsd_sc):
-            ax2.plot(generations, jsd_sc, marker='*', label='JSD (Synthcity)', 
-                     linewidth=2, linestyle='--', color='orange', alpha=0.7)
-        
-        if any(x is not None for x in jsd_sd):
-            ax2.plot(generations, jsd_sd, marker='d', label='JSD (SYNDAT)', 
+
+        # Jensen-Shannon average
+        if any(x is not None for x in js_avg):
+            ax2.plot(generations, js_avg, marker='o', label='JS Avg', 
                      linewidth=2, linestyle='--', color='darkorange', alpha=0.7)
-        
-        if any(x is not None for x in jsd_nm):
-            ax2.plot(generations, jsd_nm, marker='p', label='JSD (NannyML)', 
-                     linewidth=2, linestyle='--', color='coral', alpha=0.7)
         
         ax2.set_ylabel('Distance Metrics (lower is better)', fontsize=10, color='red')
         ax2.tick_params(axis='y', labelcolor='red')
@@ -659,7 +658,34 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     ax_prdc.legend(loc='best', fontsize=9)
     ax_prdc.grid(True, alpha=0.3)
     ax_prdc.set_xlim(left=-0.5)
-    ax_prdc.set_ylim(0, 1.05)
+    ax_prdc.set_ylim(0, 1.2)
+
+    # FOURTH SUBPLOT: Jensen-Shannon Components
+    ax_js.set_title('Jensen-Shannon Distance Components', fontsize=12, fontweight='bold', pad=10)
+
+    # Plot individual JS distances from different libraries
+    if any(x is not None for x in jsd_sc):
+        ax_js.plot(generations, jsd_sc, 
+                   marker='o', label='JSD (Synthcity)', linewidth=2, color='orange')
+
+    if any(x is not None for x in jsd_sd):
+        ax_js.plot(generations, jsd_sd, 
+                   marker='s', label='JSD (SYNDAT)', linewidth=2, color='darkorange')
+
+    if any(x is not None for x in jsd_nm):
+        ax_js.plot(generations, jsd_nm, 
+                   marker='^', label='JSD (NannyML)', linewidth=2, color='coral')
+
+    # Add average as bold line
+    if any(x is not None for x in js_avg):
+        ax_js.plot(generations, js_avg, 
+                   marker='D', label='JS Average', linewidth=3, color='red', alpha=0.8)
+
+    ax_js.set_xlabel('Generation', fontsize=12)
+    ax_js.set_ylabel('Distance (lower is better)', fontsize=12)
+    ax_js.legend(loc='best', fontsize=9)
+    ax_js.grid(True, alpha=0.3)
+    ax_js.set_xlim(left=-0.5)
 
     plt.tight_layout()
     
@@ -752,6 +778,14 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                    r['metrics'].get('alpha_delta_coverage_OC'),
                    r['metrics'].get('alpha_authenticity_OC')]
         alpha_oc_avg.append(sum(v for v in oc_vals if v is not None) / len([v for v in oc_vals if v is not None]) if any(v is not None for v in oc_vals) else None)
+
+    # Calculate average of JS distances from different libraries for main plot
+    js_avg = []
+    for r in results:
+        js_vals = [r['metrics'].get('jsd_synthcity'),
+                   r['metrics'].get('jsd_syndat'),
+                   r['metrics'].get('jsd_nannyml')]
+        js_avg.append(sum(v for v in js_vals if v is not None) / len([v for v in js_vals if v is not None]) if any(v is not None for v in js_vals) else None)
 
     # Extract PRDC components for third plot
     prdc_components = {
@@ -871,42 +905,16 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
             secondary_y=True
         )
 
-    # JSD metrics with dashed lines on secondary axis
-    if any(x is not None for x in jsd_sc):
+    # JS Average on secondary axis
+    if any(x is not None for x in js_avg):
         fig1.add_trace(
             go.Scatter(
-                x=generations, y=jsd_sc,
+                x=generations, y=js_avg,
                 mode='lines+markers',
-                name='JSD (Synthcity)',
-                line=dict(color='orange', width=2, dash='dash'),
-                marker=dict(size=8, symbol='star'),
-                hovertemplate='Gen %{x}<br>JSD SC: %{y:.4f}<extra></extra>'
-            ),
-            secondary_y=True
-        )
-     
-    if any(x is not None for x in jsd_sd):
-        fig1.add_trace(
-            go.Scatter(
-                x=generations, y=jsd_sd,
-                mode='lines+markers',
-                name='JSD (SYNDAT)',
+                name='JS Avg',
                 line=dict(color='darkorange', width=2, dash='dash'),
-                marker=dict(size=8, symbol='diamond'),
-                hovertemplate='Gen %{x}<br>JSD SD: %{y:.4f}<extra></extra>'
-            ),
-            secondary_y=True
-        )
-     
-    if any(x is not None for x in jsd_nm):
-        fig1.add_trace(
-            go.Scatter(
-                x=generations, y=jsd_nm,
-                mode='lines+markers',
-                name='JSD (NannyML)',
-                line=dict(color='coral', width=2, dash='dash'),
-                marker=dict(size=8, symbol='pentagon'),
-                hovertemplate='Gen %{x}<br>JSD NM: %{y:.4f}<extra></extra>'
+                marker=dict(size=8, symbol='circle'),
+                hovertemplate='Gen %{x}<br>JS Avg: %{y:.4f}<extra></extra>'
             ),
             secondary_y=True
         )
@@ -1161,7 +1169,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     
     fig3.update_yaxes(
         title_text="Score",
-        range=[0, 1.05],
+        range=[0, 1.20],
         showgrid=True,
         gridwidth=1,
         gridcolor='rgba(128, 128, 128, 0.2)'
@@ -1193,7 +1201,100 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     )
 
     # ========================================
-    # Save or show all three plots
+    # PLOT 4: Jensen-Shannon Distance Components
+    # ========================================
+    fig4 = go.Figure()
+
+    if any(x is not None for x in jsd_sc):
+        fig4.add_trace(
+            go.Scatter(
+                x=generations, y=jsd_sc,
+                mode='lines+markers',
+                name='JSD (Synthcity)',
+                line=dict(color='orange', width=2),
+                marker=dict(size=7, symbol='circle'),
+                hovertemplate='Gen %{x}<br>JSD Synthcity: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in jsd_sd):
+        fig4.add_trace(
+            go.Scatter(
+                x=generations, y=jsd_sd,
+                mode='lines+markers',
+                name='JSD (SYNDAT)',
+                line=dict(color='darkorange', width=2),
+                marker=dict(size=7, symbol='square'),
+                hovertemplate='Gen %{x}<br>JSD SYNDAT: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in jsd_nm):
+        fig4.add_trace(
+            go.Scatter(
+                x=generations, y=jsd_nm,
+                mode='lines+markers',
+                name='JSD (NannyML)',
+                line=dict(color='coral', width=2),
+                marker=dict(size=7, symbol='triangle-up'),
+                hovertemplate='Gen %{x}<br>JSD NannyML: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    # Add average as bold line
+    if any(x is not None for x in js_avg):
+        fig4.add_trace(
+            go.Scatter(
+                x=generations, y=js_avg,
+                mode='lines+markers',
+                name='JS Average',
+                line=dict(color='red', width=3),
+                marker=dict(size=9, symbol='diamond'),
+                hovertemplate='Gen %{x}<br>JS Avg: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    # Configure axes for Plot 4
+    fig4.update_xaxes(
+        title_text="Generation",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    fig4.update_yaxes(
+        title_text="Distance (lower is better)",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    # Layout for Plot 4
+    fig4.update_layout(
+        title={
+            'text': 'Jensen-Shannon Distance Components',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'family': 'Arial, sans-serif'}
+        },
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="rgba(0, 0, 0, 0.3)",
+            borderwidth=1
+        ),
+        plot_bgcolor='white',
+        height=450,
+        width=1400,
+        margin=dict(r=250, l=80, t=80, b=60)
+    )
+    # ========================================
+    # Save or show all four plots
     # ========================================
     if output_file:
         # Default to .html extension
@@ -1243,6 +1344,19 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                 }
             ))
 
+            f.write('<br><hr style="margin: 40px auto; width: 80%; border: 1px solid #ddd;"><br>\n')
+
+            # Write fourth plot
+            f.write(fig4.to_html(
+                full_html=False,
+                include_plotlyjs=False,
+                config={
+                    'displayModeBar': True,
+                    'displaylogo': False,
+                    'modeBarButtonsToRemove': ['select2d', 'lasso2d']
+                }
+            ))
+
             f.write('</body></html>')
         
         console.print(f"[green]Interactive plots saved to: {output_file}[/green]")
@@ -1252,6 +1366,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         fig1.show()
         fig2.show()
         fig3.show()
+        fig4.show()
 
 @app.command()
 def main(

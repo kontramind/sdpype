@@ -45,8 +45,9 @@ Thumbs.db
 # DVC Experiments - Large files excluded, small files included
 experiments/data/              # Large data files (manual transfer)
 experiments/models/            # Large model files (manual transfer)
-!experiments/metrics/          # Small JSON metrics (commit these)
-!experiments/configs/          # Experiment configs (commit these)
+experiments/metrics/          # Small JSON metrics (commit these)
+experiments/configs/          # Experiment configs (commit these)
+checkpoints/
 
 # Testing
 .pytest_cache/
