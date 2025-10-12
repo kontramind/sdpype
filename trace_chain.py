@@ -491,6 +491,14 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
                   for k in ['alpha_delta_precision_naive', 'alpha_delta_coverage_naive', 'alpha_authenticity_naive']}
     }
 
+    # Calculate average of OC components for main plot
+    alpha_oc_avg = []
+    for r in results:
+        oc_vals = [r['metrics'].get('alpha_delta_precision_OC'),
+                   r['metrics'].get('alpha_delta_coverage_OC'),
+                   r['metrics'].get('alpha_authenticity_OC')]
+        alpha_oc_avg.append(sum(v for v in oc_vals if v is not None) / len([v for v in oc_vals if v is not None]) if any(v is not None for v in oc_vals) else None)
+
     # Extract PRDC components for third subplot
     prdc_components = {
         'precision': [r['metrics'].get('prdc_precision', None) for r in results],
@@ -505,12 +513,12 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
 
 
     # Plot each metric if available
-    # TOP SUBPLOT: Main metrics    
-    if any(x is not None for x in alpha):
-        ax.plot(generations, alpha, marker='o', label='Alpha Precision', linewidth=2)
-    
+    # TOP SUBPLOT: Main metrics
     if any(x is not None for x in prdc):
         ax.plot(generations, prdc, marker='s', label='PRDC Avg', linewidth=2)
+
+    if any(x is not None for x in alpha_oc_avg):
+        ax.plot(generations, alpha_oc_avg, marker='*', label='Alpha OC Avg', linewidth=2, color='#9467bd')
 
     if any(x is not None for x in tv):
         ax.plot(generations, tv, marker='D', label='TV Complement', linewidth=2, linestyle='--')
@@ -576,11 +584,11 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     ax.set_ylim(0, 1.05)
     
     # Add annotations for key points
-    if alpha and alpha[0] is not None and alpha[-1] is not None:
-        degradation = alpha[0] - alpha[-1]
+    if alpha_oc_avg and alpha_oc_avg[0] is not None and alpha_oc_avg[-1] is not None:
+        degradation = alpha_oc_avg[0] - alpha_oc_avg[-1]
         ax.annotate(
             f'Δ = {degradation:.3f}',
-            xy=(generations[-1], alpha[-1]),
+            xy=(generations[-1], alpha_oc_avg[-1]),
             xytext=(10, 10),
             textcoords='offset points',
             fontsize=9,
@@ -737,6 +745,14 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                   for k in ['alpha_delta_precision_naive', 'alpha_delta_coverage_naive', 'alpha_authenticity_naive']}
     }
 
+    # Calculate average of OC components for main plot
+    alpha_oc_avg = []
+    for r in results:
+        oc_vals = [r['metrics'].get('alpha_delta_precision_OC'),
+                   r['metrics'].get('alpha_delta_coverage_OC'),
+                   r['metrics'].get('alpha_authenticity_OC')]
+        alpha_oc_avg.append(sum(v for v in oc_vals if v is not None) / len([v for v in oc_vals if v is not None]) if any(v is not None for v in oc_vals) else None)
+
     # Extract PRDC components for third plot
     prdc_components = {
         'precision': [r['metrics'].get('prdc_precision', None) for r in results],
@@ -752,6 +768,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         'tv': '#2ca02c',
         'ks': '#d62728',
         'det': '#9467bd',
+        'alpha_oc_avg': '#8c564b',
         'wd': '#ff0000',
         'mmd': '#8b0000'
     }
@@ -762,19 +779,6 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     fig1 = make_subplots(specs=[[{"secondary_y": True}]])
     
     # Primary axis: Similarity scores (higher is better)
-    if any(x is not None for x in alpha):
-        fig1.add_trace(
-            go.Scatter(
-                x=generations, y=alpha,
-                mode='lines+markers',
-                name='Alpha Precision',
-                line=dict(color=colors['alpha'], width=2),
-                marker=dict(size=8, symbol='circle'),
-                hovertemplate='Gen %{x}<br>Alpha: %{y:.4f}<extra></extra>'
-            ),
-            secondary_y=False
-        )
-    
     if any(x is not None for x in prdc):
         fig1.add_trace(
             go.Scatter(
@@ -788,6 +792,19 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
             secondary_y=False
         )
     
+    if any(x is not None for x in alpha_oc_avg):
+        fig1.add_trace(
+            go.Scatter(
+                x=generations, y=alpha_oc_avg,
+                mode='lines+markers',
+                name='Alpha OC Avg',
+                line=dict(color=colors['alpha_oc_avg'], width=2),
+                marker=dict(size=8, symbol='star'),
+                hovertemplate='Gen %{x}<br>Alpha OC Avg: %{y:.4f}<extra></extra>'
+            ),
+            secondary_y=False
+        )
+
     if any(x is not None for x in tv):
         fig1.add_trace(
             go.Scatter(
@@ -943,11 +960,11 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     )
     
     # Add annotation if alpha precision data available
-    if alpha and alpha[0] is not None and alpha[-1] is not None:
-        degradation = alpha[0] - alpha[-1]
+    if alpha_oc_avg and alpha_oc_avg[0] is not None and alpha_oc_avg[-1] is not None:
+        degradation = alpha_oc_avg[0] - alpha_oc_avg[-1]
         fig1.add_annotation(
             x=generations[-1],
-            y=alpha[-1],
+            y=alpha_oc_avg[-1],
             text=f"Δ Alpha = {degradation:.3f}",
             showarrow=True,
             arrowhead=2,
