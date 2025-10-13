@@ -154,6 +154,47 @@ CURATED_MODELS = {
             # "device": "auto",  # Source default: DEVICE constant
             }
         },
+        "rtvae": {
+            "type": "VAE",
+            "description": "Robust Tabular VAE with beta divergence for improved stability",
+            "tested": True,
+            "hyperparams": {
+                # Training iterations - EXACT DEFAULTS FROM SOURCE CODE
+                "n_iter": 1000,  # Source default: 1000
+                "batch_size": 200,  # Source default: 200
+                "n_units_embedding": 500,  # Source default: 500
+
+                # Decoder architecture - EXACT DEFAULTS
+                "decoder_n_layers_hidden": 3,  # Source default: 3
+                "decoder_n_units_hidden": 500,  # Source default: 500
+                "decoder_nonlin": "leaky_relu",  # Source default: "leaky_relu"
+                "decoder_dropout": 0,  # Source default: 0
+
+                # Encoder architecture - EXACT DEFAULTS
+                "encoder_n_layers_hidden": 3,  # Source default: 3
+                "encoder_n_units_hidden": 500,  # Source default: 500
+                "encoder_nonlin": "leaky_relu",  # Source default: "leaky_relu"
+                "encoder_dropout": 0.1,  # Source default: 0.1
+
+                # Learning rates and regularization - EXACT DEFAULTS
+                "lr": 0.001,  # Source default: 1e-3
+                "weight_decay": 0.00001,  # Source default: 1e-5
+
+                # Robust divergence parameter - EXACT DEFAULT
+                "robust_divergence_beta": 2,  # Source default: 2
+
+                # Data encoding and handling - EXACT DEFAULTS
+                "data_encoder_max_clusters": 10,  # Source default: 10
+
+                # Training monitoring - EXACT DEFAULTS
+                "n_iter_print": 50,  # Source default: 50
+                "n_iter_min": 100,  # Source default: 100
+                "patience": 5,  # Source default: 5
+
+                # Core plugin settings - EXACT DEFAULTS
+                "random_state": 0,  # Source default: 0
+            }
+        },
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",

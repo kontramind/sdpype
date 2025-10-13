@@ -62,6 +62,10 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         # Bayesian Network-specific parameters
         'struct_learning_n_iter', 'struct_learning_search_method', 'struct_learning_score',
         'struct_max_indegree', 'encoder_noise_scale',
+        # RTVAE-specific parameters
+        'n_units_embedding', 'robust_divergence_beta', 'data_encoder_max_clusters',
+        'decoder_n_layers_hidden', 'decoder_n_units_hidden', 'decoder_nonlin', 'decoder_dropout',
+        'encoder_n_layers_hidden', 'encoder_n_units_hidden', 'encoder_nonlin', 'encoder_dropout',
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
@@ -257,6 +261,50 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     **{k: v for k, v in model_params.items() if k in [
                         'callbacks', 'validation_metric', 'workspace'
                     ] and v is not None}
+                )
+                return model
+
+            case "rtvae":
+                # Map common parameters that might have different names
+                # Handle epochs -> n_iter mapping
+                if 'epochs' in all_params and 'n_iter' not in model_params:
+                    model_params['n_iter'] = all_params['epochs']
+
+                model = Plugins().get("rtvae",
+                    # Training configuration
+                    n_iter=model_params.get("n_iter", 1000),
+                    batch_size=model_params.get("batch_size", 200),
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
+                    n_units_embedding=model_params.get("n_units_embedding", 500),
+
+                    # Decoder architecture
+                    decoder_n_layers_hidden=model_params.get("decoder_n_layers_hidden", 3),
+                    decoder_n_units_hidden=model_params.get("decoder_n_units_hidden", 500),
+                    decoder_nonlin=model_params.get("decoder_nonlin", "leaky_relu"),
+                    decoder_dropout=model_params.get("decoder_dropout", 0),
+
+                    # Encoder architecture
+                    encoder_n_layers_hidden=model_params.get("encoder_n_layers_hidden", 3),
+                    encoder_n_units_hidden=model_params.get("encoder_n_units_hidden", 500),
+                    encoder_nonlin=model_params.get("encoder_nonlin", "leaky_relu"),
+                    encoder_dropout=model_params.get("encoder_dropout", 0.1),
+
+                    # Learning rates and regularization
+                    lr=model_params.get("lr", 1e-3),
+                    weight_decay=model_params.get("weight_decay", 1e-5),
+
+                    # Robust divergence parameter (key feature of RTVAE)
+                    robust_divergence_beta=model_params.get("robust_divergence_beta", 2),
+
+                    # Data encoding
+                    data_encoder_max_clusters=model_params.get("data_encoder_max_clusters", 10),
+
+                    # Early stopping and monitoring
+                    n_iter_print=model_params.get("n_iter_print", 50),
+                    n_iter_min=model_params.get("n_iter_min", 100),
+                    patience=model_params.get("patience", 5),
+
+                    # Core plugin settings (workspace can be provided if needed)
                 )
                 return model
 

@@ -108,9 +108,11 @@ uv run sdpype models
 **Synthcity Models:**
 - `ctgan` - CTGAN implementation
 - `tvae` - Tabular VAE
+- `rtvae` - Robust Tabular VAE with beta divergence
 - `marginalcoupling` - Advanced copula method
 - `nflow` - Normalizing flows
 - `ddpm` - Diffusion model
+- `bayesiannetwork` - Bayesian Network using probabilistic graphical models
 
 ## Project Structure
 
