@@ -66,6 +66,10 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         'n_units_embedding', 'robust_divergence_beta', 'data_encoder_max_clusters',
         'decoder_n_layers_hidden', 'decoder_n_units_hidden', 'decoder_nonlin', 'decoder_dropout',
         'encoder_n_layers_hidden', 'encoder_n_units_hidden', 'encoder_nonlin', 'encoder_dropout',
+        # Normalizing Flows-specific parameters
+        'n_layers_hidden', 'n_units_hidden', 'num_transform_blocks', 'num_bins', 'tail_bound',
+        'apply_unconditional_transform', 'base_distribution', 'linear_transform_type',
+        'base_transform_type', 'tabular', 'patience_metric',        
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
@@ -221,6 +225,49 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     # Core plugin settings
                     random_state=model_params.get("random_state", cfg.experiment.seed),
                     sampling_patience=model_params.get("sampling_patience", 500),
+                )
+                return model
+
+            case "nflow":
+                # Map common parameters that might have different names
+                # Handle epochs -> n_iter mapping
+                if 'epochs' in all_params and 'n_iter' not in model_params:
+                    model_params['n_iter'] = all_params['epochs']
+
+                model = Plugins().get("nflow",
+                    # Training configuration
+                    n_iter=model_params.get("n_iter", 1000),
+                    batch_size=model_params.get("batch_size", 200),
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
+
+                    # Network architecture
+                    n_layers_hidden=model_params.get("n_layers_hidden", 1),
+                    n_units_hidden=model_params.get("n_units_hidden", 100),
+                    num_transform_blocks=model_params.get("num_transform_blocks", 1),
+                    dropout=model_params.get("dropout", 0.1),
+                    batch_norm=model_params.get("batch_norm", False),
+
+                    # Transform parameters
+                    num_bins=model_params.get("num_bins", 8),
+                    tail_bound=model_params.get("tail_bound", 3),
+
+                    # Learning rate
+                    lr=model_params.get("lr", 1e-3),
+
+                    # Flow-specific settings
+                    apply_unconditional_transform=model_params.get("apply_unconditional_transform", True),
+                    base_distribution=model_params.get("base_distribution", "standard_normal"),
+                    linear_transform_type=model_params.get("linear_transform_type", "permutation"),
+                    base_transform_type=model_params.get("base_transform_type", "rq-autoregressive"),
+
+                    # Data encoding
+                    encoder_max_clusters=model_params.get("encoder_max_clusters", 10),
+                    tabular=model_params.get("tabular", True),
+
+                    # Early stopping and monitoring
+                    n_iter_min=model_params.get("n_iter_min", 100),
+                    n_iter_print=model_params.get("n_iter_print", 50),
+                    patience=model_params.get("patience", 5),
                 )
                 return model
 

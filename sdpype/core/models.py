@@ -208,6 +208,53 @@ CURATED_MODELS = {
                 "random_state": 0,
             }
         },
+        "nflow": {
+            "type": "Flow",
+            "description": "Normalizing Flows - tractable distributions with efficient sampling and density evaluation",
+            "tested": True,
+            "hyperparams": {
+                # Training iterations - EXACT DEFAULTS FROM SOURCE CODE
+                "n_iter": 1000,  # Source default: 1000
+                "batch_size": 200,  # Source default: 200
+
+                # Network architecture - EXACT DEFAULTS
+                "n_layers_hidden": 1,  # Source default: 1
+                "n_units_hidden": 100,  # Source default: 100
+                "num_transform_blocks": 1,  # Source default: 1
+                "dropout": 0.1,  # Source default: 0.1
+                "batch_norm": False,  # Source default: False
+
+                # Transform parameters - EXACT DEFAULTS
+                "num_bins": 8,  # Source default: 8 (for piecewise transforms)
+                "tail_bound": 3,  # Source default: 3 (box bounds)
+
+                # Learning rate - EXACT DEFAULT
+                "lr": 0.001,  # Source default: 1e-3
+
+                # Flow-specific settings - EXACT DEFAULTS
+                "apply_unconditional_transform": True,  # Source default: True
+                "base_distribution": "standard_normal",  # Source default: "standard_normal"
+                "linear_transform_type": "permutation",  # Source default: "permutation" (options: "lu", "permutation", "svd")
+                "base_transform_type": "rq-autoregressive",  # Source default: "rq-autoregressive"
+                # Options for base_transform_type:
+                # "affine-coupling", "quadratic-coupling", "rq-coupling",
+                # "affine-autoregressive", "quadratic-autoregressive", "rq-autoregressive"
+
+                # Data encoding - EXACT DEFAULT
+                "encoder_max_clusters": 10,  # Source default: 10
+
+                # Tabular mode - EXACT DEFAULT
+                "tabular": True,  # Source default: True (use TabularFlows vs NormalizingFlows)
+
+                # Training monitoring - EXACT DEFAULTS
+                "n_iter_min": 100,  # Source default: 100
+                "n_iter_print": 50,  # Source default: 50
+                "patience": 5,  # Source default: 5
+
+                # Core plugin settings - EXACT DEFAULTS
+                "random_state": 0,  # Source default: 0
+            }
+        },
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",
