@@ -255,6 +255,29 @@ CURATED_MODELS = {
                 "random_state": 0,  # Source default: 0
             }
         },
+        "arf": {
+            "type": "Random Forest",
+            "description": "Adversarial Random Forests for density estimation and generative modeling",
+            "tested": True,
+            "hyperparams": {
+                # ARF-specific parameters - EXACT DEFAULTS FROM SOURCE CODE
+                "num_trees": 30,  # Source default: 30
+                "delta": 0,  # Source default: 0
+                "max_iters": 10,  # Source default: 10
+                "early_stop": True,  # Source default: True
+                "verbose": True,  # Source default: True
+                "min_node_size": 5,  # Source default: 5
+
+                # Core plugin settings - EXACT DEFAULTS
+                "random_state": 0,  # Source default: 0
+                "sampling_patience": 500,  # Source default: 500
+                "compress_dataset": False,  # Source default: False
+
+                # Note: This implementation is based on the paper:
+                # "Adversarial random forests for density estimation and generative modeling"
+                # by Watson, Blesch, Kapar, and Wright
+            }
+        },
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",

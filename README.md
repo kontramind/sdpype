@@ -109,6 +109,7 @@ uv run sdpype models
 - `ctgan` - CTGAN implementation
 - `tvae` - Tabular VAE
 - `rtvae` - Robust Tabular VAE with beta divergence
+- `arf` - Adversarial Random Forests for density estimation
 - `marginaldistributions` - Simple baseline sampling from marginal distributions independently
 - `nflow` - Normalizing flows
 - `ddpm` - Diffusion model

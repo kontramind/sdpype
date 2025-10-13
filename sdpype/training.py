@@ -69,7 +69,9 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         # Normalizing Flows-specific parameters
         'n_layers_hidden', 'n_units_hidden', 'num_transform_blocks', 'num_bins', 'tail_bound',
         'apply_unconditional_transform', 'base_distribution', 'linear_transform_type',
-        'base_transform_type', 'tabular', 'patience_metric',        
+        'base_transform_type', 'tabular', 'patience_metric',
+        # ARF-specific parameters
+        'num_trees', 'delta', 'max_iters', 'early_stop', 'min_node_size',
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
@@ -268,6 +270,24 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     n_iter_min=model_params.get("n_iter_min", 100),
                     n_iter_print=model_params.get("n_iter_print", 50),
                     patience=model_params.get("patience", 5),
+                )
+                return model
+
+            case "arf":
+                # Adversarial Random Forests - no epochs/iterations parameter
+                model = Plugins().get("arf",
+                    # ARF-specific parameters
+                    num_trees=model_params.get("num_trees", 30),
+                    delta=model_params.get("delta", 0),
+                    max_iters=model_params.get("max_iters", 10),
+                    early_stop=model_params.get("early_stop", True),
+                    verbose=model_params.get("verbose", True),
+                    min_node_size=model_params.get("min_node_size", 5),
+
+                    # Core plugin settings
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
+                    sampling_patience=model_params.get("sampling_patience", 500),
+                    compress_dataset=model_params.get("compress_dataset", False),
                 )
                 return model
 
