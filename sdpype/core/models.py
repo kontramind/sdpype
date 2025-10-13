@@ -329,6 +329,32 @@ CURATED_MODELS = {
                 # IEEE Journal of Biomedical and Health Informatics, 2019
             }
         },
+        "aim": {
+            "type": "Differential Privacy",
+            "description": "AIM - Adaptive and Iterative Mechanism for differentially private synthetic data",
+            "tested": True,
+            "hyperparams": {
+                # Differential privacy parameters - EXACT DEFAULTS FROM SOURCE CODE
+                "epsilon": 1.0,  # Source default: 1.0 (privacy budget)
+                "delta": 1e-9,  # Source default: 1e-9 (privacy parameter)
+
+                # AIM-specific parameters - EXACT DEFAULTS
+                "max_model_size": 80,  # Source default: 80 (maximum number of marginals)
+                "degree": 2,  # Source default: 2 (degree of marginals to use)
+                "num_marginals": None,  # Source default: None (if None, automatically determined)
+                "max_cells": 1000,  # Source default: 1000 (maximum number of cells)
+
+                # Core plugin settings - EXACT DEFAULTS
+                "random_state": 0,  # Source default: 0
+                "sampling_patience": 500,  # Source default: 500
+                "compress_dataset": False,  # Source default: False
+
+                # Note: AIM uses differential privacy to provide formal privacy guarantees
+                # Lower epsilon = stronger privacy (but potentially lower utility)
+                # Reference: "Adaptive and Iterative Mechanism for Differentially Private 
+                # Synthetic Data" - uses Private-PGM framework
+            }
+        },
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",

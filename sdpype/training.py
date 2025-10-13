@@ -74,6 +74,8 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         'num_trees', 'delta', 'max_iters', 'early_stop', 'min_node_size',
         # AdsGAN-specific parameters
         'lambda_identifiability_penalty',
+        # AIM-specific parameters
+        'epsilon', 'max_model_size', 'degree', 'num_marginals', 'max_cells',
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
@@ -337,6 +339,26 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     n_iter_print=model_params.get("n_iter_print", 50),
                     n_iter_min=model_params.get("n_iter_min", 100),
                     patience=model_params.get("patience", 5),
+                )
+                return model
+
+            case "aim":
+                # AIM - Differential privacy method, no epochs/iterations
+                model = Plugins().get("aim",
+                    # Differential privacy parameters
+                    epsilon=model_params.get("epsilon", 1.0),
+                    delta=model_params.get("delta", 1e-9),
+
+                    # AIM-specific parameters
+                    max_model_size=model_params.get("max_model_size", 80),
+                    degree=model_params.get("degree", 2),
+                    num_marginals=model_params.get("num_marginals", None),
+                    max_cells=model_params.get("max_cells", 1000),
+
+                    # Core plugin settings
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
+                    sampling_patience=model_params.get("sampling_patience", 500),
+                    compress_dataset=model_params.get("compress_dataset", False),
                 )
                 return model
 

@@ -112,6 +112,7 @@ uv run sdpype models
 - `arf` - Adversarial Random Forests for density estimation
 - `marginaldistributions` - Simple baseline sampling from marginal distributions independently
 - `adsgan` - AdsGAN for anonymization through data synthesis with privacy guarantees
+- `aim` - AIM for differentially private synthetic data with formal privacy guarantees
 - `nflow` - Normalizing flows
 - `ddpm` - Diffusion model
 - `bayesiannetwork` - Bayesian Network using probabilistic graphical models
