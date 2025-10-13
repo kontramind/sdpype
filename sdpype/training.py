@@ -72,6 +72,8 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         'base_transform_type', 'tabular', 'patience_metric',
         # ARF-specific parameters
         'num_trees', 'delta', 'max_iters', 'early_stop', 'min_node_size',
+        # AdsGAN-specific parameters
+        'lambda_identifiability_penalty',
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
@@ -288,6 +290,53 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     random_state=model_params.get("random_state", cfg.experiment.seed),
                     sampling_patience=model_params.get("sampling_patience", 500),
                     compress_dataset=model_params.get("compress_dataset", False),
+                )
+                return model
+
+            case "adsgan":
+                # Map common parameters that might have different names
+                # Handle epochs -> n_iter mapping
+                if 'epochs' in all_params and 'n_iter' not in model_params:
+                    model_params['n_iter'] = all_params['epochs']
+
+                model = Plugins().get("adsgan",
+                    # Training configuration
+                    n_iter=model_params.get("n_iter", 10000),
+                    batch_size=model_params.get("batch_size", 200),
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
+
+                    # Generator architecture
+                    generator_n_layers_hidden=model_params.get("generator_n_layers_hidden", 2),
+                    generator_n_units_hidden=model_params.get("generator_n_units_hidden", 500),
+                    generator_nonlin=model_params.get("generator_nonlin", "relu"),
+                    generator_dropout=model_params.get("generator_dropout", 0.1),
+                    generator_opt_betas=tuple(model_params.get("generator_opt_betas", [0.5, 0.999])),
+
+                    # Discriminator architecture
+                    discriminator_n_layers_hidden=model_params.get("discriminator_n_layers_hidden", 2),
+                    discriminator_n_units_hidden=model_params.get("discriminator_n_units_hidden", 500),
+                    discriminator_nonlin=model_params.get("discriminator_nonlin", "leaky_relu"),
+                    discriminator_n_iter=model_params.get("discriminator_n_iter", 1),
+                    discriminator_dropout=model_params.get("discriminator_dropout", 0.1),
+                    discriminator_opt_betas=tuple(model_params.get("discriminator_opt_betas", [0.5, 0.999])),
+
+                    # Learning rates and regularization
+                    lr=model_params.get("lr", 1e-3),
+                    weight_decay=model_params.get("weight_decay", 1e-3),
+
+                    # Training stability and privacy
+                    clipping_value=model_params.get("clipping_value", 1),
+                    lambda_gradient_penalty=model_params.get("lambda_gradient_penalty", 10),
+                    lambda_identifiability_penalty=model_params.get("lambda_identifiability_penalty", 0.1),
+
+                    # Data encoding
+                    encoder_max_clusters=model_params.get("encoder_max_clusters", 5),
+                    adjust_inference_sampling=model_params.get("adjust_inference_sampling", False),
+
+                    # Early stopping and monitoring
+                    n_iter_print=model_params.get("n_iter_print", 50),
+                    n_iter_min=model_params.get("n_iter_min", 100),
+                    patience=model_params.get("patience", 5),
                 )
                 return model
 

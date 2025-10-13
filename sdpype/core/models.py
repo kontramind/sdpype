@@ -278,6 +278,57 @@ CURATED_MODELS = {
                 # by Watson, Blesch, Kapar, and Wright
             }
         },
+        "adsgan": {
+            "type": "Privacy GAN",
+            "description": "AdsGAN - Anonymization through Data Synthesis using GANs with identifiability penalty",
+            "tested": True,
+            "hyperparams": {
+                # Training iterations - EXACT DEFAULTS FROM SOURCE CODE
+                "n_iter": 10000,  # Source default: 10000 (note: higher than CTGAN for privacy)
+                "batch_size": 200,  # Source default: 200
+
+                # Generator architecture - EXACT DEFAULTS
+                "generator_n_layers_hidden": 2,  # Source default: 2
+                "generator_n_units_hidden": 500,  # Source default: 500
+                "generator_nonlin": "relu",  # Source default: "relu"
+                "generator_dropout": 0.1,  # Source default: 0.1
+                "generator_opt_betas": [0.5, 0.999],  # Source default: (0.5, 0.999)
+
+                # Discriminator architecture - EXACT DEFAULTS
+                "discriminator_n_layers_hidden": 2,  # Source default: 2
+                "discriminator_n_units_hidden": 500,  # Source default: 500
+                "discriminator_nonlin": "leaky_relu",  # Source default: "leaky_relu"
+                "discriminator_n_iter": 1,  # Source default: 1
+                "discriminator_dropout": 0.1,  # Source default: 0.1
+                "discriminator_opt_betas": [0.5, 0.999],  # Source default: (0.5, 0.999)
+
+                # Learning rates and regularization - EXACT DEFAULTS
+                "lr": 0.001,  # Source default: 1e-3
+                "weight_decay": 0.001,  # Source default: 1e-3
+
+                # Training stability - EXACT DEFAULTS
+                "clipping_value": 1,  # Source default: 1
+                "lambda_gradient_penalty": 10,  # Source default: 10
+
+                # Privacy-specific parameter - EXACT DEFAULT
+                "lambda_identifiability_penalty": 0.1,  # Source default: 0.1 (KEY FEATURE for anonymization)
+
+                # Data encoding - EXACT DEFAULT
+                "encoder_max_clusters": 5,  # Source default: 5 (note: lower than CTGAN's 10)
+                "adjust_inference_sampling": False,  # Source default: False
+
+                # Early stopping - EXACT DEFAULTS
+                "n_iter_print": 50,  # Source default: 50
+                "n_iter_min": 100,  # Source default: 100
+                "patience": 5,  # Source default: 5
+
+                # Core plugin settings - EXACT DEFAULTS
+                "random_state": 0,  # Source default: 0
+
+                # Reference: "Anonymization through Data Synthesis using GANs (ADS-GAN)"
+                # IEEE Journal of Biomedical and Health Informatics, 2019
+            }
+        },
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",
