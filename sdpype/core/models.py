@@ -355,6 +355,68 @@ CURATED_MODELS = {
                 # Synthetic Data" - uses Private-PGM framework
             }
         },
+        "decaf": {
+            "type": "Fairness GAN",
+            "description": "DECAF - DEbiasing CAusal Fairness using causally-aware generative networks",
+            "tested": True,
+            "hyperparams": {
+                # Training iterations - EXACT DEFAULTS FROM SOURCE CODE
+                "n_iter": 100,  # Source default: 100 (DECAF debiasing iterations)
+                "n_iter_baseline": 1000,  # Source default: 1000 (baseline GAN iterations)
+                "batch_size": 200,  # Source default: 200
+
+                # Generator architecture - EXACT DEFAULTS
+                "generator_n_layers_hidden": 2,  # Source default: 2
+                "generator_n_units_hidden": 500,  # Source default: 500
+                "generator_nonlin": "relu",  # Source default: "relu"
+                "generator_dropout": 0.1,  # Source default: 0.1
+                "generator_opt_betas": [0.5, 0.999],  # Source default: (0.5, 0.999)
+
+                # Discriminator architecture - EXACT DEFAULTS
+                "discriminator_n_layers_hidden": 2,  # Source default: 2
+                "discriminator_n_units_hidden": 500,  # Source default: 500
+                "discriminator_nonlin": "leaky_relu",  # Source default: "leaky_relu"
+                "discriminator_n_iter": 1,  # Source default: 1
+                "discriminator_dropout": 0.1,  # Source default: 0.1
+                "discriminator_opt_betas": [0.5, 0.999],  # Source default: (0.5, 0.999)
+
+                # Learning rates and regularization - EXACT DEFAULTS
+                "lr": 0.001,  # Source default: 1e-3
+                "weight_decay": 0.01,  # Source default: 1e-2
+
+                # Training stability - EXACT DEFAULTS
+                "clipping_value": 1,  # Source default: 1
+                "lambda_gradient_penalty": 10,  # Source default: 10
+                "lambda_privacy": 1,  # Source default: 1
+
+                # DECAF-specific fairness parameters - EXACT DEFAULTS
+                "eps": 1e-8,  # Source default: 1e-8 (noise for privacy loss)
+                "alpha": 1,  # Source default: 1 (gradient penalty weight for real samples)
+                "rho": 1,  # Source default: 1 (DAG loss factor)
+                "l1_g": 0,  # Source default: 0 (l1 regularization for generator)
+                "l1_W": 1,  # Source default: 1 (l1 regularization factor for l1_g)
+                "grad_dag_loss": False,  # Source default: False
+
+                # Causal structure learning - EXACT DEFAULTS
+                "struct_learning_enabled": True,  # Source default: True (learn DAG if not provided)
+                "struct_learning_n_iter": 1000,  # Source default: 1000
+                "struct_learning_search_method": "tree_search",  # Source default: "tree_search"
+                # Options: "hillclimb", "pc", "tree_search", "mmhc", "exhaustive", "d-struct"
+                "struct_learning_score": "k2",  # Source default: "k2"
+                # Options: "k2", "bdeu", "bic", "bds"
+                "struct_max_indegree": 4,  # Source default: 4 (max parents in DAG)
+
+                # Data encoding - EXACT DEFAULT
+                "encoder_max_clusters": 10,  # Source default: 10
+
+                # Core plugin settings - EXACT DEFAULTS
+                "random_state": 0,  # Source default: 0
+
+                # Reference: "DECAF: Generating Fair Synthetic Data Using 
+                # Causally-Aware Generative Networks" by van Breugel et al. (2021)
+                # Uses causal DAG structure to debias synthetic data generation
+            }
+        },
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",

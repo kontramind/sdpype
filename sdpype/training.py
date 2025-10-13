@@ -76,6 +76,10 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         'lambda_identifiability_penalty',
         # AIM-specific parameters
         'epsilon', 'max_model_size', 'degree', 'num_marginals', 'max_cells',
+        # DECAF-specific parameters
+        'n_iter_baseline', 'lambda_privacy', 'eps', 'alpha', 'rho', 'l1_g', 'l1_W',
+        'grad_dag_loss', 'struct_learning_enabled', 'struct_learning_search_method',
+        'struct_learning_score', 'struct_max_indegree',
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
@@ -359,6 +363,61 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                     random_state=model_params.get("random_state", cfg.experiment.seed),
                     sampling_patience=model_params.get("sampling_patience", 500),
                     compress_dataset=model_params.get("compress_dataset", False),
+                )
+                return model
+
+            case "decaf":
+                # Map common parameters that might have different names
+                # Handle epochs -> n_iter mapping (DECAF has two iteration parameters)
+                if 'epochs' in all_params and 'n_iter' not in model_params:
+                    model_params['n_iter'] = all_params['epochs']
+
+                model = Plugins().get("decaf",
+                    # Training configuration - note two iteration parameters
+                    n_iter=model_params.get("n_iter", 100),  # DECAF debiasing iterations
+                    n_iter_baseline=model_params.get("n_iter_baseline", 1000),  # Baseline GAN iterations
+                    batch_size=model_params.get("batch_size", 200),
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
+
+                    # Generator architecture
+                    generator_n_layers_hidden=model_params.get("generator_n_layers_hidden", 2),
+                    generator_n_units_hidden=model_params.get("generator_n_units_hidden", 500),
+                    generator_nonlin=model_params.get("generator_nonlin", "relu"),
+                    generator_dropout=model_params.get("generator_dropout", 0.1),
+                    generator_opt_betas=tuple(model_params.get("generator_opt_betas", [0.5, 0.999])),
+
+                    # Discriminator architecture
+                    discriminator_n_layers_hidden=model_params.get("discriminator_n_layers_hidden", 2),
+                    discriminator_n_units_hidden=model_params.get("discriminator_n_units_hidden", 500),
+                    discriminator_nonlin=model_params.get("discriminator_nonlin", "leaky_relu"),
+                    discriminator_n_iter=model_params.get("discriminator_n_iter", 1),
+                    discriminator_dropout=model_params.get("discriminator_dropout", 0.1),
+                    discriminator_opt_betas=tuple(model_params.get("discriminator_opt_betas", [0.5, 0.999])),
+
+                    # Learning rates and regularization
+                    lr=model_params.get("lr", 1e-3),
+                    weight_decay=model_params.get("weight_decay", 1e-2),
+
+                    # Training stability and fairness
+                    clipping_value=model_params.get("clipping_value", 1),
+                    lambda_gradient_penalty=model_params.get("lambda_gradient_penalty", 10),
+                    lambda_privacy=model_params.get("lambda_privacy", 1),
+                    eps=model_params.get("eps", 1e-8),
+                    alpha=model_params.get("alpha", 1),
+                    rho=model_params.get("rho", 1),
+                    l1_g=model_params.get("l1_g", 0),
+                    l1_W=model_params.get("l1_W", 1),
+                    grad_dag_loss=model_params.get("grad_dag_loss", False),
+
+                    # Causal structure learning
+                    struct_learning_enabled=model_params.get("struct_learning_enabled", True),
+                    struct_learning_n_iter=model_params.get("struct_learning_n_iter", 1000),
+                    struct_learning_search_method=model_params.get("struct_learning_search_method", "tree_search"),
+                    struct_learning_score=model_params.get("struct_learning_score", "k2"),
+                    struct_max_indegree=model_params.get("struct_max_indegree", 4),
+
+                    # Data encoding
+                    encoder_max_clusters=model_params.get("encoder_max_clusters", 10),
                 )
                 return model
 
