@@ -109,7 +109,7 @@ uv run sdpype models
 - `ctgan` - CTGAN implementation
 - `tvae` - Tabular VAE
 - `rtvae` - Robust Tabular VAE with beta divergence
-- `marginalcoupling` - Advanced copula method
+- `marginaldistributions` - Simple baseline sampling from marginal distributions independently
 - `nflow` - Normalizing flows
 - `ddpm` - Diffusion model
 - `bayesiannetwork` - Bayesian Network using probabilistic graphical models

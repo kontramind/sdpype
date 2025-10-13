@@ -214,6 +214,16 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
                 )
                 return model
 
+            case "marginaldistributions":
+                # Simple baseline model with no hyperparameters
+                # Samples from marginal distributions independently
+                model = Plugins().get("marginal_distributions",
+                    # Core plugin settings
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
+                    sampling_patience=model_params.get("sampling_patience", 500),
+                )
+                return model
+
             case "ddpm":
                 # Map common parameters that might have different names
                 # Handle epochs -> n_iter mapping

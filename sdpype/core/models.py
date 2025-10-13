@@ -195,6 +195,19 @@ CURATED_MODELS = {
                 "random_state": 0,  # Source default: 0
             }
         },
+        "marginaldistributions": {
+            "type": "Baseline",
+            "description": "Simple baseline that samples from marginal distributions independently (no feature dependencies)",
+            "tested": True,
+            "hyperparams": {
+                # This model has no hyperparameters - it's a simple baseline
+                # It samples each feature independently from its marginal distribution
+                # Useful as a baseline for comparison
+
+                # Core plugin settings (inherited from base Plugin class)
+                "random_state": 0,
+            }
+        },
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",
