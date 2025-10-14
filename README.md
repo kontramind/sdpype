@@ -114,6 +114,7 @@ uv run sdpype models
 - `adsgan` - AdsGAN for anonymization through data synthesis with privacy guarantees
 - `aim` - AIM for differentially private synthetic data with formal privacy guarantees
 - `decaf` - DECAF for generating fair synthetic data using causally-aware networks
+- `pategan` - PATEGAN for differentially private synthetic data using teacher ensemble aggregation
 - `nflow` - Normalizing flows
 - `ddpm` - Diffusion model
 - `bayesiannetwork` - Bayesian Network using probabilistic graphical models

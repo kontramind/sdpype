@@ -417,6 +417,60 @@ CURATED_MODELS = {
                 # Uses causal DAG structure to debias synthetic data generation
             }
         },
+        "pategan": {
+            "type": "Privacy GAN",
+            "description": "PATEGAN - Private Aggregation of Teacher Ensembles GAN for differentially private data synthesis",
+            "tested": True,
+            "hyperparams": {
+                # Training iterations - EXACT DEFAULTS FROM SOURCE CODE
+                "n_iter": 200,  # Source default: 200 (maximum student training iterations)
+                "generator_n_iter": 10,  # Source default: 10 (generator iterations per student update)
+                "batch_size": 200,  # Source default: 200
+
+                # Generator architecture - EXACT DEFAULTS
+                "generator_n_layers_hidden": 2,  # Source default: 2
+                "generator_n_units_hidden": 500,  # Source default: 500
+                "generator_nonlin": "relu",  # Source default: "relu"
+                "generator_dropout": 0,  # Source default: 0
+                "generator_opt_betas": [0.5, 0.999],  # Source default: (0.5, 0.999) (not exposed in plugin)
+
+                # Discriminator architecture - EXACT DEFAULTS
+                "discriminator_n_layers_hidden": 2,  # Source default: 2
+                "discriminator_n_units_hidden": 500,  # Source default: 500
+                "discriminator_nonlin": "leaky_relu",  # Source default: "leaky_relu"
+                "discriminator_n_iter": 1,  # Source default: 1
+                "discriminator_dropout": 0.1,  # Source default: 0.1
+                "discriminator_opt_betas": [0.5, 0.999],  # Source default: (0.5, 0.999) (not exposed in plugin)
+
+                # Learning rates and regularization - EXACT DEFAULTS
+                "lr": 0.001,  # Source default: 1e-3
+                "weight_decay": 0.001,  # Source default: 1e-3
+
+                # Training stability - EXACT DEFAULTS
+                "clipping_value": 1,  # Source default: 1
+                "lambda_gradient_penalty": 10,  # Not used in PATEGAN but part of TabularGAN
+
+                # PATE-specific parameters - EXACT DEFAULTS
+                "n_teachers": 10,  # Source default: 10 (number of teacher discriminators)
+                "teacher_template": "xgboost",  # Source default: "xgboost" (can be "linear" or "xgboost")
+                "epsilon": 1.0,  # Source default: 1.0 (privacy budget)
+                "delta": None,  # Source default: None (auto-computed as 1/(n*sqrt(n)) if None)
+                "lamda": 0.001,  # Source default: 1e-3 (PATE noise scale for Laplace mechanism)
+                "alpha": 100,  # Source default: 100 (moments accountant order)
+
+                # Data encoding - EXACT DEFAULT
+                "encoder_max_clusters": 5,  # Source default: 5
+
+                # Core plugin settings - EXACT DEFAULTS
+                "random_state": 0,  # Source default: 0
+
+                # Reference: "PATE-GAN: Generating Synthetic Data with Differential 
+                # Privacy Guarantees" by Jordon et al. (2018)
+                # Uses PATE framework to train ensemble of teacher discriminators on 
+                # disjoint data partitions, aggregating their outputs with Laplace noise
+                # to provide tight differential privacy guarantees via moments accountant
+            }
+        },
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",

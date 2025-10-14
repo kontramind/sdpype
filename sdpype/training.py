@@ -80,6 +80,8 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         'n_iter_baseline', 'lambda_privacy', 'eps', 'alpha', 'rho', 'l1_g', 'l1_W',
         'grad_dag_loss', 'struct_learning_enabled', 'struct_learning_search_method',
         'struct_learning_score', 'struct_max_indegree',
+        # PATEGAN-specific parameters
+        'n_teachers', 'teacher_template', 'lamda', 'generator_n_iter',
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
@@ -418,6 +420,50 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
 
                     # Data encoding
                     encoder_max_clusters=model_params.get("encoder_max_clusters", 10),
+                )
+                return model
+
+            case "pategan":
+                # Map common parameters that might have different names
+                # Handle epochs -> n_iter mapping
+                if 'epochs' in all_params and 'n_iter' not in model_params:
+                    model_params['n_iter'] = all_params['epochs']
+
+                model = Plugins().get("pategan",
+                    # Training configuration
+                    n_iter=model_params.get("n_iter", 200),
+                    generator_n_iter=model_params.get("generator_n_iter", 10),
+                    batch_size=model_params.get("batch_size", 200),
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
+
+                    # Generator architecture
+                    generator_n_layers_hidden=model_params.get("generator_n_layers_hidden", 2),
+                    generator_n_units_hidden=model_params.get("generator_n_units_hidden", 500),
+                    generator_nonlin=model_params.get("generator_nonlin", "relu"),
+                    generator_dropout=model_params.get("generator_dropout", 0),
+
+                    # Discriminator architecture
+                    discriminator_n_layers_hidden=model_params.get("discriminator_n_layers_hidden", 2),
+                    discriminator_n_units_hidden=model_params.get("discriminator_n_units_hidden", 500),
+                    discriminator_nonlin=model_params.get("discriminator_nonlin", "leaky_relu"),
+                    discriminator_n_iter=model_params.get("discriminator_n_iter", 1),
+                    discriminator_dropout=model_params.get("discriminator_dropout", 0.1),
+
+                    # Learning rates and regularization
+                    lr=model_params.get("lr", 1e-3),
+                    weight_decay=model_params.get("weight_decay", 1e-3),
+                    clipping_value=model_params.get("clipping_value", 1),
+
+                    # PATE privacy parameters
+                    n_teachers=model_params.get("n_teachers", 10),
+                    teacher_template=model_params.get("teacher_template", "xgboost"),
+                    epsilon=model_params.get("epsilon", 1.0),
+                    delta=model_params.get("delta", None),
+                    lamda=model_params.get("lamda", 1e-3),
+                    alpha=model_params.get("alpha", 100),
+
+                    # Data encoding
+                    encoder_max_clusters=model_params.get("encoder_max_clusters", 5),
                 )
                 return model
 
