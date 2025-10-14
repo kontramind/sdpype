@@ -471,6 +471,39 @@ CURATED_MODELS = {
                 # to provide tight differential privacy guarantees via moments accountant
             }
         },
+        "privbayes": {
+            "type": "Privacy Bayesian Network",
+            "description": "PrivBayes - Differentially private data release via Bayesian networks",
+            "tested": True,
+            "hyperparams": {
+                # Differential privacy parameter - EXACT DEFAULT FROM SOURCE CODE
+                "epsilon": 1.0,  # Source default: 1.0 (split into eps/2 for structure and eps/2 for conditionals)
+
+                # Bayesian network structure parameters - EXACT DEFAULTS
+                "K": 0,  # Source default: 0 (auto-computed based on data using usefulness function if 0)
+                # When K=0, computed via usefulness function (Def 4.7) with target_usefulness
+                # default_k = 3 is used as fallback/initial guess
+
+                # Data encoding - EXACT DEFAULT
+                "n_bins": 100,  # Source default: 100 (for discretizing continuous features)
+
+                # Structure learning parameters - EXACT DEFAULTS
+                "mi_thresh": 0.01,  # Source default: 0.01 (mutual information threshold for parent selection)
+                "target_usefulness": 5,  # Source default: 5 (theta-usefulness parameter, Def 4.7 in paper)
+                # A noisy distribution is θ-useful if ratio of avg scale of info to 
+                # avg scale of noise is >= θ. 5-useful is recommended.
+
+                # Core plugin settings - EXACT DEFAULT
+                "random_state": 0,  # Source default: 0
+
+                # Reference: "PrivBayes: Private Data Release via Bayesian Networks"
+                # by Zhang et al. (2017)
+                # Constructs Bayesian network with greedy algorithm using exponential
+                # mechanism for DP, then adds Laplace noise to conditional distributions.
+                # Satisfies 2*epsilon-differential privacy (epsilon split between
+                # structure learning and conditional probability estimation)
+            }
+        },
         "ddpm": {
             "type": "Diffusion",
             "description": "Denoising Diffusion Probabilistic Model",

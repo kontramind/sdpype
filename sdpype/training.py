@@ -82,6 +82,8 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         'struct_learning_score', 'struct_max_indegree',
         # PATEGAN-specific parameters
         'n_teachers', 'teacher_template', 'lamda', 'generator_n_iter',
+        # PrivBayes-specific parameters
+        'K', 'n_bins', 'mi_thresh', 'target_usefulness',
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
 
@@ -464,6 +466,21 @@ def create_synthcity_model(cfg: DictConfig, data_shape):
 
                     # Data encoding
                     encoder_max_clusters=model_params.get("encoder_max_clusters", 5),
+                )
+                return model
+
+            case "privbayes":
+                model = Plugins().get("privbayes",
+                    # Differential privacy parameter
+                    epsilon=model_params.get("epsilon", 1.0),
+
+                    # Bayesian network structure
+                    K=model_params.get("K", 0),
+                    n_bins=model_params.get("n_bins", 100),
+                    mi_thresh=model_params.get("mi_thresh", 0.01),
+                    target_usefulness=model_params.get("target_usefulness", 5),
+
+                    random_state=model_params.get("random_state", cfg.experiment.seed),
                 )
                 return model
 
