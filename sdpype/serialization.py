@@ -4,25 +4,35 @@ Unified model serialization for all SDG libraries
 
 This module handles saving and loading of synthetic data generation models
 across different libraries (SDV, Synthcity, etc.) with a consistent interface.
+
+SPECIAL HANDLING:
+- DPGAN: Uses save_to_file/load_from_file (the working API)
 """
 
-import json
 import pickle
 import warnings
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Dict, List, Tuple, Optional, Union
+from typing import Any, Dict, List, Tuple, Optional
+import tempfile
 
 import pandas as pd
 from omegaconf import DictConfig, OmegaConf
 
 # Import serialization functions for different libraries
 try:
-    from synthcity.utils.serialization import save as synthcity_save, load as synthcity_load
+    from synthcity.utils.serialization import (
+        save as synthcity_save,
+        load as synthcity_load,
+        save_to_file as synthcity_save_to_file,
+        load_from_file as synthcity_load_from_file
+    )
+    from synthcity.plugins import Plugins
     SYNTHCITY_AVAILABLE = True
 except ImportError:
     SYNTHCITY_AVAILABLE = False
-    synthcity_save = synthcity_load = None
+    synthcity_save = synthcity_load = Plugins = None
+    synthcity_save_to_file = synthcity_load_from_file = None
 
 # Check for synthpop availability
 try:
@@ -33,7 +43,7 @@ except ImportError:
 
 
 # Model format version for compatibility
-SERIALIZE_FORMAT_VERSION = "2.0"
+SERIALIZE_FORMAT_VERSION = "2.1"  # Bumped for new DPGAN handling
 
 # Default paths
 DEFAULT_MODEL_DIR = Path("experiments/models")
@@ -76,7 +86,9 @@ def save_model(
 ) -> str:
     """
     Save a trained model with unified interface across libraries
-    
+
+    Special handling: DPGAN uses save_to_file/load_from_file (the working API).
+
     Args:
         model: Trained model object
         metadata: Experiment metadata (training time, config, etc.)
@@ -118,9 +130,36 @@ def save_model(
                 raise LibraryNotSupportedError(
                     "Synthcity not available. Install with: pip install synthcity"
                 )
-            # Synthcity models: serialize to bytes
-            model_bytes = synthcity_save(model)
-            model_data["model_bytes"] = model_bytes
+
+            model_type = metadata.get("model_type", "unknown")
+
+            # Special handling for DPGAN - use file-based API
+            if model_type == "dpgan":
+                print("⚠️  Using file-based serialization for DPGAN (save_to_file)")
+
+                # Save to temporary file using Synthcity's working API
+                with tempfile.NamedTemporaryFile(mode='wb', suffix='.pkl', delete=False) as tmp:
+                    temp_path = tmp.name
+
+                try:
+                    # Use Synthcity's save_to_file (the one that works!)
+                    synthcity_save_to_file(temp_path, model)
+
+                    # Read the file as bytes to embed in our structure
+                    with open(temp_path, 'rb') as f:
+                        model_file_bytes = f.read()
+
+                    model_data["dpgan_model_file"] = model_file_bytes
+                    model_data["uses_file_based_serialization"] = True
+
+                finally:
+                    # Clean up temp file
+                    Path(temp_path).unlink(missing_ok=True)
+
+            else:
+                # Other Synthcity models: use native byte-based serialization
+                model_bytes = synthcity_save(model)
+                model_data["model_bytes"] = model_bytes
 
         elif library == "synthpop":
             if not SYNTHPOP_AVAILABLE:
@@ -147,21 +186,23 @@ def save_model(
 def load_model(experiment_seed: int, experiment_name: str, model_dir: Optional[Path] = None) -> Tuple[Any, Dict[str, Any]]:
     """
     Load a trained model with unified interface across libraries
-    
+
+    Special handling: DPGAN uses load_from_file (the working API).
+
     Args:
         experiment_seed: Experiment seed for filename
         experiment_name: Experiment name for filename (required)
         model_dir: Custom model directory (default: experiments/models)
-        
+
     Returns:
         Tuple[model, metadata]: Loaded model object and metadata dict
-        
+
     Raises:
         ModelNotFoundError: If model file doesn't exist
         SerializationError: If loading fails
         LibraryNotSupportedError: If library is not supported
     """
-    
+
     if model_dir is None:
         model_dir = DEFAULT_MODEL_DIR
 
@@ -181,7 +222,7 @@ def load_model(experiment_seed: int, experiment_name: str, model_dir: Optional[P
         # Handle different model data formats
         if isinstance(model_data, dict):
             # New format with metadata
-            library = model_data.get("library", "sdv")  # Default to SDV for compatibility
+            library = model_data.get("library", "sdv")
             format_version = model_data.get("format_version", "1.0")
             
             # Version compatibility handling
@@ -199,20 +240,42 @@ def load_model(experiment_seed: int, experiment_name: str, model_dir: Optional[P
                     raise LibraryNotSupportedError(
                         "Synthcity not available. Install with: pip install synthcity"
                     )
-                model_bytes = model_data["model_bytes"]
-                model = synthcity_load(model_bytes)
+
+                # Check if this uses file-based serialization (DPGAN)
+                if model_data.get("uses_file_based_serialization", False):
+                    print("⚠️  Loading DPGAN using file-based deserialization (load_from_file)")
+
+                    # Extract the embedded file bytes
+                    model_file_bytes = model_data["dpgan_model_file"]
+
+                    # Write to temporary file
+                    with tempfile.NamedTemporaryFile(mode='wb', suffix='.pkl', delete=False) as tmp:
+                        tmp.write(model_file_bytes)
+                        temp_path = tmp.name
+
+                    try:
+                        # Load using Synthcity's working API
+                        model = synthcity_load_from_file(temp_path)
+                        print("✅ DPGAN loaded successfully")
+                    finally:
+                        # Clean up temp file
+                        Path(temp_path).unlink(missing_ok=True)
+
+                else:
+                    # Normal Synthcity loading (non-DPGAN models)
+                    model_bytes = model_data["model_bytes"]
+                    model = synthcity_load(model_bytes)
 
             elif library == "synthpop":
                 if not SYNTHPOP_AVAILABLE:
                     raise LibraryNotSupportedError(
                         "Synthpop not available. Install with: pip install python-synthpop"
                     )
-                # Synthpop models are stored directly like SDV
                 model = model_data["model"]
 
             else:
                 raise LibraryNotSupportedError(f"Library '{library}' not supported")
-                
+
             return model, model_data
 
         else:
@@ -261,7 +324,7 @@ def get_model_info(experiment_seed: int, experiment_name: str, model_dir: Option
         if isinstance(model_data, dict):
             # Return metadata without the actual model
             info = {k: v for k, v in model_data.items() 
-                   if k not in ["model", "model_bytes"]}
+                   if k not in ["model", "model_bytes", "dpgan_model_file"]}
 
             # Add file info
             info["file_size_mb"] = model_filename.stat().st_size / (1024 * 1024)
@@ -300,18 +363,18 @@ def list_saved_models(model_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
             # Parse filename: sdg_model_experiment_name_config_hash_seed.pkl
             filename_parts = model_file.stem.split("_")
             
-            if len(filename_parts) < 5:  # Less than sdg_model_name_hash_seed
+            if len(filename_parts) < 5:
                 warnings.warn(f"Unexpected filename format: {model_file.name}")
                 continue
 
             try:
-                seed = int(filename_parts[-1])  # Last part is always seed
-                config_hash = filename_parts[-2]  # Second to last is config hash                
+                seed = int(filename_parts[-1])
+                config_hash = filename_parts[-2]
             except ValueError:
                 warnings.warn(f"Cannot extract seed/hash from filename: {model_file.name}")
                 continue
 
-            # Extract experiment name: everything between "sdg_model_" and "_config_hash_seed"
+            # Extract experiment name
             experiment_name = "_".join(filename_parts[2:-2])
 
             info = get_model_info(seed, experiment_name, model_dir)
@@ -323,11 +386,10 @@ def list_saved_models(model_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
             models.append(info)
 
         except (ValueError, SerializationError) as e:
-            # Skip files that don't match pattern or can't be read
             warnings.warn(f"Skipping {model_file}: {e}")
             continue
     
-    # Sort by timestamp if available, otherwise by seed
+    # Sort by timestamp if available
     models.sort(key=lambda x: x.get("saved_at", f"seed_{x['experiment_seed']}"))
     
     return models
@@ -366,10 +428,8 @@ def validate_model(experiment_seed: int, experiment_name: str, model_dir: Option
         # Add model-specific validation
         library = metadata.get("library", "unknown")
         if library == "sdv":
-            # Basic SDV model validation
             validation_result["has_sample_method"] = hasattr(model, "sample")
         elif library == "synthcity":
-            # Basic Synthcity model validation
             validation_result["has_generate_method"] = hasattr(model, "generate")
 
     except Exception as e:
@@ -387,7 +447,7 @@ def get_supported_libraries() -> Dict[str, bool]:
     """
     
     libraries = {
-        "sdv": True,  # Always supported (pickle-based)
+        "sdv": True,
         "synthcity": SYNTHCITY_AVAILABLE,
         "synthpop": SYNTHPOP_AVAILABLE,
     }
@@ -432,7 +492,6 @@ def create_model_metadata(
         training_file = cfg.data.get("training_file", "")
         if "synthetic_data_" in training_file:
             # Extract parent model ID from synthetic data filename
-            # Pattern: synthetic_data_{model_id}.csv
             filename = Path(training_file).stem
             parent_model_id = filename.replace("synthetic_data_", "")
 
