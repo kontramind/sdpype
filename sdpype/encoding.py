@@ -24,6 +24,7 @@ import yaml
 import pandas as pd
 import hydra
 from omegaconf import DictConfig
+from rdt import HyperTransformer
 from rdt.transformers import (
     UniformEncoder,
     OrderedUniformEncoder,
@@ -202,6 +203,9 @@ class RDTDatasetEncoder:
     """
     RDT-based dataset encoder for SDPype pipeline.
 
+    Uses RDT's HyperTransformer under the hood for proper orchestration
+    of multiple transformers.
+
     Supports:
     - Fitting transformers on training data
     - Transforming data to encoded (numeric) format
@@ -238,8 +242,17 @@ class RDTDatasetEncoder:
         """
         self.config = config
         self.sdtypes = config['sdtypes']
-        self.unfitted_transformers = config['transformers']
-        self.fitted_transformers = {}
+        self.transformers = config['transformers']
+
+        # Create HyperTransformer
+        self.ht = HyperTransformer()
+
+        # Configure sdtypes
+        self.ht.update_sdtypes(column_name_to_sdtype=self.sdtypes)
+
+        # Configure transformers
+        self.ht.update_transformers(column_name_to_transformer=self.transformers)
+
         self._is_fitted = False
 
         logger.info(f"Initialized RDTDatasetEncoder with {len(self.sdtypes)} columns")
@@ -265,24 +278,11 @@ class RDTDatasetEncoder:
         # Validate config against data
         validate_config_against_data(self.config, training_data)
 
-        # Fit each transformer
-        self.fitted_transformers = {}
-        for col_name, transformer in self.unfitted_transformers.items():
-            if col_name not in training_data.columns:
-                logger.warning(f"Skipping '{col_name}' - not in training data")
-                continue
-
-            logger.debug(f"  Fitting {type(transformer).__name__} on '{col_name}'")
-
-            # Fit transformer on single column
-            # Note: RDT transformers modify in-place and don't return self
-            col_data = training_data[[col_name]]
-            transformer.fit(col_data, col_name)
-
-            self.fitted_transformers[col_name] = transformer
+        # Fit HyperTransformer on all data at once
+        self.ht.fit(data=training_data)
 
         self._is_fitted = True
-        logger.info(f"✓ Fitted {len(self.fitted_transformers)} transformers")
+        logger.info(f"✓ Fitted {len(self.transformers)} transformers")
 
         return self
 
@@ -304,25 +304,8 @@ class RDTDatasetEncoder:
 
         logger.info(f"Transforming data ({len(data)} rows)...")
 
-        # Start with copy of data to preserve non-encoded columns
-        transformed_data = data.copy()
-
-        # Transform each column
-        for col_name, transformer in self.fitted_transformers.items():
-            if col_name not in data.columns:
-                logger.warning(f"Skipping '{col_name}' - not in data to transform")
-                continue
-
-            logger.debug(f"  Transforming '{col_name}'")
-
-            # Transform column
-            col_data = data[[col_name]]
-            transformed_col = transformer.transform(col_data)
-
-            # RDT transformers may output multiple columns (e.g., OneHotEncoder)
-            # Replace original column with transformed column(s)
-            transformed_data = transformed_data.drop(columns=[col_name])
-            transformed_data = pd.concat([transformed_data, transformed_col], axis=1)
+        # Use HyperTransformer to transform all columns at once
+        transformed_data = self.ht.transform(data=data)
 
         logger.info(f"✓ Transformed to {transformed_data.shape[1]} columns")
 
@@ -350,35 +333,8 @@ class RDTDatasetEncoder:
 
         logger.info(f"Reverse transforming data ({len(encoded_data)} rows)...")
 
-        # Start with copy of encoded data
-        decoded_data = encoded_data.copy()
-
-        # Reverse transform each column
-        for col_name, transformer in self.fitted_transformers.items():
-            logger.debug(f"  Reverse transforming '{col_name}'")
-
-            # Get the transformed column names for this original column
-            # (RDT transformers know their output column names)
-            transformed_col_names = transformer._get_output_column_names(
-                pd.DataFrame(columns=[col_name])
-            )
-
-            # Extract the transformed columns
-            if not all(col in decoded_data.columns for col in transformed_col_names):
-                logger.warning(
-                    f"Skipping '{col_name}' - transformed columns {transformed_col_names} "
-                    f"not in encoded data"
-                )
-                continue
-
-            transformed_cols = decoded_data[transformed_col_names]
-
-            # Reverse transform
-            original_col = transformer.reverse_transform(transformed_cols)
-
-            # Replace transformed columns with original column
-            decoded_data = decoded_data.drop(columns=transformed_col_names)
-            decoded_data[col_name] = original_col[col_name]
+        # Use HyperTransformer to reverse transform all columns at once
+        decoded_data = self.ht.reverse_transform(data=encoded_data)
 
         logger.info(f"✓ Reverse transformed to {decoded_data.shape[1]} columns")
 
@@ -394,7 +350,7 @@ class RDTDatasetEncoder:
         Save fitted encoders to disk.
 
         Saves:
-        - Fitted transformers (with learned state)
+        - Fitted HyperTransformer (with learned state)
         - Original config (for reference)
         - Metadata about encoding process
 
@@ -411,10 +367,10 @@ class RDTDatasetEncoder:
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
         save_data = {
-            'fitted_transformers': self.fitted_transformers,
+            'hyper_transformer': self.ht,
             'sdtypes': self.sdtypes,
             'config': self.config,
-            'encoding_version': '1.0',
+            'encoding_version': '2.0',  # Updated version for HyperTransformer
         }
 
         with open(filepath, 'wb') as f:
@@ -447,8 +403,8 @@ class RDTDatasetEncoder:
         # Create instance with config
         instance = cls(save_data['config'])
 
-        # Restore fitted state
-        instance.fitted_transformers = save_data['fitted_transformers']
+        # Restore fitted HyperTransformer
+        instance.ht = save_data['hyper_transformer']
         instance._is_fitted = True
 
         logger.info(f"✓ Loaded fitted encoders from: {filepath}")
@@ -609,7 +565,7 @@ def main(cfg: DictConfig) -> None:
         },
         "transformers": {
             col: type(trans).__name__
-            for col, trans in encoder.fitted_transformers.items()
+            for col, trans in encoder.transformers.items()
         },
         "encoding_time_seconds": round(elapsed_time, 2),
         "outputs": {
