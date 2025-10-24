@@ -1,0 +1,23 @@
+# Default RDT Encoding Configuration Template
+# Copy this file and customize for your dataset
+#
+# Available RDT Transformers:
+#   - UniformEncoder: For unordered categorical data
+#   - OrderedUniformEncoder: For ordered categorical data (requires 'order' param)
+#   - LabelEncoder: Simple integer encoding
+#   - OneHotEncoder: One-hot encoding for categoricals
+#   - FrequencyEncoder: Encode by category frequency
+#   - UnixTimestampEncoder: For datetime columns (requires 'datetime_format' param)
+#   - FloatFormatter: For numerical data (minimal transformation)
+#
+# See RDT docs: https://docs.sdv.dev/rdt
+
+sdtypes:
+  # Example column mappings (replace with your actual columns)
+  # column_name: categorical | numerical | datetime | boolean
+
+transformers:
+  # Example transformer specifications (replace with your actual columns)
+  # column_name:
+  #   type: UniformEncoder
+  #   params: {}
