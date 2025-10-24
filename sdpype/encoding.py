@@ -244,14 +244,8 @@ class RDTDatasetEncoder:
         self.sdtypes = config['sdtypes']
         self.transformers = config['transformers']
 
-        # Create HyperTransformer
+        # Create HyperTransformer (will be configured during fit)
         self.ht = HyperTransformer()
-
-        # Configure sdtypes
-        self.ht.update_sdtypes(column_name_to_sdtype=self.sdtypes)
-
-        # Configure transformers
-        self.ht.update_transformers(column_name_to_transformer=self.transformers)
 
         self._is_fitted = False
 
@@ -278,7 +272,17 @@ class RDTDatasetEncoder:
         # Validate config against data
         validate_config_against_data(self.config, training_data)
 
-        # Fit HyperTransformer on all data at once
+        # Configure HyperTransformer
+        # Step 1: Detect initial config from data (required by RDT)
+        self.ht.detect_initial_config(data=training_data)
+
+        # Step 2: Update with custom sdtypes from config
+        self.ht.update_sdtypes(column_name_to_sdtype=self.sdtypes)
+
+        # Step 3: Update with custom transformers from config
+        self.ht.update_transformers(column_name_to_transformer=self.transformers)
+
+        # Step 4: Fit HyperTransformer on all data at once
         self.ht.fit(data=training_data)
 
         self._is_fitted = True
