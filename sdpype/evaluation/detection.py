@@ -21,6 +21,28 @@ from synthcity.metrics.eval_detection import (
 from synthcity.plugins.core.dataloader import GenericDataLoader
 
 
+def get_columns_by_sdtype(metadata: SingleTableMetadata, sdtypes: list) -> list:
+    """
+    Extract column names that match specified sdtypes from metadata.
+
+    Args:
+        metadata: SDV SingleTableMetadata object
+        sdtypes: List of sdtypes to filter (e.g., ['numerical', 'categorical'])
+
+    Returns:
+        List of column names matching the specified sdtypes
+    """
+    if not metadata or not hasattr(metadata, 'columns'):
+        return []
+
+    columns = []
+    for column_name, column_info in metadata.columns.items():
+        sdtype = column_info.get('sdtype', 'unknown')
+        if sdtype in sdtypes:
+            columns.append(column_name)
+
+    return columns
+
 def evaluate_detection_metrics(
     original: pd.DataFrame, 
     synthetic: pd.DataFrame, 
@@ -132,11 +154,30 @@ def evaluate_detection_metrics(
 
 def _convert_to_dataloader(df: pd.DataFrame, metadata: SingleTableMetadata) -> GenericDataLoader:
     """
-    Convert pandas DataFrame to synthcity DataLoader with proper encoding.
+    Convert pandas DataFrame to synthcity DataLoader, filtering to numeric-compatible columns only.
     """
 
     try:
-        loader = GenericDataLoader(df)
+        # Get columns that are either numerical OR categorical with numeric representation
+        numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+        categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+
+        # Filter categorical columns to only those with numeric dtype
+        numeric_categorical_cols = [
+            col for col in categorical_cols
+            if pd.api.types.is_numeric_dtype(df[col])
+        ]
+
+        # Combine numerical + numeric categorical columns (exclude datetime and strings)
+        usable_cols = numeric_cols + numeric_categorical_cols
+
+        if not usable_cols:
+            raise ValueError("No numerical or numerically-encoded categorical columns found for detection metrics")
+
+        # Filter dataframe to usable columns only
+        df_filtered = df[usable_cols].copy()
+
+        loader = GenericDataLoader(df_filtered)
         return loader
         
     except Exception as e:
