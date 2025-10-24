@@ -275,10 +275,11 @@ class RDTDatasetEncoder:
             logger.debug(f"  Fitting {type(transformer).__name__} on '{col_name}'")
 
             # Fit transformer on single column
+            # Note: RDT transformers modify in-place and don't return self
             col_data = training_data[[col_name]]
-            fitted_transformer = transformer.fit(col_data, col_name)
+            transformer.fit(col_data, col_name)
 
-            self.fitted_transformers[col_name] = fitted_transformer
+            self.fitted_transformers[col_name] = transformer
 
         self._is_fitted = True
         logger.info(f"✓ Fitted {len(self.fitted_transformers)} transformers")
