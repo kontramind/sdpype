@@ -37,8 +37,8 @@ def test_load_config():
         transformer_type = type(transformer).__name__
         print(f"  • {col_name:30s} → {transformer_type}")
         # Show params if it's OrderedUniformEncoder (has order param)
-        if hasattr(transformer, 'order') and transformer.order:
-            print(f"      order: {transformer.order}")
+        if hasattr(transformer, 'order') and transformer.order is not None:
+            print(f"      order: {list(transformer.order)}")
 
     print(f"\n{'='*70}")
     print(f"Available Transformer Types in Registry:")
