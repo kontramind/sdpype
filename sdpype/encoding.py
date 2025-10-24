@@ -7,15 +7,23 @@ This module provides functionality to:
 3. Fit transformers on training data
 4. Transform/reverse-transform datasets (dual pipeline support)
 5. Serialize fitted encoders for downstream use
+
+CLI Usage:
+    python -m sdpype.encoding
 """
 
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 import pickle
+import json
+import time
+from datetime import datetime
 
 import yaml
 import pandas as pd
+import hydra
+from omegaconf import DictConfig
 from rdt.transformers import (
     UniformEncoder,
     OrderedUniformEncoder,
@@ -445,3 +453,188 @@ class RDTDatasetEncoder:
         logger.info(f"✓ Loaded fitted encoders from: {filepath}")
 
         return instance
+
+
+# =============================================================================
+# CLI ENTRY POINT
+# =============================================================================
+
+def _get_config_hash() -> str:
+    """Get config hash from temporary file created during pipeline execution"""
+    try:
+        if Path('.sdpype_config_hash').exists():
+            with open('.sdpype_config_hash', 'r') as f:
+                return f.read().strip()
+        return "nohash"
+    except Exception:
+        return "nohash"
+
+
+@hydra.main(version_base=None, config_path="../", config_name="params")
+def main(cfg: DictConfig) -> None:
+    """
+    Encode datasets using RDT transformers for SDPype pipeline.
+
+    This stage:
+    1. Loads encoding configuration from YAML
+    2. Fits transformers on training data only
+    3. Transforms both training and reference datasets
+    4. Saves encoded data (for metrics)
+    5. Saves decoded data (for detection/privacy - dual pipeline)
+    6. Serializes fitted encoders for downstream use
+    7. Records encoding metrics
+    """
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(levelname)s: %(message)s'
+    )
+
+    print("🔧 Starting dataset encoding...")
+    config_hash = _get_config_hash()
+    experiment_name = cfg.experiment.name
+    seed = cfg.experiment.seed
+
+    start_time = time.time()
+
+    # 1. Load encoding configuration
+    print(f"\n📋 Loading encoding configuration...")
+
+    if not hasattr(cfg, 'encoding') or not cfg.encoding.config_file:
+        print("❌ No encoding.config_file specified in params.yaml")
+        print("💡 Add 'encoding.config_file: experiments/configs/encoding/your_config.yaml'")
+        raise ValueError("encoding.config_file not configured")
+
+    encoding_config_path = Path(cfg.encoding.config_file)
+    if not encoding_config_path.exists():
+        print(f"❌ Encoding config not found: {encoding_config_path}")
+        print("💡 Create a config file based on experiments/configs/encoding/default.yaml")
+        raise FileNotFoundError(f"Encoding config not found: {encoding_config_path}")
+
+    config = load_encoding_config(encoding_config_path)
+    print(f"✓ Loaded config with {len(config['transformers'])} transformers")
+
+    # 2. Load datasets
+    print(f"\n📊 Loading datasets...")
+    training_file = Path(cfg.data.training_file)
+    reference_file = Path(cfg.data.reference_file)
+
+    if not training_file.exists():
+        raise FileNotFoundError(f"Training file not found: {training_file}")
+    if not reference_file.exists():
+        raise FileNotFoundError(f"Reference file not found: {reference_file}")
+
+    training_data = pd.read_csv(training_file)
+    reference_data = pd.read_csv(reference_file)
+
+    print(f"✓ Training data: {training_data.shape}")
+    print(f"✓ Reference data: {reference_data.shape}")
+
+    # 3. Create and fit encoder
+    print(f"\n🔧 Fitting encoders on training data...")
+    encoder = RDTDatasetEncoder(config)
+    encoder.fit(training_data)
+
+    # 4. Transform datasets
+    print(f"\n🔄 Transforming datasets...")
+    encoded_training = encoder.transform(training_data)
+    encoded_reference = encoder.transform(reference_data)
+
+    print(f"✓ Encoded training: {encoded_training.shape}")
+    print(f"✓ Encoded reference: {encoded_reference.shape}")
+
+    # 5. Reverse transform for dual pipeline (decoded versions)
+    print(f"\n🔄 Creating decoded versions for dual pipeline...")
+    decoded_training = encoder.reverse_transform(encoded_training)
+    decoded_reference = encoder.reverse_transform(encoded_reference)
+
+    # 6. Save outputs
+    print(f"\n💾 Saving outputs...")
+
+    # Create output directories
+    encoded_dir = Path(f"experiments/data/encoded")
+    decoded_dir = Path(f"experiments/data/decoded")
+    models_dir = Path(f"experiments/models")
+    metrics_dir = Path(f"experiments/metrics")
+
+    encoded_dir.mkdir(parents=True, exist_ok=True)
+    decoded_dir.mkdir(parents=True, exist_ok=True)
+    models_dir.mkdir(parents=True, exist_ok=True)
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate filenames with experiment naming convention
+    base_name = f"{experiment_name}_{config_hash}_{seed}"
+
+    # Save encoded data (numeric - for metrics)
+    encoded_training_path = encoded_dir / f"training_{base_name}.csv"
+    encoded_reference_path = encoded_dir / f"reference_{base_name}.csv"
+    encoded_training.to_csv(encoded_training_path, index=False)
+    encoded_reference.to_csv(encoded_reference_path, index=False)
+    print(f"✓ Encoded data → {encoded_dir}")
+
+    # Save decoded data (original sdtypes - for detection/privacy)
+    decoded_training_path = decoded_dir / f"training_{base_name}.csv"
+    decoded_reference_path = decoded_dir / f"reference_{base_name}.csv"
+    decoded_training.to_csv(decoded_training_path, index=False)
+    decoded_reference.to_csv(decoded_reference_path, index=False)
+    print(f"✓ Decoded data → {decoded_dir}")
+
+    # Save fitted encoders
+    encoder_path = models_dir / f"encoders_{base_name}.pkl"
+    encoder.save(encoder_path)
+    print(f"✓ Fitted encoders → {encoder_path}")
+
+    # 7. Record metrics
+    elapsed_time = time.time() - start_time
+
+    metrics = {
+        "encoding_version": "1.0",
+        "timestamp": datetime.now().isoformat(),
+        "experiment": {
+            "name": experiment_name,
+            "seed": seed,
+            "config_hash": config_hash,
+        },
+        "config_file": str(encoding_config_path),
+        "input_shapes": {
+            "training": list(training_data.shape),
+            "reference": list(reference_data.shape),
+        },
+        "output_shapes": {
+            "encoded_training": list(encoded_training.shape),
+            "encoded_reference": list(encoded_reference.shape),
+            "decoded_training": list(decoded_training.shape),
+            "decoded_reference": list(decoded_reference.shape),
+        },
+        "transformers": {
+            col: type(trans).__name__
+            for col, trans in encoder.fitted_transformers.items()
+        },
+        "encoding_time_seconds": round(elapsed_time, 2),
+        "outputs": {
+            "encoded_training": str(encoded_training_path),
+            "encoded_reference": str(encoded_reference_path),
+            "decoded_training": str(decoded_training_path),
+            "decoded_reference": str(decoded_reference_path),
+            "fitted_encoders": str(encoder_path),
+        }
+    }
+
+    metrics_path = metrics_dir / f"encoding_{base_name}.json"
+    with open(metrics_path, 'w') as f:
+        json.dump(metrics, f, indent=2)
+
+    print(f"✓ Metrics → {metrics_path}")
+
+    # Summary
+    print(f"\n{'='*70}")
+    print(f"✅ Encoding complete!")
+    print(f"{'='*70}")
+    print(f"⏱️  Time: {elapsed_time:.2f}s")
+    print(f"📊 Columns: {training_data.shape[1]} → {encoded_training.shape[1]}")
+    print(f"💾 Outputs: {encoded_dir}, {decoded_dir}, {encoder_path}")
+    print(f"{'='*70}")
+
+
+if __name__ == "__main__":
+    main()
