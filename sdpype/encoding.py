@@ -129,3 +129,319 @@ def load_encoding_config(config_path: Path) -> Dict[str, Any]:
         'transformers': transformers,
         'config_path': str(config_path),
     }
+
+
+# =============================================================================
+# VALIDATION
+# =============================================================================
+
+def validate_config_against_data(
+    config: Dict[str, Any],
+    data: pd.DataFrame,
+    require_all_columns: bool = True
+) -> None:
+    """
+    Validate encoding configuration against actual dataset.
+
+    Args:
+        config: Config dictionary from load_encoding_config()
+        data: DataFrame to validate against
+        require_all_columns: If True, require all config columns exist in data
+
+    Raises:
+        ValueError: If validation fails
+    """
+    config_columns = set(config['sdtypes'].keys())
+    data_columns = set(data.columns)
+
+    # Check for columns in config but not in data
+    missing_in_data = config_columns - data_columns
+    if missing_in_data and require_all_columns:
+        raise ValueError(
+            f"Columns in encoding config not found in data: {missing_in_data}"
+        )
+
+    # Check for columns in data but not in config (warning only)
+    missing_in_config = data_columns - config_columns
+    if missing_in_config:
+        logger.warning(
+            f"Columns in data not found in encoding config (will not be encoded): "
+            f"{missing_in_config}"
+        )
+
+    # Validate transformer config matches sdtype config
+    transformer_columns = set(config['transformers'].keys())
+    if transformer_columns != config_columns:
+        sdtype_only = config_columns - transformer_columns
+        transformer_only = transformer_columns - config_columns
+        msg = []
+        if sdtype_only:
+            msg.append(f"sdtypes without transformers: {sdtype_only}")
+        if transformer_only:
+            msg.append(f"transformers without sdtypes: {transformer_only}")
+        raise ValueError(
+            f"Mismatch between sdtypes and transformers sections. {' | '.join(msg)}"
+        )
+
+    logger.info("✓ Config validation passed")
+
+
+# =============================================================================
+# RDT DATASET ENCODER
+# =============================================================================
+
+class RDTDatasetEncoder:
+    """
+    RDT-based dataset encoder for SDPype pipeline.
+
+    Supports:
+    - Fitting transformers on training data
+    - Transforming data to encoded (numeric) format
+    - Reverse transforming encoded data back to original format (dual pipeline)
+    - Serialization of fitted encoders for downstream use
+
+    Usage:
+        # Load config
+        config = load_encoding_config('encoding_config.yaml')
+
+        # Create encoder
+        encoder = RDTDatasetEncoder(config)
+
+        # Fit on training data
+        encoder.fit(training_df)
+
+        # Transform data
+        encoded_train = encoder.transform(training_df)
+        encoded_ref = encoder.transform(reference_df)
+
+        # Reverse transform (for dual pipeline)
+        decoded_synthetic = encoder.reverse_transform(synthetic_encoded_df)
+
+        # Save fitted encoders
+        encoder.save('fitted_encoders.pkl')
+    """
+
+    def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize encoder with configuration.
+
+        Args:
+            config: Configuration dict from load_encoding_config()
+        """
+        self.config = config
+        self.sdtypes = config['sdtypes']
+        self.unfitted_transformers = config['transformers']
+        self.fitted_transformers = {}
+        self._is_fitted = False
+
+        logger.info(f"Initialized RDTDatasetEncoder with {len(self.sdtypes)} columns")
+
+    def fit(self, training_data: pd.DataFrame) -> 'RDTDatasetEncoder':
+        """
+        Fit transformers on training data.
+
+        Critical: Transformers are fitted ONLY on training data to prevent
+        data leakage from reference/test sets.
+
+        Args:
+            training_data: Training DataFrame
+
+        Returns:
+            self (for method chaining)
+
+        Raises:
+            ValueError: If validation fails
+        """
+        logger.info("Fitting encoders on training data...")
+
+        # Validate config against data
+        validate_config_against_data(self.config, training_data)
+
+        # Fit each transformer
+        self.fitted_transformers = {}
+        for col_name, transformer in self.unfitted_transformers.items():
+            if col_name not in training_data.columns:
+                logger.warning(f"Skipping '{col_name}' - not in training data")
+                continue
+
+            logger.debug(f"  Fitting {type(transformer).__name__} on '{col_name}'")
+
+            # Fit transformer on single column
+            col_data = training_data[[col_name]]
+            fitted_transformer = transformer.fit(col_data, col_name)
+
+            self.fitted_transformers[col_name] = fitted_transformer
+
+        self._is_fitted = True
+        logger.info(f"✓ Fitted {len(self.fitted_transformers)} transformers")
+
+        return self
+
+    def transform(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Transform data using fitted transformers.
+
+        Args:
+            data: DataFrame to transform
+
+        Returns:
+            Transformed DataFrame (numeric format)
+
+        Raises:
+            RuntimeError: If encoder not fitted
+        """
+        if not self._is_fitted:
+            raise RuntimeError("Encoder not fitted. Call .fit() first.")
+
+        logger.info(f"Transforming data ({len(data)} rows)...")
+
+        # Start with copy of data to preserve non-encoded columns
+        transformed_data = data.copy()
+
+        # Transform each column
+        for col_name, transformer in self.fitted_transformers.items():
+            if col_name not in data.columns:
+                logger.warning(f"Skipping '{col_name}' - not in data to transform")
+                continue
+
+            logger.debug(f"  Transforming '{col_name}'")
+
+            # Transform column
+            col_data = data[[col_name]]
+            transformed_col = transformer.transform(col_data)
+
+            # RDT transformers may output multiple columns (e.g., OneHotEncoder)
+            # Replace original column with transformed column(s)
+            transformed_data = transformed_data.drop(columns=[col_name])
+            transformed_data = pd.concat([transformed_data, transformed_col], axis=1)
+
+        logger.info(f"✓ Transformed to {transformed_data.shape[1]} columns")
+
+        return transformed_data
+
+    def reverse_transform(self, encoded_data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Reverse transform encoded data back to original format.
+
+        This enables the dual pipeline approach where:
+        - Metrics operate on encoded (numeric) data
+        - Detection/privacy checks operate on native sdtype data
+
+        Args:
+            encoded_data: Encoded DataFrame from .transform()
+
+        Returns:
+            Decoded DataFrame with original sdtypes
+
+        Raises:
+            RuntimeError: If encoder not fitted
+        """
+        if not self._is_fitted:
+            raise RuntimeError("Encoder not fitted. Call .fit() first.")
+
+        logger.info(f"Reverse transforming data ({len(encoded_data)} rows)...")
+
+        # Start with copy of encoded data
+        decoded_data = encoded_data.copy()
+
+        # Reverse transform each column
+        for col_name, transformer in self.fitted_transformers.items():
+            logger.debug(f"  Reverse transforming '{col_name}'")
+
+            # Get the transformed column names for this original column
+            # (RDT transformers know their output column names)
+            transformed_col_names = transformer._get_output_column_names(
+                pd.DataFrame(columns=[col_name])
+            )
+
+            # Extract the transformed columns
+            if not all(col in decoded_data.columns for col in transformed_col_names):
+                logger.warning(
+                    f"Skipping '{col_name}' - transformed columns {transformed_col_names} "
+                    f"not in encoded data"
+                )
+                continue
+
+            transformed_cols = decoded_data[transformed_col_names]
+
+            # Reverse transform
+            original_col = transformer.reverse_transform(transformed_cols)
+
+            # Replace transformed columns with original column
+            decoded_data = decoded_data.drop(columns=transformed_col_names)
+            decoded_data[col_name] = original_col[col_name]
+
+        logger.info(f"✓ Reverse transformed to {decoded_data.shape[1]} columns")
+
+        return decoded_data
+
+    @property
+    def is_fitted(self) -> bool:
+        """Check if encoder has been fitted."""
+        return self._is_fitted
+
+    def save(self, filepath: Path) -> None:
+        """
+        Save fitted encoders to disk.
+
+        Saves:
+        - Fitted transformers (with learned state)
+        - Original config (for reference)
+        - Metadata about encoding process
+
+        Args:
+            filepath: Path to save pickle file
+
+        Raises:
+            RuntimeError: If encoder not fitted
+        """
+        if not self._is_fitted:
+            raise RuntimeError("Cannot save unfitted encoder. Call .fit() first.")
+
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        save_data = {
+            'fitted_transformers': self.fitted_transformers,
+            'sdtypes': self.sdtypes,
+            'config': self.config,
+            'encoding_version': '1.0',
+        }
+
+        with open(filepath, 'wb') as f:
+            pickle.dump(save_data, f)
+
+        logger.info(f"✓ Saved fitted encoders to: {filepath}")
+
+    @classmethod
+    def load(cls, filepath: Path) -> 'RDTDatasetEncoder':
+        """
+        Load fitted encoders from disk.
+
+        Args:
+            filepath: Path to pickle file
+
+        Returns:
+            Fitted RDTDatasetEncoder instance
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+        """
+        filepath = Path(filepath)
+
+        if not filepath.exists():
+            raise FileNotFoundError(f"Encoder file not found: {filepath}")
+
+        with open(filepath, 'rb') as f:
+            save_data = pickle.load(f)
+
+        # Create instance with config
+        instance = cls(save_data['config'])
+
+        # Restore fitted state
+        instance.fitted_transformers = save_data['fitted_transformers']
+        instance._is_fitted = True
+
+        logger.info(f"✓ Loaded fitted encoders from: {filepath}")
+
+        return instance
