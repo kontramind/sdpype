@@ -695,8 +695,12 @@ def create_synthpop_model(cfg: DictConfig, metadata):
     model_params = OmegaConf.to_container(cfg.sdg.parameters, resolve=True) if cfg.sdg.parameters else {}
 
     if model_type == "cart":
+        # Create visit_sequence for all columns (synthesize all columns in order)
+        visit_sequence = list(synthpop_metadata.keys())
+
         return CARTMethod(
             metadata=synthpop_metadata,
+            visit_sequence=visit_sequence,  # Specify all columns to synthesize
             smoothing=model_params.get("smoothing", False),
             proper=model_params.get("proper", False),
             minibucket=model_params.get("minibucket", 5),
