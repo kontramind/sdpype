@@ -16,6 +16,9 @@ from omegaconf import DictConfig
 # Import new serialization module
 from sdpype.serialization import load_model
 
+# Import encoding module for dual pipeline
+from sdpype.encoding import RDTDatasetEncoder
+
 
 def _get_config_hash() -> str:
     """Get config hash from temporary file created during pipeline execution"""
@@ -51,7 +54,7 @@ def main(cfg: DictConfig) -> None:
     print("🎯 Generating synthetic data...")
     config_hash = _get_config_hash()
     print(f"🎲 Experiment seed: {cfg.experiment.seed}")
-    
+
     # Load model using unified method
     try:
         model, model_data = load_model(cfg.experiment.seed, cfg.experiment.name)
@@ -70,6 +73,16 @@ def main(cfg: DictConfig) -> None:
         print(f"❌ Error loading model: {e}")
         print("💡 Model file may be corrupted or incompatible")
         raise
+
+    # Load encoder (fitted HyperTransformer) for dual pipeline
+    encoder_path = Path(f"experiments/models/encoders_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.pkl")
+    if not encoder_path.exists():
+        print(f"❌ Encoder not found: {encoder_path}")
+        print("💡 Run encoding stage first: dvc repro -s encode_dataset")
+        raise FileNotFoundError(f"Encoder file not found: {encoder_path}")
+
+    print(f"📦 Loading fitted encoder: {encoder_path}")
+    encoder = RDTDatasetEncoder.load(encoder_path)
 
     # Generate synthetic data
     n_samples = cfg.generation.n_samples
@@ -136,11 +149,41 @@ def main(cfg: DictConfig) -> None:
             print(f"⚠️  Generated {len(synthetic_data)} samples instead of requested {n_samples}")
             print("💡 This may indicate model parameter issues")
 
-    # Save synthetic data (monolithic path + experiment versioning)
+    # Dual pipeline: Create both encoded and decoded versions
+    print(f"\n🔄 Creating dual pipeline outputs...")
+
+    if library == "sdv":
+        # SDV outputs decoded (native sdtypes) data
+        synthetic_decoded = synthetic_data
+        print(f"📊 SDV output (decoded/native): {synthetic_decoded.shape}")
+
+        # Transform to encoded version for metrics
+        print(f"🔄 Transforming to encoded version...")
+        synthetic_encoded = encoder.transform(synthetic_decoded)
+        print(f"📊 Encoded version: {synthetic_encoded.shape}")
+
+    elif library in ["synthcity", "synthpop"]:
+        # Synthcity/Synthpop output encoded data
+        synthetic_encoded = synthetic_data
+        print(f"📊 {library.capitalize()} output (encoded): {synthetic_encoded.shape}")
+
+        # Reverse transform to decoded version
+        print(f"🔄 Reverse transforming to decoded version...")
+        synthetic_decoded = encoder.reverse_transform(synthetic_encoded)
+        print(f"📊 Decoded version: {synthetic_decoded.shape}")
+
+    # Save both versions
     Path("experiments/data/synthetic").mkdir(parents=True, exist_ok=True)
-    synthetic_filename = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
-    synthetic_data.to_csv(synthetic_filename, index=False)
-    print(f"📁 Synthetic data saved: {synthetic_filename}")
+
+    base_filename = f"synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}"
+    encoded_filename = f"experiments/data/synthetic/{base_filename}_encoded.csv"
+    decoded_filename = f"experiments/data/synthetic/{base_filename}_decoded.csv"
+
+    synthetic_encoded.to_csv(encoded_filename, index=False)
+    synthetic_decoded.to_csv(decoded_filename, index=False)
+
+    print(f"📁 Encoded data saved: {encoded_filename}")
+    print(f"📁 Decoded data saved: {decoded_filename}")
     
     # Save detailed metrics (monolithic path + experiment versioning)
     metrics = {
@@ -152,41 +195,45 @@ def main(cfg: DictConfig) -> None:
         "model_type": model_type,
         "n_samples_config": cfg.generation.n_samples,  # Original config value (may be null)
         "n_samples_auto_determined": cfg.generation.n_samples is None,  # Flag for auto-sizing from reference
-        "samples_generated": len(synthetic_data),
+        "samples_generated": len(synthetic_decoded),
         "samples_requested": n_samples,
-        "columns": len(synthetic_data.columns),
-        "column_names": list(synthetic_data.columns),
+        "columns_decoded": len(synthetic_decoded.columns),
+        "columns_encoded": len(synthetic_encoded.columns),
+        "column_names_decoded": list(synthetic_decoded.columns),
+        "column_names_encoded": list(synthetic_encoded.columns),
         "generation_time": generation_time,
-        "samples_per_second": len(synthetic_data) / generation_time if generation_time > 0 else 0,
-        "output_file": synthetic_filename,
-        "model_source": f"experiments/models/sdg_model_{cfg.experiment.name}_{cfg.experiment.seed}.pkl"
+        "samples_per_second": len(synthetic_decoded) / generation_time if generation_time > 0 else 0,
+        "output_file_encoded": encoded_filename,
+        "output_file_decoded": decoded_filename,
+        "model_source": f"experiments/models/sdg_model_{cfg.experiment.name}_{cfg.experiment.seed}.pkl",
+        "encoder_source": str(encoder_path)
     }
 
-    # Add basic data quality metrics
-    numeric_cols = synthetic_data.select_dtypes(include=[np.number]).columns
+    # Add basic data quality metrics (using decoded version for interpretability)
+    numeric_cols = synthetic_decoded.select_dtypes(include=[np.number]).columns
     if len(numeric_cols) > 0:
         metrics.update({
             "numeric_columns": len(numeric_cols),
             "numeric_column_names": list(numeric_cols),
-            "mean_values": {col: float(synthetic_data[col].mean()) for col in numeric_cols},
-            "std_values": {col: float(synthetic_data[col].std()) for col in numeric_cols},
-            "min_values": {col: float(synthetic_data[col].min()) for col in numeric_cols},
-            "max_values": {col: float(synthetic_data[col].max()) for col in numeric_cols}
+            "mean_values": {col: float(synthetic_decoded[col].mean()) for col in numeric_cols},
+            "std_values": {col: float(synthetic_decoded[col].std()) for col in numeric_cols},
+            "min_values": {col: float(synthetic_decoded[col].min()) for col in numeric_cols},
+            "max_values": {col: float(synthetic_decoded[col].max()) for col in numeric_cols}
         })
 
     # Add categorical data info
-    categorical_cols = synthetic_data.select_dtypes(include=['object']).columns
+    categorical_cols = synthetic_decoded.select_dtypes(include=['object']).columns
     if len(categorical_cols) > 0:
         metrics.update({
             "categorical_columns": len(categorical_cols),
             "categorical_column_names": list(categorical_cols),
             "unique_values_per_column": {
-                col: int(synthetic_data[col].nunique()) for col in categorical_cols
+                col: int(synthetic_decoded[col].nunique()) for col in categorical_cols
             }
         })
 
     # Check for missing values
-    missing_values = synthetic_data.isnull().sum()
+    missing_values = synthetic_decoded.isnull().sum()
     if missing_values.sum() > 0:
         metrics["missing_values"] = {
             "total_missing": int(missing_values.sum()),
@@ -208,12 +255,16 @@ def main(cfg: DictConfig) -> None:
     print(f"  Library: {library}")
     print(f"  Model: {model_type}")
     if cfg.generation.n_samples is None:
-        print(f"  Samples: {len(synthetic_data):,} (auto-matched to reference dataset)")
+        print(f"  Samples: {len(synthetic_decoded):,} (auto-matched to reference dataset)")
     else:
-        print(f"  Samples: {len(synthetic_data):,} (requested: {n_samples:,})")
-    print(f"  Columns: {len(synthetic_data.columns)}")
+        print(f"  Samples: {len(synthetic_decoded):,} (requested: {n_samples:,})")
+    print(f"  Columns (decoded): {len(synthetic_decoded.columns)}")
+    print(f"  Columns (encoded): {len(synthetic_encoded.columns)}")
     print(f"  Time: {generation_time:.1f}s")
-    print(f"  Speed: {len(synthetic_data)/generation_time:.0f} samples/sec")
+    print(f"  Speed: {len(synthetic_decoded)/generation_time:.0f} samples/sec")
+    print(f"  Outputs:")
+    print(f"    - Encoded: {encoded_filename}")
+    print(f"    - Decoded: {decoded_filename}")
 
 
 if __name__ == "__main__":
