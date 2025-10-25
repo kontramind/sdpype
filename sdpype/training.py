@@ -29,7 +29,6 @@ from sdpype.encoding import RDTDatasetEncoder
 
 # Synthpop imports
 from synthpop.method import CARTMethod
-from synthpop import DataProcessor
 
 
 def _get_config_hash() -> str:
@@ -773,8 +772,9 @@ def main(cfg: DictConfig) -> None:
         print(f"📊 Training data (raw): {training_data.shape}")
         print(f"🔧 Will inject HyperTransformer into SDV DataProcessor")
 
-    elif library == "synthcity":
-        # Synthcity: Use encoded data
+    elif library in ["synthcity", "synthpop"]:
+        # Synthcity/Synthpop: Use encoded data (RDT preprocessing)
+        # Note: Synthpop's native DataProcessor has sklearn version incompatibility
         encoded_file = Path(f"experiments/data/encoded/training_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv")
         if not encoded_file.exists():
             print(f"❌ Encoded training data not found: {encoded_file}")
@@ -784,16 +784,6 @@ def main(cfg: DictConfig) -> None:
         data_file = str(encoded_file)  # Set for metrics tracking
         training_data = pd.read_csv(encoded_file)
         print(f"📊 Training data (encoded): {training_data.shape}")
-
-    elif library == "synthpop":
-        # Synthpop: Use raw data with its own DataProcessor
-        data_file = cfg.data.training_file
-        if not Path(data_file).exists():
-            print(f"❌ Training data not found: {data_file}")
-            raise FileNotFoundError(f"Training data file not found: {data_file}")
-
-        training_data = pd.read_csv(data_file)
-        print(f"📊 Training data (raw for Synthpop preprocessing): {training_data.shape}")
 
     else:
         raise ValueError(f"Unknown library: {library}")
@@ -822,25 +812,15 @@ def main(cfg: DictConfig) -> None:
     print(f"⏳ Training {library} {cfg.sdg.model_type} model...")
     start_time = time.time()
 
-    if library == "synthpop":
-        # Use Synthpop's own DataProcessor (not RDT encoding)
-        print(f"🔄 Using Synthpop DataProcessor for preprocessing...")
-        processor = DataProcessor(synthpop_metadata)
-        preprocessed_data = processor.preprocess(training_data)
-        print(f"📊 Preprocessed data shape: {preprocessed_data.shape}")
-
-        model.fit(preprocessed_data)
-
-        # Store DataProcessor with model for postprocessing during generation
-        model._synthpop_processor = processor
-        model._synthpop_metadata = synthpop_metadata
-    elif library == "sdv":
+    if library == "sdv":
         # SDV will use injected HyperTransformer to transform raw data
         model.fit(training_data)
         model._set_random_state(cfg.experiment.seed)
-    else:
-        # Synthcity - already using encoded data
+    elif library in ["synthcity", "synthpop"]:
+        # Synthcity/Synthpop - using RDT encoded data
         model.fit(training_data)
+    else:
+        raise ValueError(f"Unknown library for training: {library}")
 
     training_time = time.time() - start_time
 

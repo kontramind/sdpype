@@ -162,10 +162,10 @@ def main(cfg: DictConfig) -> None:
         synthetic_encoded = encoder.transform(synthetic_decoded)
         print(f"📊 Encoded version: {synthetic_encoded.shape}")
 
-    elif library == "synthcity":
-        # Synthcity outputs encoded data
+    elif library in ["synthcity", "synthpop"]:
+        # Synthcity/Synthpop output encoded data (RDT preprocessing)
         synthetic_encoded = synthetic_data
-        print(f"📊 Synthcity output (encoded): {synthetic_encoded.shape}")
+        print(f"📊 {library.capitalize()} output (encoded): {synthetic_encoded.shape}")
 
         # Validate that all expected columns are present
         # Load encoded training data to get expected columns
@@ -174,31 +174,18 @@ def main(cfg: DictConfig) -> None:
 
         missing_columns = set(expected_columns) - set(synthetic_encoded.columns)
         if missing_columns:
-            print(f"\n❌ ERROR: Synthcity {model_type} failed to generate all columns!")
+            print(f"\n❌ ERROR: {library.capitalize()} {model_type} failed to generate all columns!")
             print(f"📊 Expected {len(expected_columns)} columns, got {len(synthetic_encoded.columns)}")
             print(f"❌ Missing columns ({len(missing_columns)}): {sorted(missing_columns)}")
-            raise ValueError(f"Synthcity {model_type} generated incomplete data: missing {len(missing_columns)} columns")
+            print(f"\n💡 Possible solutions:")
+            print(f"   • Try a different model")
+            print(f"   • Check if the model supports your data types")
+            raise ValueError(f"{library.capitalize()} {model_type} generated incomplete data: missing {len(missing_columns)} columns")
 
         # Reverse transform to decoded version
         print(f"🔄 Reverse transforming to decoded version...")
         synthetic_decoded = encoder.reverse_transform(synthetic_encoded)
         print(f"📊 Decoded version: {synthetic_decoded.shape}")
-
-    elif library == "synthpop":
-        # Synthpop uses its own DataProcessor (not RDT encoding)
-        synthetic_preprocessed = synthetic_data
-        print(f"📊 Synthpop output (preprocessed): {synthetic_preprocessed.shape}")
-
-        # Use Synthpop's DataProcessor to postprocess back to original format
-        print(f"🔄 Using Synthpop DataProcessor to postprocess...")
-        processor = model._synthpop_processor
-        synthetic_decoded = processor.postprocess(synthetic_preprocessed)
-        print(f"📊 Decoded version: {synthetic_decoded.shape}")
-
-        # For Synthpop, create encoded version using RDT encoder
-        print(f"🔄 Encoding with RDT for metrics...")
-        synthetic_encoded = encoder.transform(synthetic_decoded)
-        print(f"📊 Encoded version (for metrics): {synthetic_encoded.shape}")
 
     # Save both versions
     Path("experiments/data/synthetic").mkdir(parents=True, exist_ok=True)
