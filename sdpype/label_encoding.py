@@ -40,16 +40,19 @@ class SimpleLabelEncoder:
         decoded_data = encoder.inverse_transform(generated_data)
     """
 
-    def __init__(self, metadata: Dict[str, str]):
+    def __init__(self, metadata: Dict[str, str], datetime_formats: Dict[str, str] = None):
         """
         Initialize encoder with metadata.
 
         Args:
             metadata: Dict mapping column names to data types
                      (e.g., {'col1': 'categorical', 'col2': 'numerical'})
+            datetime_formats: Optional dict mapping datetime column names to their formats
+                             (e.g., {'date_col': '%Y-%m-%d'})
         """
         self.metadata = metadata
         self.encoders: Dict[str, LabelEncoder] = {}
+        self.datetime_formats = datetime_formats or {}
         self.categorical_columns = [
             col for col, dtype in metadata.items()
             if dtype in ['categorical', 'boolean']
@@ -63,6 +66,8 @@ class SimpleLabelEncoder:
         logger.info(f"Initialized SimpleLabelEncoder")
         logger.info(f"  Categorical columns: {len(self.categorical_columns)}")
         logger.info(f"  Datetime columns: {len(self.datetime_columns)}")
+        if self.datetime_formats:
+            logger.info(f"  Datetime formats: {self.datetime_formats}")
         logger.info(f"  Columns to encode: {self.categorical_columns + self.datetime_columns}")
 
     def fit_transform(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -99,8 +104,14 @@ class SimpleLabelEncoder:
                 continue
 
             logger.info(f"  Converting {col} (datetime) to timestamp...")
-            # Convert to datetime then to Unix timestamp (seconds since epoch)
-            encoded_data[col] = pd.to_datetime(data[col]).astype('int64') / 10**9
+            # Get format from metadata if available, otherwise let pandas infer
+            dt_format = self.datetime_formats.get(col)
+            if dt_format:
+                logger.info(f"    Using format: {dt_format}")
+                encoded_data[col] = pd.to_datetime(data[col], format=dt_format).astype('int64') / 10**9
+            else:
+                logger.info(f"    Auto-detecting format")
+                encoded_data[col] = pd.to_datetime(data[col]).astype('int64') / 10**9
             logger.info(f"    → Converted to Unix timestamp")
 
         self._is_fitted = True
@@ -153,9 +164,11 @@ class SimpleLabelEncoder:
                 continue
 
             logger.info(f"  Converting {col} (datetime) from timestamp...")
-            # Convert Unix timestamp back to datetime, then to string
+            # Convert Unix timestamp back to datetime, then to string with original format
             timestamps = encoded_data[col].astype(float) * 10**9  # Back to nanoseconds
-            decoded_data[col] = pd.to_datetime(timestamps, unit='ns').dt.strftime('%Y-%m-%d')
+            dt_format = self.datetime_formats.get(col, '%Y-%m-%d')  # Default to ISO format
+            logger.info(f"    Using format: {dt_format}")
+            decoded_data[col] = pd.to_datetime(timestamps, unit='ns').dt.strftime(dt_format)
             logger.info(f"    → Converted from Unix timestamp")
 
         total_decoded = len(self.encoders) + len(self.datetime_columns)
@@ -177,8 +190,10 @@ class SimpleLabelEncoder:
             'metadata': self.metadata,
             'encoders': self.encoders,
             'categorical_columns': self.categorical_columns,
+            'datetime_columns': self.datetime_columns,
+            'datetime_formats': self.datetime_formats,
             'is_fitted': self._is_fitted,
-            'version': '1.0'
+            'version': '1.1'
         }
 
         with open(filepath, 'wb') as f:
@@ -203,13 +218,16 @@ class SimpleLabelEncoder:
             save_data = pickle.load(f)
 
         # Create instance
-        instance = cls(save_data['metadata'])
+        datetime_formats = save_data.get('datetime_formats', {})
+        instance = cls(save_data['metadata'], datetime_formats=datetime_formats)
         instance.encoders = save_data['encoders']
         instance.categorical_columns = save_data['categorical_columns']
+        instance.datetime_columns = save_data.get('datetime_columns', [])
         instance._is_fitted = save_data['is_fitted']
 
         logger.info(f"✓ Loaded SimpleLabelEncoder from: {filepath}")
         logger.info(f"  Categorical columns: {len(instance.categorical_columns)}")
+        logger.info(f"  Datetime columns: {len(instance.datetime_columns)}")
 
         return instance
 
