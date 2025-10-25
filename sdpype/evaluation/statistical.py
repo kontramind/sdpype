@@ -955,15 +955,28 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
                                 experiment_name: str,
-                                metadata: SingleTableMetadata) -> Dict[str, Any]:
+                                metadata: SingleTableMetadata,
+                                reference_data_decoded: pd.DataFrame = None,
+                                synthetic_data_decoded: pd.DataFrame = None,
+                                reference_data_encoded: pd.DataFrame = None,
+                                synthetic_data_encoded: pd.DataFrame = None,
+                                encoded_metrics: set = None,
+                                decoded_metrics: set = None) -> Dict[str, Any]:
     """
-    Evaluate configured statistical metrics
+    Evaluate configured statistical metrics with data format routing
 
     Args:
-        original: Original dataset
-        synthetic: Synthetic dataset
+        original: Original dataset (legacy parameter, may be encoded or decoded)
+        synthetic: Synthetic dataset (legacy parameter, may be encoded or decoded)
         metrics_config: List of metric configurations
         experiment_name: Experiment identifier
+        metadata: SDV metadata
+        reference_data_decoded: Decoded reference data (for SDV metrics)
+        synthetic_data_decoded: Decoded synthetic data (for SDV metrics)
+        reference_data_encoded: Encoded reference data (for synthcity metrics)
+        synthetic_data_encoded: Encoded synthetic data (for synthcity metrics)
+        encoded_metrics: Set of metric names that need encoded data
+        decoded_metrics: Set of metric names that need decoded data
 
     Returns:
         Complete statistical metrics results
@@ -990,11 +1003,37 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
         metric_name = metric_config.get("name")
         parameters = metric_config.get("parameters", {})
 
+        # Route to correct data format
+        if encoded_metrics and metric_name in encoded_metrics:
+            # Use encoded data for synthcity metrics
+            if reference_data_encoded is None or synthetic_data_encoded is None:
+                print(f"⚠️  Metric {metric_name} needs encoded data but not available, using default")
+                ref_data = original
+                syn_data = synthetic
+            else:
+                print(f"📊 Routing {metric_name} to ENCODED data")
+                ref_data = reference_data_encoded
+                syn_data = synthetic_data_encoded
+        elif decoded_metrics and metric_name in decoded_metrics:
+            # Use decoded data for SDV metrics
+            if reference_data_decoded is None or synthetic_data_decoded is None:
+                print(f"⚠️  Metric {metric_name} needs decoded data but not available, using default")
+                ref_data = original
+                syn_data = synthetic
+            else:
+                print(f"📊 Routing {metric_name} to DECODED data")
+                ref_data = reference_data_decoded
+                syn_data = synthetic_data_decoded
+        else:
+            # Use default data (backward compatibility)
+            ref_data = original
+            syn_data = synthetic
+
         print(f"Running {metric_name} metric...")
 
         try:
             evaluator = get_metric_evaluator(metric_name, parameters)
-            metric_result = evaluator.evaluate(original, synthetic, metadata)
+            metric_result = evaluator.evaluate(ref_data, syn_data, metadata)
             results["metrics"][metric_name] = metric_result
 
             # Collect scores for overall calculation
