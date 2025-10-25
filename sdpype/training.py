@@ -785,7 +785,10 @@ def main(cfg: DictConfig) -> None:
 
         # Create and fit label encoder
         print(f"🔄 Applying label encoding (Synthpop CART compatibility)...")
-        label_encoder = SimpleLabelEncoder(metadata.to_dict()['columns'])
+        # Extract sdtypes from metadata
+        metadata_dict = metadata.to_dict()['columns']
+        sdtypes = {col: info.get('sdtype', 'unknown') for col, info in metadata_dict.items()}
+        label_encoder = SimpleLabelEncoder(sdtypes)
         training_data = label_encoder.fit_transform(raw_data)
         print(f"📊 Label-encoded data: {training_data.shape}")
 
