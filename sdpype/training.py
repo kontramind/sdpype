@@ -29,6 +29,7 @@ from sdpype.encoding import RDTDatasetEncoder
 
 # Synthpop imports
 from synthpop.method import CARTMethod
+from sdpype.label_encoding import SimpleLabelEncoder
 
 
 def _get_config_hash() -> str:
@@ -773,15 +774,26 @@ def main(cfg: DictConfig) -> None:
         print(f"🔧 Will inject HyperTransformer into SDV DataProcessor")
 
     elif library == "synthpop":
-        # Synthpop: Use raw data directly (no preprocessing)
-        # Synthpop CART will handle data internally without external preprocessing
+        # Synthpop: Use label encoding (sklearn-safe alternative to DataProcessor)
         data_file = cfg.data.training_file
         if not Path(data_file).exists():
             print(f"❌ Training data not found: {data_file}")
             raise FileNotFoundError(f"Training data file not found: {data_file}")
 
-        training_data = pd.read_csv(data_file)
-        print(f"📊 Training data (raw - Synthpop internal preprocessing): {training_data.shape}")
+        raw_data = pd.read_csv(data_file)
+        print(f"📊 Raw training data: {raw_data.shape}")
+
+        # Create and fit label encoder
+        print(f"🔄 Applying label encoding (Synthpop CART compatibility)...")
+        label_encoder = SimpleLabelEncoder(metadata.to_dict()['columns'])
+        training_data = label_encoder.fit_transform(raw_data)
+        print(f"📊 Label-encoded data: {training_data.shape}")
+
+        # Save label encoder for generation
+        label_encoder_path = Path(f"experiments/models/label_encoder_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.pkl")
+        label_encoder_path.parent.mkdir(parents=True, exist_ok=True)
+        label_encoder.save(label_encoder_path)
+        print(f"💾 Label encoder saved: {label_encoder_path}")
 
     elif library == "synthcity":
         # Synthcity: Use encoded data (RDT preprocessing)
@@ -814,7 +826,13 @@ def main(cfg: DictConfig) -> None:
         model = create_synthcity_model(cfg, training_data.shape)
     elif library == "synthpop":
         print(f"🔧 Creating Synthpop {cfg.sdg.model_type} model...")
-        model, synthpop_metadata = create_synthpop_model(cfg, metadata)
+        # Create metadata with all columns as 'numerical' for CART
+        # (label encoding converts everything to integers)
+        encoded_metadata = SingleTableMetadata()
+        for col in training_data.columns:
+            encoded_metadata.add_column(col, sdtype='numerical')
+
+        model, synthpop_metadata = create_synthpop_model(cfg, encoded_metadata)
     else:
         raise ValueError(f"Unknown library: {library}")
 

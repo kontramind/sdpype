@@ -16,8 +16,9 @@ from omegaconf import DictConfig
 # Import new serialization module
 from sdpype.serialization import load_model
 
-# Import encoding module for dual pipeline
+# Import encoding modules for dual pipeline
 from sdpype.encoding import RDTDatasetEncoder
+from sdpype.label_encoding import SimpleLabelEncoder
 
 
 def _get_config_hash() -> str:
@@ -163,14 +164,24 @@ def main(cfg: DictConfig) -> None:
         print(f"📊 Encoded version: {synthetic_encoded.shape}")
 
     elif library == "synthpop":
-        # Synthpop outputs raw data (handles preprocessing internally)
-        synthetic_decoded = synthetic_data
-        print(f"📊 Synthpop output (raw/decoded): {synthetic_decoded.shape}")
+        # Synthpop outputs label-encoded data (integers)
+        synthetic_label_encoded = synthetic_data
+        print(f"📊 Synthpop output (label-encoded integers): {synthetic_label_encoded.shape}")
 
-        # Create encoded version using RDT for metrics
-        print(f"🔄 Encoding with RDT for metrics...")
+        # Load label encoder to decode back to categories
+        label_encoder_path = Path(f"experiments/models/label_encoder_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.pkl")
+        print(f"📦 Loading label encoder: {label_encoder_path}")
+        label_encoder = SimpleLabelEncoder.load(label_encoder_path)
+
+        # Decode integers back to original categories
+        print(f"🔄 Decoding label-encoded data to original format...")
+        synthetic_decoded = label_encoder.inverse_transform(synthetic_label_encoded)
+        print(f"📊 Decoded version: {synthetic_decoded.shape}")
+
+        # Create RDT-encoded version for metrics (dual pipeline)
+        print(f"🔄 Encoding with RDT for metrics compatibility...")
         synthetic_encoded = encoder.transform(synthetic_decoded)
-        print(f"📊 Encoded version: {synthetic_encoded.shape}")
+        print(f"📊 RDT-encoded version: {synthetic_encoded.shape}")
 
     elif library == "synthcity":
         # Synthcity outputs encoded data (RDT preprocessing)
