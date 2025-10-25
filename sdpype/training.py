@@ -24,6 +24,9 @@ from synthcity.plugins import Plugins
 # Import new serialization module
 from sdpype.serialization import save_model, create_model_metadata
 
+# Import encoding module for HyperTransformer
+from sdpype.encoding import RDTDatasetEncoder
+
 # Synthpop imports
 from synthpop.method import CARTMethod
 
@@ -734,30 +737,64 @@ def main(cfg: DictConfig) -> None:
     # Get config hash for file paths
     config_hash = _get_config_hash()
 
-    # Load training data directly from config path
-    data_file = cfg.data.training_file
-    if not Path(data_file).exists():
-        print(f"❌ Training data not found: {data_file}")
-        print("💡 Check your data.training_file path in params.yaml!")
-        raise FileNotFoundError(f"Training data file not found: {data_file}")
-
+    # Load metadata
     metadata_file = cfg.data.metadata_file
     if not Path(metadata_file).exists():
         print(f"❌ Metadata for processed data not found: {metadata_file}")
         print("💡 Check your data.metadata_file path in params.yaml!")
         raise FileNotFoundError(f"Metadata file not found: {metadata_file}")
-
-    training_data = pd.read_csv(data_file)
-    print(f"📊 Training data: {training_data.shape}")
-
     metadata = SingleTableMetadata.load_from_json(metadata_file)
 
-    # Create model based on library
+    # Load encoder (fitted HyperTransformer)
+    encoder_path = Path(f"experiments/models/encoders_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.pkl")
+    if not encoder_path.exists():
+        print(f"❌ Encoder not found: {encoder_path}")
+        print("💡 Run encoding stage first: dvc repro -s encode_dataset")
+        raise FileNotFoundError(f"Encoder file not found: {encoder_path}")
+
+    print(f"📦 Loading fitted encoder: {encoder_path}")
+    encoder = RDTDatasetEncoder.load(encoder_path)
+
+    # Load training data based on library
     library = cfg.sdg.library
 
     if library == "sdv":
+        # SDV: Use raw data + inject HyperTransformer
+        data_file = cfg.data.training_file
+        if not Path(data_file).exists():
+            print(f"❌ Training data not found: {data_file}")
+            print("💡 Check your data.training_file path in params.yaml!")
+            raise FileNotFoundError(f"Training data file not found: {data_file}")
+
+        training_data = pd.read_csv(data_file)
+        print(f"📊 Training data (raw): {training_data.shape}")
+        print(f"🔧 Will inject HyperTransformer into SDV DataProcessor")
+
+    elif library in ["synthcity", "synthpop"]:
+        # Synthcity/Synthpop: Use encoded data
+        encoded_file = Path(f"experiments/data/encoded/training_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv")
+        if not encoded_file.exists():
+            print(f"❌ Encoded training data not found: {encoded_file}")
+            print("💡 Run encoding stage first: dvc repro -s encode_dataset")
+            raise FileNotFoundError(f"Encoded training data not found: {encoded_file}")
+
+        training_data = pd.read_csv(encoded_file)
+        print(f"📊 Training data (encoded): {training_data.shape}")
+
+    else:
+        raise ValueError(f"Unknown library: {library}")
+
+    # Create model based on library
+    if library == "sdv":
         print(f"🔧 Creating SDV {cfg.sdg.model_type} model...")
         model = create_sdv_model(cfg, metadata)
+
+        # Inject HyperTransformer into SDV DataProcessor
+        print(f"💉 Injecting fitted HyperTransformer into SDV DataProcessor...")
+        model._data_processor._hyper_transformer = encoder.ht
+        model._data_processor._prepared_for_fitting = True
+        print(f"✓ HyperTransformer injected successfully")
+
     elif library == "synthcity":
         print(f"🔧 Creating Synthcity {cfg.sdg.model_type} model...")
         model = create_synthcity_model(cfg, training_data.shape)
@@ -777,9 +814,11 @@ def main(cfg: DictConfig) -> None:
         model._sdpype_metadata = synthpop_metadata
         model.fit(training_data)
     elif library == "sdv":
+        # SDV will use injected HyperTransformer to transform raw data
         model.fit(training_data)
         model._set_random_state(cfg.experiment.seed)
     else:
+        # Synthcity - already using encoded data
         model.fit(training_data)
 
     training_time = time.time() - start_time
