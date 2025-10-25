@@ -42,6 +42,7 @@ stages:
     deps:
       - sdpype/generation.py
       - ${data.reference_file}
+      - experiments/models/sdg_model_${experiment.name}_${config_hash}_${experiment.seed}.pkl
       - experiments/models/encoders_${experiment.name}_${config_hash}_${experiment.seed}.pkl
     params:
       - generation
