@@ -121,6 +121,10 @@ def main(cfg: DictConfig) -> None:
         reference_data_decoded = pd.read_csv(reference_decoded_path)
         synthetic_data_decoded = pd.read_csv(synthetic_decoded_path)
 
+    # Set reference_data for display purposes (prefer decoded for original column names)
+    reference_data = reference_data_decoded if reference_data_decoded is not None else reference_data_encoded
+    synthetic_data = synthetic_data_decoded if synthetic_data_decoded is not None else synthetic_data_encoded
+
     # Run statistical metrics evaluation with routing
     print("🔄 Running statistical metrics analysis...")
     statistical_results = evaluate_statistical_metrics(
