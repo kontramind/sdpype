@@ -54,11 +54,16 @@ class SimpleLabelEncoder:
             col for col, dtype in metadata.items()
             if dtype in ['categorical', 'boolean']
         ]
+        self.datetime_columns = [
+            col for col, dtype in metadata.items()
+            if dtype == 'datetime'
+        ]
         self._is_fitted = False
 
         logger.info(f"Initialized SimpleLabelEncoder")
         logger.info(f"  Categorical columns: {len(self.categorical_columns)}")
-        logger.info(f"  Columns: {self.categorical_columns}")
+        logger.info(f"  Datetime columns: {len(self.datetime_columns)}")
+        logger.info(f"  Columns to encode: {self.categorical_columns + self.datetime_columns}")
 
     def fit_transform(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -73,12 +78,13 @@ class SimpleLabelEncoder:
         logger.info("Fitting and transforming data...")
         encoded_data = data.copy()
 
+        # Encode categorical columns with LabelEncoder
         for col in self.categorical_columns:
             if col not in data.columns:
                 logger.warning(f"Column '{col}' not found in data, skipping")
                 continue
 
-            logger.info(f"  Encoding {col}...")
+            logger.info(f"  Encoding {col} (categorical)...")
             encoder = LabelEncoder()
             # Convert to string to handle mixed types
             encoded_data[col] = encoder.fit_transform(data[col].astype(str))
@@ -86,8 +92,20 @@ class SimpleLabelEncoder:
 
             logger.info(f"    → {len(encoder.classes_)} unique values encoded")
 
+        # Convert datetime columns to Unix timestamps
+        for col in self.datetime_columns:
+            if col not in data.columns:
+                logger.warning(f"Column '{col}' not found in data, skipping")
+                continue
+
+            logger.info(f"  Converting {col} (datetime) to timestamp...")
+            # Convert to datetime then to Unix timestamp (seconds since epoch)
+            encoded_data[col] = pd.to_datetime(data[col]).astype('int64') / 10**9
+            logger.info(f"    → Converted to Unix timestamp")
+
         self._is_fitted = True
-        logger.info(f"✓ Encoding complete: {len(self.encoders)} columns encoded")
+        total_encoded = len(self.encoders) + len(self.datetime_columns)
+        logger.info(f"✓ Encoding complete: {total_encoded} columns ({len(self.encoders)} categorical + {len(self.datetime_columns)} datetime)")
 
         return encoded_data
 
@@ -107,12 +125,13 @@ class SimpleLabelEncoder:
         logger.info("Decoding data back to original format...")
         decoded_data = encoded_data.copy()
 
+        # Decode categorical columns
         for col, encoder in self.encoders.items():
             if col not in encoded_data.columns:
                 logger.warning(f"Column '{col}' not found in encoded data, skipping")
                 continue
 
-            logger.info(f"  Decoding {col}...")
+            logger.info(f"  Decoding {col} (categorical)...")
 
             # Convert to float, round, and clip to valid range
             # This handles cases where CART generates fractional values
@@ -127,7 +146,20 @@ class SimpleLabelEncoder:
             decoded_data[col] = encoder.inverse_transform(values)
             logger.info(f"    → Decoded {len(values)} values")
 
-        logger.info(f"✓ Decoding complete: {len(self.encoders)} columns decoded")
+        # Convert datetime columns back from Unix timestamps
+        for col in self.datetime_columns:
+            if col not in encoded_data.columns:
+                logger.warning(f"Column '{col}' not found in encoded data, skipping")
+                continue
+
+            logger.info(f"  Converting {col} (datetime) from timestamp...")
+            # Convert Unix timestamp back to datetime, then to string
+            timestamps = encoded_data[col].astype(float) * 10**9  # Back to nanoseconds
+            decoded_data[col] = pd.to_datetime(timestamps, unit='ns').dt.strftime('%Y-%m-%d')
+            logger.info(f"    → Converted from Unix timestamp")
+
+        total_decoded = len(self.encoders) + len(self.datetime_columns)
+        logger.info(f"✓ Decoding complete: {total_decoded} columns ({len(self.encoders)} categorical + {len(self.datetime_columns)} datetime)")
 
         return decoded_data
 
