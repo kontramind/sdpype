@@ -162,10 +162,20 @@ def main(cfg: DictConfig) -> None:
         synthetic_encoded = encoder.transform(synthetic_decoded)
         print(f"📊 Encoded version: {synthetic_encoded.shape}")
 
-    elif library in ["synthcity", "synthpop"]:
-        # Synthcity/Synthpop output encoded data (RDT preprocessing)
+    elif library == "synthpop":
+        # Synthpop outputs raw data (handles preprocessing internally)
+        synthetic_decoded = synthetic_data
+        print(f"📊 Synthpop output (raw/decoded): {synthetic_decoded.shape}")
+
+        # Create encoded version using RDT for metrics
+        print(f"🔄 Encoding with RDT for metrics...")
+        synthetic_encoded = encoder.transform(synthetic_decoded)
+        print(f"📊 Encoded version: {synthetic_encoded.shape}")
+
+    elif library == "synthcity":
+        # Synthcity outputs encoded data (RDT preprocessing)
         synthetic_encoded = synthetic_data
-        print(f"📊 {library.capitalize()} output (encoded): {synthetic_encoded.shape}")
+        print(f"📊 Synthcity output (encoded): {synthetic_encoded.shape}")
 
         # Validate that all expected columns are present
         # Load encoded training data to get expected columns
@@ -174,13 +184,11 @@ def main(cfg: DictConfig) -> None:
 
         missing_columns = set(expected_columns) - set(synthetic_encoded.columns)
         if missing_columns:
-            print(f"\n❌ ERROR: {library.capitalize()} {model_type} failed to generate all columns!")
+            print(f"\n❌ ERROR: Synthcity {model_type} failed to generate all columns!")
             print(f"📊 Expected {len(expected_columns)} columns, got {len(synthetic_encoded.columns)}")
             print(f"❌ Missing columns ({len(missing_columns)}): {sorted(missing_columns)}")
-            print(f"\n💡 Possible solutions:")
-            print(f"   • Try a different model")
-            print(f"   • Check if the model supports your data types")
-            raise ValueError(f"{library.capitalize()} {model_type} generated incomplete data: missing {len(missing_columns)} columns")
+            print(f"\n💡 Try a different Synthcity model")
+            raise ValueError(f"Synthcity {model_type} generated incomplete data: missing {len(missing_columns)} columns")
 
         # Reverse transform to decoded version
         print(f"🔄 Reverse transforming to decoded version...")

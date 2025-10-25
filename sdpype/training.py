@@ -772,9 +772,19 @@ def main(cfg: DictConfig) -> None:
         print(f"📊 Training data (raw): {training_data.shape}")
         print(f"🔧 Will inject HyperTransformer into SDV DataProcessor")
 
-    elif library in ["synthcity", "synthpop"]:
-        # Synthcity/Synthpop: Use encoded data (RDT preprocessing)
-        # Note: Synthpop's native DataProcessor has sklearn version incompatibility
+    elif library == "synthpop":
+        # Synthpop: Use raw data directly (no preprocessing)
+        # Synthpop CART will handle data internally without external preprocessing
+        data_file = cfg.data.training_file
+        if not Path(data_file).exists():
+            print(f"❌ Training data not found: {data_file}")
+            raise FileNotFoundError(f"Training data file not found: {data_file}")
+
+        training_data = pd.read_csv(data_file)
+        print(f"📊 Training data (raw - Synthpop internal preprocessing): {training_data.shape}")
+
+    elif library == "synthcity":
+        # Synthcity: Use encoded data (RDT preprocessing)
         encoded_file = Path(f"experiments/data/encoded/training_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv")
         if not encoded_file.exists():
             print(f"❌ Encoded training data not found: {encoded_file}")
