@@ -778,6 +778,7 @@ def main(cfg: DictConfig) -> None:
             print("💡 Run encoding stage first: dvc repro -s encode_dataset")
             raise FileNotFoundError(f"Encoded training data not found: {encoded_file}")
 
+        data_file = str(encoded_file)  # Set for metrics tracking
         training_data = pd.read_csv(encoded_file)
         print(f"📊 Training data (encoded): {training_data.shape}")
 
