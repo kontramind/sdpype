@@ -16,8 +16,9 @@ from omegaconf import DictConfig
 # Import new serialization module
 from sdpype.serialization import load_model
 
-# Import encoding module for dual pipeline
+# Import encoding modules for dual pipeline
 from sdpype.encoding import RDTDatasetEncoder
+from sdpype.label_encoding import SimpleLabelEncoder
 
 
 def _get_config_hash() -> str:
@@ -162,10 +163,30 @@ def main(cfg: DictConfig) -> None:
         synthetic_encoded = encoder.transform(synthetic_decoded)
         print(f"📊 Encoded version: {synthetic_encoded.shape}")
 
-    elif library in ["synthcity", "synthpop"]:
-        # Synthcity/Synthpop output encoded data
+    elif library == "synthpop":
+        # Synthpop outputs label-encoded data (integers)
+        synthetic_label_encoded = synthetic_data
+        print(f"📊 Synthpop output (label-encoded integers): {synthetic_label_encoded.shape}")
+
+        # Load label encoder to decode back to categories
+        label_encoder_path = Path(f"experiments/models/label_encoder_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.pkl")
+        print(f"📦 Loading label encoder: {label_encoder_path}")
+        label_encoder = SimpleLabelEncoder.load(label_encoder_path)
+
+        # Decode integers back to original categories
+        print(f"🔄 Decoding label-encoded data to original format...")
+        synthetic_decoded = label_encoder.inverse_transform(synthetic_label_encoded)
+        print(f"📊 Decoded version: {synthetic_decoded.shape}")
+
+        # Create RDT-encoded version for metrics (dual pipeline)
+        print(f"🔄 Encoding with RDT for metrics compatibility...")
+        synthetic_encoded = encoder.transform(synthetic_decoded)
+        print(f"📊 RDT-encoded version: {synthetic_encoded.shape}")
+
+    elif library == "synthcity":
+        # Synthcity outputs encoded data (RDT preprocessing)
         synthetic_encoded = synthetic_data
-        print(f"📊 {library.capitalize()} output (encoded): {synthetic_encoded.shape}")
+        print(f"📊 Synthcity output (encoded): {synthetic_encoded.shape}")
 
         # Validate that all expected columns are present
         # Load encoded training data to get expected columns
@@ -174,14 +195,11 @@ def main(cfg: DictConfig) -> None:
 
         missing_columns = set(expected_columns) - set(synthetic_encoded.columns)
         if missing_columns:
-            print(f"\n❌ ERROR: {library.capitalize()} {model_type} failed to generate all columns!")
+            print(f"\n❌ ERROR: Synthcity {model_type} failed to generate all columns!")
             print(f"📊 Expected {len(expected_columns)} columns, got {len(synthetic_encoded.columns)}")
             print(f"❌ Missing columns ({len(missing_columns)}): {sorted(missing_columns)}")
-            print(f"\n💡 This is a {library} library issue. Possible solutions:")
-            print(f"   • Try a different model (e.g., for synthpop: 'normrank', 'ranger')")
-            print(f"   • Check if the model supports your data types")
-            print(f"   • Review {library} documentation for model limitations")
-            raise ValueError(f"{library.capitalize()} {model_type} generated incomplete data: missing {len(missing_columns)} columns")
+            print(f"\n💡 Try a different Synthcity model")
+            raise ValueError(f"Synthcity {model_type} generated incomplete data: missing {len(missing_columns)} columns")
 
         # Reverse transform to decoded version
         print(f"🔄 Reverse transforming to decoded version...")
