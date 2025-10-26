@@ -698,9 +698,21 @@ class KSComplementMetric:
             failed_columns = []
             for column in compatible_columns:
                 try:
+                    # Convert datetime columns to datetime64 dtype if needed
+                    # SDMetrics KSComplement expects datetime64, not object/string
+                    orig_col = original[column]
+                    synth_col = synthetic[column]
+
+                    # Check if column should be datetime based on metadata
+                    col_sdtype = metadata.columns[column].get('sdtype') if column in metadata.columns else None
+                    if col_sdtype == 'datetime' and orig_col.dtype == 'object':
+                        # Convert string datetime to datetime64
+                        orig_col = pd.to_datetime(orig_col, errors='coerce')
+                        synth_col = pd.to_datetime(synth_col, errors='coerce')
+
                     score = KSComplement.compute(
-                        real_data=original[column],
-                        synthetic_data=synthetic[column]
+                        real_data=orig_col,
+                        synthetic_data=synth_col
                     )
                     column_scores[column] = float(score)
                 except Exception as e:
@@ -918,9 +930,21 @@ class BoundaryAdherenceMetric:
             failed_columns = []
             for column in columns_to_evaluate:
                 try:
+                    # Convert datetime columns to datetime64 dtype if needed
+                    # SDMetrics BoundaryAdherence expects datetime64, not object/string
+                    orig_col = original[column]
+                    synth_col = synthetic[column]
+
+                    # Check if column should be datetime based on metadata
+                    col_sdtype = metadata.columns[column].get('sdtype') if column in metadata.columns else None
+                    if col_sdtype == 'datetime' and orig_col.dtype == 'object':
+                        # Convert string datetime to datetime64
+                        orig_col = pd.to_datetime(orig_col, errors='coerce')
+                        synth_col = pd.to_datetime(synth_col, errors='coerce')
+
                     score = BoundaryAdherence.compute(
-                        real_data=original[column],
-                        synthetic_data=synthetic[column]
+                        real_data=orig_col,
+                        synthetic_data=synth_col
                     )
                     column_scores[column] = float(score)
                 except Exception as e:
@@ -1407,18 +1431,24 @@ Metrics Results
   Status: {ks_result['message']}
 """
             else:
+                # Format aggregate score (handle None for failed columns)
+                agg_score_str = f"{ks_result['aggregate_score']:.3f}" if ks_result['aggregate_score'] is not None else "N/A (all columns failed)"
+
                 report += f"""KSComplement Results:
   Parameters: target_columns={target_cols}
   Execution time: {ks_result['execution_time']:.2f}s
 
   Distribution Similarity:
-  → Aggregate Score:   {ks_result['aggregate_score']:.3f}
+  → Aggregate Score:   {agg_score_str}
   → Columns Evaluated: {len(ks_result['compatible_columns'])}
+  → Successful:        {ks_result.get('successful_columns', 'unknown')}
+  → Failed:            {len(ks_result.get('failed_columns', []))}
 
   Individual Column Scores:"""
                 for col, score in ks_result['column_scores'].items():
+                    score_str = f"{score:.3f}" if score is not None else "FAILED"
                     report += f"""
-    → {col}: {score:.3f}"""
+    → {col}: {score_str}"""
                 report += "\n"
         else:
             report += f"""KSComplement: ERROR
@@ -1440,18 +1470,24 @@ Metrics Results
   Status: {tv_result['message']}
 """
             else:
+                # Format aggregate score (handle None for failed columns)
+                agg_score_str = f"{tv_result['aggregate_score']:.3f}" if tv_result['aggregate_score'] is not None else "N/A (all columns failed)"
+
                 report += f"""TVComplement Results:
   Parameters: target_columns={target_cols}
   Execution time: {tv_result['execution_time']:.2f}s
 
   Categorical Distribution Similarity:
-  → Aggregate Score:   {tv_result['aggregate_score']:.3f}
+  → Aggregate Score:   {agg_score_str}
   → Columns Evaluated: {len(tv_result['compatible_columns'])}
+  → Successful:        {tv_result.get('successful_columns', 'unknown')}
+  → Failed:            {len(tv_result.get('failed_columns', []))}
 
   Individual Column Scores:"""
                 for col, score in tv_result['column_scores'].items():
+                    score_str = f"{score:.3f}" if score is not None else "FAILED"
                     report += f"""
-    → {col}: {score:.3f}"""
+    → {col}: {score_str}"""
                 report += "\n"
         else:
             report += f"""TVComplement: ERROR
@@ -1488,18 +1524,24 @@ Metrics Results
   Status: {ba_result['message']}
 """
             else:
+                # Format aggregate score (handle None for failed columns)
+                agg_score_str = f"{ba_result['aggregate_score']:.3f}" if ba_result['aggregate_score'] is not None else "N/A (all columns failed)"
+
                 report += f"""BoundaryAdherence Results:
   Parameters: target_columns={target_cols}
   Execution time: {ba_result['execution_time']:.2f}s
 
   Boundary Compliance:
-  → Aggregate Score:   {ba_result['aggregate_score']:.3f}
+  → Aggregate Score:   {agg_score_str}
   → Columns Evaluated: {len(ba_result['compatible_columns'])}
+  → Successful:        {ba_result.get('successful_columns', 'unknown')}
+  → Failed:            {len(ba_result.get('failed_columns', []))}
 
   Individual Column Scores:"""
                 for col, score in ba_result['column_scores'].items():
+                    score_str = f"{score:.3f}" if score is not None else "FAILED"
                     report += f"""
-    → {col}: {score:.3f}"""
+    → {col}: {score_str}"""
                 report += "\n"
         else:
             report += f"""BoundaryAdherence: ERROR
@@ -1521,18 +1563,24 @@ Metrics Results
   Status: {ca_result['message']}
 """
             else:
+                # Format aggregate score (handle None for failed columns)
+                agg_score_str = f"{ca_result['aggregate_score']:.3f}" if ca_result['aggregate_score'] is not None else "N/A (all columns failed)"
+
                 report += f"""CategoryAdherence Results:
   Parameters: target_columns={target_cols}
   Execution time: {ca_result['execution_time']:.2f}s
 
   Category Compliance:
-  → Aggregate Score:   {ca_result['aggregate_score']:.3f}
+  → Aggregate Score:   {agg_score_str}
   → Columns Evaluated: {len(ca_result['compatible_columns'])}
+  → Successful:        {ca_result.get('successful_columns', 'unknown')}
+  → Failed:            {len(ca_result.get('failed_columns', []))}
 
   Individual Column Scores:"""
                 for col, score in ca_result['column_scores'].items():
+                    score_str = f"{score:.3f}" if score is not None else "FAILED"
                     report += f"""
-    → {col}: {score:.3f}"""
+    → {col}: {score_str}"""
                 report += "\n"
         else:
             report += f"""CategoryAdherence: ERROR
