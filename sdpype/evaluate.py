@@ -13,6 +13,7 @@ from rich.table import Table
 
 from sdv.metadata import SingleTableMetadata
 from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate_statistical_report
+from sdpype.encoding import load_encoding_config
 
 console = Console()
 
@@ -83,6 +84,17 @@ def main(cfg: DictConfig) -> None:
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
     metadata = SingleTableMetadata.load_from_json(metadata_path)
 
+    # Load encoding config (for determining numeric columns in encoded data)
+    encoding_config = None
+    if needs_encoded and hasattr(cfg, 'encoding') and cfg.encoding.get('config_file'):
+        encoding_config_path = Path(cfg.encoding.config_file)
+        if encoding_config_path.exists():
+            print(f"📋 Loading encoding config: {encoding_config_path}")
+            encoding_config = load_encoding_config(encoding_config_path)
+        else:
+            print(f"⚠️  Warning: Encoding config not found at {encoding_config_path}")
+            print(f"   Metrics will use fallback column detection")
+
     # Load reference data (both formats if needed)
     base_name = f"{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}"
 
@@ -139,7 +151,8 @@ def main(cfg: DictConfig) -> None:
         reference_data_encoded=reference_data_encoded,
         synthetic_data_encoded=synthetic_data_encoded,
         encoded_metrics=ENCODED_METRICS,
-        decoded_metrics=DECODED_METRICS
+        decoded_metrics=DECODED_METRICS,
+        encoding_config=encoding_config
     )
 
     # Save statistical similarity results

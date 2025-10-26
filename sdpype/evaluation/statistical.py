@@ -86,6 +86,59 @@ def get_columns_by_sdtype(metadata: dict, sdtypes: list) -> list:
 
     return columns
 
+
+def get_encoded_numeric_columns(encoding_config: dict, encoded_df: pd.DataFrame,
+                                metadata: SingleTableMetadata, exclude_ids: bool = True) -> list:
+    """
+    Get columns that are numeric in the encoded DataFrame based on encoding config.
+
+    This is the SOURCE OF TRUTH for which columns should be used in encoded data metrics.
+    All transformers in the encoding config produce numeric output, so any column that
+    was encoded will be numeric in the resulting DataFrame.
+
+    Handles:
+    - Direct column transformations (e.g., age -> numeric)
+    - OneHotEncoder expansion (e.g., city -> city.NYC, city.LA, city.SF)
+    - ID column exclusion (IDs shouldn't be in distance metrics)
+
+    Args:
+        encoding_config: Dict from load_encoding_config() with 'transformers' key
+        encoded_df: The encoded DataFrame (to get actual column names after OneHot expansion)
+        metadata: SDV SingleTableMetadata (to identify ID columns)
+        exclude_ids: Whether to exclude ID columns from metrics (default: True)
+
+    Returns:
+        List of column names that are numeric and suitable for encoded data metrics
+
+    Example:
+        >>> config = load_encoding_config('encoding.yaml')
+        >>> numeric_cols = get_encoded_numeric_columns(config, encoded_df, metadata)
+        >>> # Returns: ['age', 'income', 'date_encoded', 'city.NYC', 'city.LA']
+    """
+    # Get base column names from transformers config (these were encoded)
+    encoded_base_cols = set(encoding_config.get('transformers', {}).keys())
+
+    # Get ID columns to exclude
+    id_cols = set(get_columns_by_sdtype(metadata, ['id'])) if exclude_ids else set()
+
+    # Include columns that either:
+    # 1. Are directly in transformers config (e.g., 'age')
+    # 2. Start with a base column name (for OneHot expansion like 'city.NYC' -> 'city')
+    numeric_cols = []
+    for col in encoded_df.columns:
+        # Handle OneHot expansion: city.NYC -> city
+        base_col = col.split('.')[0]
+
+        # Skip ID columns
+        if col in id_cols or base_col in id_cols:
+            continue
+
+        # Include if the column or its base was encoded
+        if col in encoded_base_cols or base_col in encoded_base_cols:
+            numeric_cols.append(col)
+
+    return numeric_cols
+
 class AlphaPrecisionMetric:
     """Alpha Precision metric implementation"""
 
@@ -93,31 +146,30 @@ class AlphaPrecisionMetric:
         self.evaluator = AlphaPrecision()
         self.parameters = parameters  # Store for reporting
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Alpha Precision metric"""
 
         start_time = time.time()
 
         try:
-            # Get columns that are numerical, datetime (encoded as timestamps),
-            # or categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
-            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                print(f"  Alpha Precision using {len(usable_cols)} encoded columns from config")
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  Alpha Precision using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for Alpha Precision metric")
-
-            print(f"  Alpha Precision using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+                raise ValueError("No numeric columns found for Alpha Precision metric")
 
             # Select only usable columns
             original_numeric = original[usable_cols].copy()
@@ -168,30 +220,29 @@ class PRDCScoreMetric:
         self.parameters = parameters
         self.evaluator = PRDCScore(nearest_k=parameters.get("nearest_k", 5))
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate PRDC Score metric"""
         start_time = time.time()
 
         try:
-            # Get columns that are numerical, datetime (encoded as timestamps),
-            # or categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
-            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                print(f"  PRDC Score using {len(usable_cols)} encoded columns from config")
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  PRDC Score using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for PRDC Score metric")
-
-            print(f"  PRDC Score using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+                raise ValueError("No numeric columns found for PRDC Score metric")
 
             # Select only usable columns
             original_numeric = original[usable_cols].copy()
@@ -234,30 +285,29 @@ class WassersteinDistanceMetric:
         self.parameters = parameters
         self.evaluator = WassersteinDistance()
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Wasserstein Distance metric"""
         start_time = time.time()
 
         try:
-            # Get columns that are numerical, datetime (encoded as timestamps),
-            # or categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
-            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                print(f"  Wasserstein Distance using {len(usable_cols)} encoded columns from config")
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  Wasserstein Distance using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for Wasserstein Distance metric")
-
-            print(f"  Wasserstein Distance using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+                raise ValueError("No numeric columns found for Wasserstein Distance metric")
 
             # Select only usable columns
             original_numeric = original[usable_cols].copy()
@@ -295,30 +345,29 @@ class MaximumMeanDiscrepancyMetric:
         kernel = parameters.get("kernel", "rbf")
         self.evaluator = MaximumMeanDiscrepancy(kernel=kernel)
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Maximum Mean Discrepancy metric"""
         start_time = time.time()
 
         try:
-            # Get columns that are numerical, datetime (encoded as timestamps),
-            # or categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
-            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                print(f"  Maximum Mean Discrepancy using {len(usable_cols)} encoded columns from config")
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  Maximum Mean Discrepancy using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for Maximum Mean Discrepancy metric")
-
-            print(f"  Maximum Mean Discrepancy using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+                raise ValueError("No numeric columns found for Maximum Mean Discrepancy metric")
 
             # Select only usable columns
             original_numeric = original[usable_cols].copy()
@@ -359,30 +408,29 @@ class JensenShannonSynthcityMetric:
         n_histogram_bins = parameters.get("n_histogram_bins", 10)
         self.evaluator = JensenShannonDistance(normalize=normalize, n_histogram_bins=n_histogram_bins)
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Jensen-Shannon Distance metric using Synthcity"""
         start_time = time.time()
 
         try:
-            # Get columns that are numerical, datetime (encoded as timestamps),
-            # or categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
-            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                print(f"  Jensen-Shannon Distance (Synthcity) using {len(usable_cols)} encoded columns from config")
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  Jensen-Shannon Distance (Synthcity) using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for Jensen-Shannon Distance metric")
-
-            print(f"  Jensen-Shannon Distance (Synthcity) using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+                raise ValueError("No numeric columns found for Jensen-Shannon Distance metric")
 
             # Select only usable columns
             original_numeric = original[usable_cols].copy()
@@ -425,7 +473,7 @@ class JensenShannonSyndatMetric:
         self.parameters = parameters
         self.n_unique_threshold = parameters.get("n_unique_threshold", 10)
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Jensen-Shannon Distance metric using SYNDAT"""
         start_time = time.time()
 
@@ -461,7 +509,7 @@ class JensenShannonNannyMLMetric:
     def __init__(self, **parameters):
         self.parameters = parameters
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Jensen-Shannon Distance metric using NannyML's binning methodology"""
         start_time = time.time()
 
@@ -548,7 +596,7 @@ class NewRowSynthesisMetric:
         self.numerical_match_tolerance = parameters.get("numerical_match_tolerance", 0.01)
         self.synthetic_sample_size = parameters.get("synthetic_sample_size", None)
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate NewRowSynthesis metric"""
         start_time = time.time()
 
@@ -589,7 +637,7 @@ class KSComplementMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all numerical/datetime
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate KSComplement metric across compatible columns"""
         start_time = time.time()
 
@@ -667,7 +715,7 @@ class TVComplementMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all categorical/boolean
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate TVComplement metric across compatible columns"""
         start_time = time.time()
 
@@ -744,7 +792,7 @@ class TableStructureMetric:
     def __init__(self, **parameters):
         self.parameters = parameters
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate TableStructure metric"""
         start_time = time.time()
 
@@ -778,7 +826,7 @@ class BoundaryAdherenceMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all numerical/datetime
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate BoundaryAdherence metric across compatible columns"""
         start_time = time.time()
 
@@ -887,7 +935,7 @@ class CategoryAdherenceMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all categorical/boolean
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate CategoryAdherence metric across compatible columns"""
         start_time = time.time()
 
@@ -981,7 +1029,8 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
                                 reference_data_encoded: pd.DataFrame = None,
                                 synthetic_data_encoded: pd.DataFrame = None,
                                 encoded_metrics: set = None,
-                                decoded_metrics: set = None) -> Dict[str, Any]:
+                                decoded_metrics: set = None,
+                                encoding_config: dict = None) -> Dict[str, Any]:
     """
     Evaluate configured statistical metrics with data format routing
 
@@ -997,6 +1046,8 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
         synthetic_data_encoded: Encoded synthetic data (for synthcity metrics)
         encoded_metrics: Set of metric names that need encoded data
         decoded_metrics: Set of metric names that need decoded data
+        encoding_config: Encoding configuration dict (from load_encoding_config) used to
+                        determine which columns are numeric in encoded data
 
     Returns:
         Complete statistical metrics results
@@ -1053,7 +1104,7 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
 
         try:
             evaluator = get_metric_evaluator(metric_name, parameters)
-            metric_result = evaluator.evaluate(ref_data, syn_data, metadata)
+            metric_result = evaluator.evaluate(ref_data, syn_data, metadata, encoding_config=encoding_config)
             results["metrics"][metric_name] = metric_result
 
             # Collect scores for overall calculation
