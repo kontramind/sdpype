@@ -45,23 +45,27 @@ def main(cfg: DictConfig) -> None:
     print(f"Experiment seed: {cfg.experiment.seed}")
 
     config_hash = _get_config_hash()
+    base_name = f"{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}"
+
     # Load datasets for detection evaluation
-    reference_data_path = cfg.data.reference_file
+    # All detection metrics are from synthcity and need encoded (all-numeric) data
     metadata_path = cfg.data.metadata_file
-    synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
+    reference_encoded_path = f"experiments/data/encoded/reference_{base_name}.csv"
+    synthetic_encoded_path = f"experiments/data/synthetic/synthetic_data_{base_name}_encoded.csv"
 
     if not Path(metadata_path).exists():
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
-    if not Path(reference_data_path).exists():
-        raise FileNotFoundError(f"Reference data not found: {reference_data_path}")
-    if not Path(synthetic_data_path).exists():
-        raise FileNotFoundError(f"Synthetic data not found: {synthetic_data_path}")
+    if not Path(reference_encoded_path).exists():
+        raise FileNotFoundError(f"Encoded reference data not found: {reference_encoded_path}")
+    if not Path(synthetic_encoded_path).exists():
+        raise FileNotFoundError(f"Encoded synthetic data not found: {synthetic_encoded_path}")
 
-    print(f"📊 Loading reference data: {reference_data_path}")
-    print(f"📊 Loading synthetic data: {synthetic_data_path}")
+    print(f"📊 Loading encoded reference data: {reference_encoded_path}")
+    print(f"📊 Loading encoded synthetic data: {synthetic_encoded_path}")
+    print(f"ℹ️  Detection metrics use encoded data (all-numeric for synthcity)")
 
-    reference_data = pd.read_csv(reference_data_path)
-    synthetic_data = pd.read_csv(synthetic_data_path)
+    reference_data = pd.read_csv(reference_encoded_path)
+    synthetic_data = pd.read_csv(synthetic_encoded_path)
     metadata = SingleTableMetadata.load_from_json(metadata_path)
 
     # Run detection evaluation

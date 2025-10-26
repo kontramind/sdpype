@@ -24,8 +24,12 @@ from synthcity.plugins import Plugins
 # Import new serialization module
 from sdpype.serialization import save_model, create_model_metadata
 
+# Import encoding module for HyperTransformer
+from sdpype.encoding import RDTDatasetEncoder
+
 # Synthpop imports
 from synthpop.method import CARTMethod
+from sdpype.label_encoding import SimpleLabelEncoder
 
 
 def _get_config_hash() -> str:
@@ -692,6 +696,8 @@ def create_synthpop_model(cfg: DictConfig, metadata):
     model_params = OmegaConf.to_container(cfg.sdg.parameters, resolve=True) if cfg.sdg.parameters else {}
 
     if model_type == "cart":
+        # Note: CARTMethod does NOT take visit_sequence parameter
+        # It synthesizes all columns by default when fit on preprocessed data
         return CARTMethod(
             metadata=synthpop_metadata,
             smoothing=model_params.get("smoothing", False),
@@ -734,36 +740,107 @@ def main(cfg: DictConfig) -> None:
     # Get config hash for file paths
     config_hash = _get_config_hash()
 
-    # Load training data directly from config path
-    data_file = cfg.data.training_file
-    if not Path(data_file).exists():
-        print(f"❌ Training data not found: {data_file}")
-        print("💡 Check your data.training_file path in params.yaml!")
-        raise FileNotFoundError(f"Training data file not found: {data_file}")
-
+    # Load metadata
     metadata_file = cfg.data.metadata_file
     if not Path(metadata_file).exists():
         print(f"❌ Metadata for processed data not found: {metadata_file}")
         print("💡 Check your data.metadata_file path in params.yaml!")
         raise FileNotFoundError(f"Metadata file not found: {metadata_file}")
-
-    training_data = pd.read_csv(data_file)
-    print(f"📊 Training data: {training_data.shape}")
-
     metadata = SingleTableMetadata.load_from_json(metadata_file)
 
-    # Create model based on library
+    # Load encoder (fitted HyperTransformer)
+    encoder_path = Path(f"experiments/models/encoders_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.pkl")
+    if not encoder_path.exists():
+        print(f"❌ Encoder not found: {encoder_path}")
+        print("💡 Run encoding stage first: dvc repro -s encode_dataset")
+        raise FileNotFoundError(f"Encoder file not found: {encoder_path}")
+
+    print(f"📦 Loading fitted encoder: {encoder_path}")
+    encoder = RDTDatasetEncoder.load(encoder_path)
+
+    # Load training data based on library
     library = cfg.sdg.library
 
     if library == "sdv":
+        # SDV: Use raw data + inject HyperTransformer
+        data_file = cfg.data.training_file
+        if not Path(data_file).exists():
+            print(f"❌ Training data not found: {data_file}")
+            print("💡 Check your data.training_file path in params.yaml!")
+            raise FileNotFoundError(f"Training data file not found: {data_file}")
+
+        training_data = pd.read_csv(data_file)
+        print(f"📊 Training data (raw): {training_data.shape}")
+        print(f"🔧 Will inject HyperTransformer into SDV DataProcessor")
+
+    elif library == "synthpop":
+        # Synthpop: Use label encoding (sklearn-safe alternative to DataProcessor)
+        data_file = cfg.data.training_file
+        if not Path(data_file).exists():
+            print(f"❌ Training data not found: {data_file}")
+            raise FileNotFoundError(f"Training data file not found: {data_file}")
+
+        raw_data = pd.read_csv(data_file)
+        print(f"📊 Raw training data: {raw_data.shape}")
+
+        # Create and fit label encoder
+        print(f"🔄 Applying label encoding (Synthpop CART compatibility)...")
+        # Extract sdtypes and datetime formats from metadata
+        metadata_dict = metadata.to_dict()['columns']
+        sdtypes = {col: info.get('sdtype', 'unknown') for col, info in metadata_dict.items()}
+        datetime_formats = {
+            col: info.get('datetime_format', '%Y-%m-%d')
+            for col, info in metadata_dict.items()
+            if info.get('sdtype') == 'datetime'
+        }
+        label_encoder = SimpleLabelEncoder(sdtypes, datetime_formats=datetime_formats)
+        training_data = label_encoder.fit_transform(raw_data)
+        print(f"📊 Label-encoded data: {training_data.shape}")
+
+        # Save label encoder for generation
+        label_encoder_path = Path(f"experiments/models/label_encoder_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.pkl")
+        label_encoder_path.parent.mkdir(parents=True, exist_ok=True)
+        label_encoder.save(label_encoder_path)
+        print(f"💾 Label encoder saved: {label_encoder_path}")
+
+    elif library == "synthcity":
+        # Synthcity: Use encoded data (RDT preprocessing)
+        encoded_file = Path(f"experiments/data/encoded/training_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv")
+        if not encoded_file.exists():
+            print(f"❌ Encoded training data not found: {encoded_file}")
+            print("💡 Run encoding stage first: dvc repro -s encode_dataset")
+            raise FileNotFoundError(f"Encoded training data not found: {encoded_file}")
+
+        data_file = str(encoded_file)  # Set for metrics tracking
+        training_data = pd.read_csv(encoded_file)
+        print(f"📊 Training data (encoded): {training_data.shape}")
+
+    else:
+        raise ValueError(f"Unknown library: {library}")
+
+    # Create model based on library
+    if library == "sdv":
         print(f"🔧 Creating SDV {cfg.sdg.model_type} model...")
         model = create_sdv_model(cfg, metadata)
+
+        # Inject HyperTransformer into SDV DataProcessor
+        print(f"💉 Injecting fitted HyperTransformer into SDV DataProcessor...")
+        model._data_processor._hyper_transformer = encoder.ht
+        model._data_processor._prepared_for_fitting = True
+        print(f"✓ HyperTransformer injected successfully")
+
     elif library == "synthcity":
         print(f"🔧 Creating Synthcity {cfg.sdg.model_type} model...")
         model = create_synthcity_model(cfg, training_data.shape)
     elif library == "synthpop":
         print(f"🔧 Creating Synthpop {cfg.sdg.model_type} model...")
-        model, synthpop_metadata = create_synthpop_model(cfg, metadata)
+        # Create metadata with all columns as 'numerical' for CART
+        # (label encoding converts everything to integers)
+        encoded_metadata = SingleTableMetadata()
+        for col in training_data.columns:
+            encoded_metadata.add_column(col, sdtype='numerical')
+
+        model, synthpop_metadata = create_synthpop_model(cfg, encoded_metadata)
     else:
         raise ValueError(f"Unknown library: {library}")
 
@@ -771,16 +848,15 @@ def main(cfg: DictConfig) -> None:
     print(f"⏳ Training {library} {cfg.sdg.model_type} model...")
     start_time = time.time()
 
-    if library == "synthpop":
-        # Use SDPype preprocessed data directly
-        print(f"🔄 Using SDPype preprocessing for synthpop...")
-        model._sdpype_metadata = synthpop_metadata
-        model.fit(training_data)
-    elif library == "sdv":
+    if library == "sdv":
+        # SDV will use injected HyperTransformer to transform raw data
         model.fit(training_data)
         model._set_random_state(cfg.experiment.seed)
-    else:
+    elif library in ["synthcity", "synthpop"]:
+        # Synthcity/Synthpop - using RDT encoded data
         model.fit(training_data)
+    else:
+        raise ValueError(f"Unknown library for training: {library}")
 
     training_time = time.time() - start_time
 

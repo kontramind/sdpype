@@ -43,34 +43,103 @@ def main(cfg: DictConfig) -> None:
     print(f"Experiment seed: {cfg.experiment.seed}")
 
     config_hash = _get_config_hash()
-    # Load datasets for statistical comparison
-    reference_data_path = cfg.data.reference_file
-    metadata_path = cfg.data.metadata_file
-    synthetic_data_path = f"experiments/data/synthetic/synthetic_data_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.csv"
 
+    # Define which metrics need encoded vs decoded data
+    # Metrics from synthcity need all-numeric (encoded) data
+    ENCODED_METRICS = {
+        'alpha_precision',
+        'prdc_score',
+        'jensenshannon_synthcity',
+        'jensenshannon_syndat',
+        'jensenshannon_nannyml',
+        'wasserstein_distance',
+        'maximum_mean_discrepancy'
+    }
+
+    # Metrics from SDV understand sdtypes (decoded/native data)
+    DECODED_METRICS = {
+        'ks_complement',
+        'tv_complement',
+        'table_structure',
+        'boundary_adherence',
+        'category_adherence',
+        'new_row_synthesis'
+    }
+
+    # Determine which data formats we need based on configured metrics
+    needs_encoded = False
+    needs_decoded = False
+
+    for metric_config in metrics_config:
+        metric_name = metric_config.get('name', '')
+        if metric_name in ENCODED_METRICS:
+            needs_encoded = True
+        elif metric_name in DECODED_METRICS:
+            needs_decoded = True
+
+    # Load metadata
+    metadata_path = cfg.data.metadata_file
     if not Path(metadata_path).exists():
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
-    if not Path(reference_data_path).exists():
-        raise FileNotFoundError(f"Reference data not found: {reference_data_path}")
-    if not Path(synthetic_data_path).exists():
-        raise FileNotFoundError(f"Synthetic data not found: {synthetic_data_path}")
-
-    print(f"📊 Loading reference data: {reference_data_path}")
-    print(f"📊 Loading synthetic data: {synthetic_data_path}")
-
-    reference_data = pd.read_csv(reference_data_path)
-    synthetic_data = pd.read_csv(synthetic_data_path)
     metadata = SingleTableMetadata.load_from_json(metadata_path)
 
-    # Run statistical similarity evaluation
-    # Run statistical metrics evaluation
+    # Load reference data (both formats if needed)
+    base_name = f"{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}"
+
+    reference_data_encoded = None
+    reference_data_decoded = None
+    synthetic_data_encoded = None
+    synthetic_data_decoded = None
+
+    if needs_encoded:
+        reference_encoded_path = f"experiments/data/encoded/reference_{base_name}.csv"
+        synthetic_encoded_path = f"experiments/data/synthetic/synthetic_data_{base_name}_encoded.csv"
+
+        if not Path(reference_encoded_path).exists():
+            raise FileNotFoundError(f"Encoded reference data not found: {reference_encoded_path}")
+        if not Path(synthetic_encoded_path).exists():
+            raise FileNotFoundError(f"Encoded synthetic data not found: {synthetic_encoded_path}")
+
+        print(f"📊 Loading encoded reference data: {reference_encoded_path}")
+        print(f"📊 Loading encoded synthetic data: {synthetic_encoded_path}")
+
+        reference_data_encoded = pd.read_csv(reference_encoded_path)
+        synthetic_data_encoded = pd.read_csv(synthetic_encoded_path)
+
+    if needs_decoded:
+        reference_decoded_path = f"experiments/data/decoded/reference_{base_name}.csv"
+        synthetic_decoded_path = f"experiments/data/synthetic/synthetic_data_{base_name}_decoded.csv"
+
+        if not Path(reference_decoded_path).exists():
+            raise FileNotFoundError(f"Decoded reference data not found: {reference_decoded_path}")
+        if not Path(synthetic_decoded_path).exists():
+            raise FileNotFoundError(f"Decoded synthetic data not found: {synthetic_decoded_path}")
+
+        print(f"📊 Loading decoded reference data: {reference_decoded_path}")
+        print(f"📊 Loading decoded synthetic data: {synthetic_decoded_path}")
+
+        reference_data_decoded = pd.read_csv(reference_decoded_path)
+        synthetic_data_decoded = pd.read_csv(synthetic_decoded_path)
+
+    # Set reference_data for display purposes (prefer decoded for original column names)
+    reference_data = reference_data_decoded if reference_data_decoded is not None else reference_data_encoded
+    synthetic_data = synthetic_data_decoded if synthetic_data_decoded is not None else synthetic_data_encoded
+
+    # Run statistical metrics evaluation with routing
     print("🔄 Running statistical metrics analysis...")
     statistical_results = evaluate_statistical_metrics(
-        reference_data,
-        synthetic_data,
+        reference_data_encoded if needs_encoded else reference_data_decoded,
+        synthetic_data_encoded if needs_encoded else synthetic_data_decoded,
         metrics_config,
         experiment_name=f"{cfg.experiment.name}_seed_{cfg.experiment.seed}",
-        metadata=metadata
+        metadata=metadata,
+        # Pass both data formats for metrics that might need routing
+        reference_data_decoded=reference_data_decoded,
+        synthetic_data_decoded=synthetic_data_decoded,
+        reference_data_encoded=reference_data_encoded,
+        synthetic_data_encoded=synthetic_data_encoded,
+        encoded_metrics=ENCODED_METRICS,
+        decoded_metrics=DECODED_METRICS
     )
 
     # Save statistical similarity results
