@@ -515,50 +515,83 @@ class JensenShannonNannyMLMetric:
 
         try:
             column_scores = {}
-            
-            for column in original.columns:
-                try:
-                    # Determine if column is continuous or categorical
-                    if pd.api.types.is_numeric_dtype(original[column]):
-                        # Continuous feature - use Doane's formula for binning
+
+            # Use encoding config as source of truth for which columns to evaluate
+            if encoding_config:
+                # Get columns that were encoded (all are numeric after encoding)
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                print(f"  Jensen-Shannon Distance (NannyML) using {len(usable_cols)} encoded columns from config")
+
+                # All encoded columns are numeric - use Doane's binning for all
+                for column in usable_cols:
+                    try:
+                        # Continuous feature - use Doane's formula for adaptive binning
                         n_bins = int(1 + np.log2(len(original)) + np.log2(1 + np.abs(original[column].skew()) / np.sqrt(6 * (len(original) - 2) / ((len(original) + 1) * (len(original) + 3)))))
                         n_bins = max(10, min(n_bins, 50))  # Bound bins between 10-50
-                        
+
                         # Create bins from original (reference)
                         bins = np.histogram_bin_edges(original[column].dropna(), bins=n_bins)
-                        
+
                         # Calculate histograms
                         orig_hist, _ = np.histogram(original[column].dropna(), bins=bins)
                         synth_hist, _ = np.histogram(synthetic[column].dropna(), bins=bins)
-                        
+
                         # Normalize to get probabilities
                         orig_prob = orig_hist / orig_hist.sum() if orig_hist.sum() > 0 else orig_hist
                         synth_prob = synth_hist / synth_hist.sum() if synth_hist.sum() > 0 else synth_hist
-                        
+
                         # Compute JSD
                         from scipy.spatial.distance import jensenshannon
                         jsd = jensenshannon(orig_prob, synth_prob)
-                        
-                    else:
-                        # Categorical feature - use frequency counts
-                        orig_counts = original[column].value_counts(normalize=True)
-                        synth_counts = synthetic[column].value_counts(normalize=True)
-                        
-                        # Align categories
-                        all_cats = orig_counts.index.union(synth_counts.index)
-                        orig_prob = orig_counts.reindex(all_cats, fill_value=0).values
-                        synth_prob = synth_counts.reindex(all_cats, fill_value=0).values
-                        
-                        from scipy.spatial.distance import jensenshannon
-                        jsd = jensenshannon(orig_prob, synth_prob)
-                    
-                    column_scores[column] = float(jsd)
 
-                except Exception as e:
-                    # print(f"🔴 Column '{column}' failed: {e}")
-                    # import traceback
-                    # traceback.print_exc()
-                    continue
+                        column_scores[column] = float(jsd)
+                    except Exception as e:
+                        # Skip column on failure but continue
+                        continue
+            else:
+                # Fallback mode: iterate all columns and determine type at runtime
+                print(f"  Jensen-Shannon Distance (NannyML) using fallback mode (no encoding config)")
+                for column in original.columns:
+                    try:
+                        # Determine if column is continuous or categorical
+                        if pd.api.types.is_numeric_dtype(original[column]):
+                            # Continuous feature - use Doane's formula for binning
+                            n_bins = int(1 + np.log2(len(original)) + np.log2(1 + np.abs(original[column].skew()) / np.sqrt(6 * (len(original) - 2) / ((len(original) + 1) * (len(original) + 3)))))
+                            n_bins = max(10, min(n_bins, 50))  # Bound bins between 10-50
+
+                            # Create bins from original (reference)
+                            bins = np.histogram_bin_edges(original[column].dropna(), bins=n_bins)
+
+                            # Calculate histograms
+                            orig_hist, _ = np.histogram(original[column].dropna(), bins=bins)
+                            synth_hist, _ = np.histogram(synthetic[column].dropna(), bins=bins)
+
+                            # Normalize to get probabilities
+                            orig_prob = orig_hist / orig_hist.sum() if orig_hist.sum() > 0 else orig_hist
+                            synth_prob = synth_hist / synth_hist.sum() if synth_hist.sum() > 0 else synth_hist
+
+                            # Compute JSD
+                            from scipy.spatial.distance import jensenshannon
+                            jsd = jensenshannon(orig_prob, synth_prob)
+
+                        else:
+                            # Categorical feature - use frequency counts
+                            orig_counts = original[column].value_counts(normalize=True)
+                            synth_counts = synthetic[column].value_counts(normalize=True)
+
+                            # Align categories
+                            all_cats = orig_counts.index.union(synth_counts.index)
+                            orig_prob = orig_counts.reindex(all_cats, fill_value=0).values
+                            synth_prob = synth_counts.reindex(all_cats, fill_value=0).values
+
+                            from scipy.spatial.distance import jensenshannon
+                            jsd = jensenshannon(orig_prob, synth_prob)
+
+                        column_scores[column] = float(jsd)
+
+                    except Exception as e:
+                        # Skip column on failure but continue
+                        continue
 
             # Calculate aggregate distance, lower=better
             if column_scores:
