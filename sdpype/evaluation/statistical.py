@@ -99,8 +99,10 @@ class AlphaPrecisionMetric:
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
+            # Get columns that are numerical, datetime (encoded as timestamps),
+            # or categorical with numeric representation
             numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
             categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
 
             # Filter categorical columns to only those with numeric dtype
@@ -109,13 +111,15 @@ class AlphaPrecisionMetric:
                 if pd.api.types.is_numeric_dtype(original[col])
             ]
 
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
+            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for Alpha Precision metric")
+                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for Alpha Precision metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            print(f"  Alpha Precision using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
@@ -169,8 +173,10 @@ class PRDCScoreMetric:
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
+            # Get columns that are numerical, datetime (encoded as timestamps),
+            # or categorical with numeric representation
             numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
             categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
 
             # Filter categorical columns to only those with numeric dtype
@@ -179,13 +185,15 @@ class PRDCScoreMetric:
                 if pd.api.types.is_numeric_dtype(original[col])
             ]
 
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
+            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for PRDC Score metric")
+                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for PRDC Score metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            print(f"  PRDC Score using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
@@ -231,8 +239,10 @@ class WassersteinDistanceMetric:
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
+            # Get columns that are numerical, datetime (encoded as timestamps),
+            # or categorical with numeric representation
             numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
             categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
 
             # Filter categorical columns to only those with numeric dtype
@@ -241,13 +251,15 @@ class WassersteinDistanceMetric:
                 if pd.api.types.is_numeric_dtype(original[col])
             ]
 
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
+            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for Wasserstein Distance metric")
+                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for Wasserstein Distance metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            print(f"  Wasserstein Distance using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
@@ -288,8 +300,10 @@ class MaximumMeanDiscrepancyMetric:
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
+            # Get columns that are numerical, datetime (encoded as timestamps),
+            # or categorical with numeric representation
             numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
             categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
 
             # Filter categorical columns to only those with numeric dtype
@@ -298,13 +312,15 @@ class MaximumMeanDiscrepancyMetric:
                 if pd.api.types.is_numeric_dtype(original[col])
             ]
 
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
+            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for Maximum Mean Discrepancy metric")
+                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for Maximum Mean Discrepancy metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            print(f"  Maximum Mean Discrepancy using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
@@ -348,8 +364,10 @@ class JensenShannonSynthcityMetric:
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
+            # Get columns that are numerical, datetime (encoded as timestamps),
+            # or categorical with numeric representation
             numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+            datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
             categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
 
             # Filter categorical columns to only those with numeric dtype
@@ -358,13 +376,15 @@ class JensenShannonSynthcityMetric:
                 if pd.api.types.is_numeric_dtype(original[col])
             ]
 
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Combine numerical + datetime (encoded as Unix timestamps) + numeric categorical columns
+            usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for Jensen-Shannon Distance metric")
+                raise ValueError("No numerical, datetime, or numerically-encoded categorical columns found for Jensen-Shannon Distance metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            print(f"  Jensen-Shannon Distance (Synthcity) using {len(usable_cols)} columns: {len(numeric_cols)} numerical, {len(datetime_cols)} datetime, {len(numeric_categorical_cols)} categorical")
+
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
