@@ -15,6 +15,7 @@ from rich.panel import Panel
 
 from sdv.metadata import SingleTableMetadata
 from sdpype.evaluation.detection import evaluate_detection_metrics, generate_detection_report
+from sdpype.encoding import load_encoding_config
 
 console = Console()
 
@@ -68,6 +69,21 @@ def main(cfg: DictConfig) -> None:
     synthetic_data = pd.read_csv(synthetic_encoded_path)
     metadata = SingleTableMetadata.load_from_json(metadata_path)
 
+    # Load encoding config (for determining numeric columns and excluding IDs)
+    encoding_config = None
+    if hasattr(cfg, 'encoding') and cfg.encoding.get('config_file'):
+        encoding_config_path = Path(cfg.encoding.config_file)
+        if encoding_config_path.exists():
+            print(f"📋 Loading encoding config: {encoding_config_path}")
+            encoding_config = load_encoding_config(encoding_config_path)
+            print(f"✓ Encoding config loaded - IDs will be excluded from detection")
+        else:
+            print(f"⚠️  Warning: Encoding config not found at {encoding_config_path}")
+            print(f"   Detection will use fallback column detection (ID leakage possible!)")
+    else:
+        print(f"⚠️  Warning: No encoding config specified in params.yaml")
+        print(f"   Detection will use fallback column detection (ID leakage possible!)")
+
     # Run detection evaluation
     print("🔄 Running detection metrics analysis...")
 
@@ -79,7 +95,8 @@ def main(cfg: DictConfig) -> None:
     })
 
     detection_results = evaluate_detection_metrics(
-        reference_data, synthetic_data, metadata, methods_config, common_params, cfg.experiment.name
+        reference_data, synthetic_data, metadata, methods_config, common_params,
+        cfg.experiment.name, encoding_config
     )
 
     # Handle evaluation errors
