@@ -139,6 +139,67 @@ def get_encoded_numeric_columns(encoding_config: dict, encoded_df: pd.DataFrame,
 
     return numeric_cols
 
+
+def log_column_selection(metric_name: str, encoding_config: dict, encoded_df: pd.DataFrame,
+                         metadata: SingleTableMetadata, usable_cols: list, exclude_ids: bool = True):
+    """
+    Log detailed information about column selection for metrics using Rich formatting.
+
+    Args:
+        metric_name: Name of the metric being evaluated
+        encoding_config: Encoding configuration dict
+        encoded_df: The encoded DataFrame
+        metadata: SDV SingleTableMetadata
+        usable_cols: List of columns that will be used for evaluation
+        exclude_ids: Whether ID columns were excluded
+    """
+    from rich.panel import Panel
+    from rich.text import Text
+
+    # Get information about columns
+    all_encoded_cols = set(encoding_config.get('transformers', {}).keys())
+    id_cols = set(get_columns_by_sdtype(metadata, ['id'])) if exclude_ids else set()
+    datetime_cols = set(get_columns_by_sdtype(metadata, ['datetime']))
+
+    # Identify datetime columns that are in usable_cols
+    datetime_in_use = [col for col in usable_cols if col.split('.')[0] in datetime_cols]
+
+    # Identify one-hot encoded columns (contain a dot)
+    onehot_cols = [col for col in usable_cols if '.' in col]
+    onehot_base = set([col.split('.')[0] for col in onehot_cols])
+
+    # Build info text
+    info_lines = []
+    info_lines.append(f"[bold cyan]📊 {metric_name} - Column Selection[/bold cyan]")
+    info_lines.append(f"[green]✓[/green] Total encoded columns from config: [bold]{len(all_encoded_cols)}[/bold]")
+
+    if id_cols:
+        id_list = ', '.join(sorted(id_cols))
+        info_lines.append(f"[yellow]⊘[/yellow] Excluded ID columns ({len(id_cols)}): {id_list}")
+
+    if datetime_in_use:
+        dt_list = ', '.join(sorted(set([col.split('.')[0] for col in datetime_in_use])))
+        info_lines.append(f"[blue]◷[/blue] Including datetime columns ({len(set([col.split('.')[0] for col in datetime_in_use]))}): {dt_list}")
+
+    if onehot_base:
+        onehot_list = ', '.join(sorted(onehot_base))
+        info_lines.append(f"[magenta]⊕[/magenta] One-hot encoded features ({len(onehot_base)}): {onehot_list}")
+        info_lines.append(f"    → Expanded to {len(onehot_cols)} binary columns")
+
+    info_lines.append(f"[bold green]→[/bold green] Final evaluation set: [bold]{len(usable_cols)}[/bold] columns")
+
+    # Show first few column names if reasonable
+    if len(usable_cols) <= 10:
+        col_preview = ', '.join(usable_cols)
+        info_lines.append(f"    Columns: {col_preview}")
+    else:
+        col_preview = ', '.join(usable_cols[:5])
+        info_lines.append(f"    Columns (first 5): {col_preview}, ...")
+
+    # Print with Rich
+    print("\n".join(info_lines))
+    print()
+
 class AlphaPrecisionMetric:
     """Alpha Precision metric implementation"""
 
@@ -155,7 +216,7 @@ class AlphaPrecisionMetric:
             # Use encoding config as source of truth for which columns are numeric
             if encoding_config:
                 usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
-                print(f"  Alpha Precision using {len(usable_cols)} encoded columns from config")
+                log_column_selection("Alpha Precision", encoding_config, original, metadata, usable_cols)
             else:
                 # Fallback to old logic if no encoding config provided
                 numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
@@ -228,7 +289,7 @@ class PRDCScoreMetric:
             # Use encoding config as source of truth for which columns are numeric
             if encoding_config:
                 usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
-                print(f"  PRDC Score using {len(usable_cols)} encoded columns from config")
+                log_column_selection("PRDC Score", encoding_config, original, metadata, usable_cols)
             else:
                 # Fallback to old logic if no encoding config provided
                 numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
@@ -293,7 +354,7 @@ class WassersteinDistanceMetric:
             # Use encoding config as source of truth for which columns are numeric
             if encoding_config:
                 usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
-                print(f"  Wasserstein Distance using {len(usable_cols)} encoded columns from config")
+                log_column_selection("Wasserstein Distance", encoding_config, original, metadata, usable_cols)
             else:
                 # Fallback to old logic if no encoding config provided
                 numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
@@ -353,7 +414,7 @@ class MaximumMeanDiscrepancyMetric:
             # Use encoding config as source of truth for which columns are numeric
             if encoding_config:
                 usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
-                print(f"  Maximum Mean Discrepancy using {len(usable_cols)} encoded columns from config")
+                log_column_selection("Maximum Mean Discrepancy", encoding_config, original, metadata, usable_cols)
             else:
                 # Fallback to old logic if no encoding config provided
                 numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
@@ -416,7 +477,7 @@ class JensenShannonSynthcityMetric:
             # Use encoding config as source of truth for which columns are numeric
             if encoding_config:
                 usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
-                print(f"  Jensen-Shannon Distance (Synthcity) using {len(usable_cols)} encoded columns from config")
+                log_column_selection("Jensen-Shannon Distance (Synthcity)", encoding_config, original, metadata, usable_cols)
             else:
                 # Fallback to old logic if no encoding config provided
                 numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
@@ -520,7 +581,7 @@ class JensenShannonNannyMLMetric:
             if encoding_config:
                 # Get columns that were encoded (all are numeric after encoding)
                 usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
-                print(f"  Jensen-Shannon Distance (NannyML) using {len(usable_cols)} encoded columns from config")
+                log_column_selection("Jensen-Shannon Distance (NannyML)", encoding_config, original, metadata, usable_cols)
 
                 # All encoded columns are numeric - use Doane's binning for all
                 for column in usable_cols:
