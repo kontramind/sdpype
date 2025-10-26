@@ -46,7 +46,9 @@ def main(cfg: DictConfig) -> None:
     config_hash = _get_config_hash()
 
     # Define which metrics need encoded vs decoded data
-    # Metrics from synthcity need all-numeric (encoded) data
+    # Metrics that need all-numeric (encoded) data:
+    # - Synthcity distance metrics require numeric data
+    # - KSComplement works on distributions and should evaluate ALL encoded columns
     ENCODED_METRICS = {
         'alpha_precision',
         'prdc_score',
@@ -54,17 +56,18 @@ def main(cfg: DictConfig) -> None:
         'jensenshannon_syndat',
         'jensenshannon_nannyml',
         'wasserstein_distance',
-        'maximum_mean_discrepancy'
+        'maximum_mean_discrepancy',
+        'ks_complement'  # Moved to encoded to evaluate all numeric columns including one-hot
     }
 
-    # Metrics from SDV understand sdtypes (decoded/native data)
+    # Metrics from SDV that understand sdtypes (decoded/native data)
+    # These need semantic understanding of original data types
     DECODED_METRICS = {
-        'ks_complement',
-        'tv_complement',
-        'table_structure',
-        'boundary_adherence',
-        'category_adherence',
-        'new_row_synthesis'
+        'tv_complement',        # Needs original categorical columns
+        'table_structure',      # Needs original table structure
+        'boundary_adherence',   # Needs original numeric ranges
+        'category_adherence',   # Needs original categories
+        'new_row_synthesis'     # Needs to compare original rows
     }
 
     # Determine which data formats we need based on configured metrics
