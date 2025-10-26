@@ -695,6 +695,7 @@ class KSComplementMetric:
                 }
 
             column_scores = {}
+            failed_columns = []
             for column in compatible_columns:
                 try:
                     score = KSComplement.compute(
@@ -703,17 +704,21 @@ class KSComplementMetric:
                     )
                     column_scores[column] = float(score)
                 except Exception as e:
-                    # Handle individual column failures
-                    column_scores[column] = 0.0
+                    # Handle individual column failures - use None instead of 0.0
+                    column_scores[column] = None
+                    failed_columns.append(column)
                     print(f"Warning: KSComplement failed for column '{column}': {e}")
 
-            # Calculate aggregate score
-            aggregate_score = sum(column_scores.values()) / len(column_scores) if column_scores else 0.0
+            # Calculate aggregate score - exclude failed (None) columns
+            successful_scores = [score for score in column_scores.values() if score is not None]
+            aggregate_score = float(np.mean(successful_scores)) if successful_scores else None
 
             return {
-                "aggregate_score": float(aggregate_score),
+                "aggregate_score": aggregate_score,
                 "column_scores": column_scores,
                 "compatible_columns": compatible_columns,
+                "failed_columns": failed_columns,
+                "successful_columns": len(successful_scores),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
@@ -773,6 +778,7 @@ class TVComplementMetric:
                 }
 
             column_scores = {}
+            failed_columns = []
             for column in compatible_columns:
                 try:
                     score = TVComplement.compute(
@@ -781,17 +787,21 @@ class TVComplementMetric:
                     )
                     column_scores[column] = float(score)
                 except Exception as e:
-                    # Handle individual column failures
-                    column_scores[column] = 0.0
+                    # Handle individual column failures - use None instead of 0.0
+                    column_scores[column] = None
+                    failed_columns.append(column)
                     print(f"Warning: TVComplement failed for column '{column}': {e}")
 
-            # Calculate aggregate score
-            aggregate_score = sum(column_scores.values()) / len(column_scores) if column_scores else 0.0
+            # Calculate aggregate score - exclude failed (None) columns
+            successful_scores = [score for score in column_scores.values() if score is not None]
+            aggregate_score = float(np.mean(successful_scores)) if successful_scores else None
 
             return {
-                "aggregate_score": float(aggregate_score),
+                "aggregate_score": aggregate_score,
                 "column_scores": column_scores,
                 "compatible_columns": compatible_columns,
+                "failed_columns": failed_columns,
+                "successful_columns": len(successful_scores),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
@@ -905,6 +915,7 @@ class BoundaryAdherenceMetric:
 
             # Calculate BoundaryAdherence for each compatible column
             column_scores = {}
+            failed_columns = []
             for column in columns_to_evaluate:
                 try:
                     score = BoundaryAdherence.compute(
@@ -914,26 +925,34 @@ class BoundaryAdherenceMetric:
                     column_scores[column] = float(score)
                 except Exception as e:
                     print(f"Error computing BoundaryAdherence for column {column}: {e}")
-                    # Skip this column but continue with others
+                    column_scores[column] = None
+                    failed_columns.append(column)
 
-            if not column_scores:
+            # Extract successful scores (exclude None values from failures)
+            successful_scores = [score for score in column_scores.values() if score is not None]
+
+            if not successful_scores:
                 return {
                     "aggregate_score": None,
-                    "column_scores": {},
+                    "column_scores": column_scores,
                     "compatible_columns": compatible_columns,
+                    "failed_columns": failed_columns,
+                    "successful_columns": 0,
                     "parameters": self.parameters,
                     "execution_time": time.time() - start_time,
                     "status": "success",
                     "message": "All column evaluations failed"
                 }
 
-            # Calculate aggregate score as mean of individual column scores
-            aggregate_score = float(np.mean(list(column_scores.values())))
+            # Calculate aggregate score as mean of successful column scores only
+            aggregate_score = float(np.mean(successful_scores))
 
             return {
                 "aggregate_score": aggregate_score,
                 "column_scores": column_scores,
                 "compatible_columns": compatible_columns,
+                "failed_columns": failed_columns,
+                "successful_columns": len(successful_scores),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
@@ -1004,6 +1023,7 @@ class CategoryAdherenceMetric:
 
             # Evaluate each column
             column_scores = {}
+            failed_columns = []
             for column in columns_to_evaluate:
                 try:
                     score = CategoryAdherence.compute(
@@ -1013,18 +1033,19 @@ class CategoryAdherenceMetric:
                     column_scores[column] = float(score)
                 except Exception as e:
                     print(f"Warning: Failed to compute CategoryAdherence for column '{column}': {str(e)}")
-                    column_scores[column] = 0.0
+                    column_scores[column] = None
+                    failed_columns.append(column)
 
-            # Calculate aggregate score (average of all column scores)
-            if column_scores:
-                aggregate_score = sum(column_scores.values()) / len(column_scores)
-            else:
-                aggregate_score = 0.0
+            # Calculate aggregate score - exclude failed (None) columns
+            successful_scores = [score for score in column_scores.values() if score is not None]
+            aggregate_score = float(np.mean(successful_scores)) if successful_scores else None
 
             return {
                 "aggregate_score": aggregate_score,
                 "column_scores": column_scores,
                 "compatible_columns": compatible_columns,
+                "failed_columns": failed_columns,
+                "successful_columns": len(successful_scores),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
