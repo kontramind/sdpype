@@ -21,7 +21,7 @@ from synthcity.metrics.eval_detection import (
 from synthcity.plugins.core.dataloader import GenericDataLoader
 
 # Import shared utilities from statistical metrics
-from sdpype.evaluation.statistical import get_columns_by_sdtype, get_encoded_numeric_columns
+from sdpype.evaluation.statistical import get_columns_by_sdtype, get_encoded_numeric_columns, log_column_selection
 
 
 def evaluate_detection_metrics(
@@ -157,7 +157,7 @@ def _convert_to_dataloader(df: pd.DataFrame, metadata: SingleTableMetadata,
         if encoding_config:
             # Get all encoded columns, excluding IDs (CRITICAL for valid detection!)
             usable_cols = get_encoded_numeric_columns(encoding_config, df, metadata, exclude_ids=True)
-            print(f"  Detection using {len(usable_cols)} encoded columns from config (IDs excluded, datetime included)")
+            log_column_selection("Detection", encoding_config, df, metadata, usable_cols, exclude_ids=True)
         else:
             # Fallback to old logic (with warning about potential ID leakage)
             print("  ⚠️  WARNING: No encoding config provided")
