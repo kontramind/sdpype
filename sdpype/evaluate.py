@@ -65,6 +65,7 @@ def main(cfg: DictConfig) -> None:
     DECODED_METRICS = {
         'tv_complement',        # Needs original categorical columns
         'table_structure',      # Needs original table structure
+        'semantic_structure',   # Needs original sdtypes for comparison
         'boundary_adherence',   # Needs original numeric ranges
         'category_adherence',   # Needs original categories
         'new_row_synthesis'     # Needs to compare original rows
@@ -250,6 +251,80 @@ def main(cfg: DictConfig) -> None:
             console.print(full_comparison)
     else:
         console.print("❌ TableStructure failed", style="bold red")
+
+    # SemanticStructure results table
+    if "semantic_structure" in metrics and metrics["semantic_structure"]["status"] == "success":
+        ss_result = metrics["semantic_structure"]
+
+        # Get parameters info for display
+        params_info = ss_result["parameters"]
+        params_display = str(params_info) if params_info else "no parameters"
+
+        # Create SemanticStructure results table
+        ss_table = Table(title=f"✅ SemanticStructure Results ({params_display})", show_header=True, header_style="bold blue")
+        ss_table.add_column("Metric", style="cyan", no_wrap=True)
+        ss_table.add_column("Value", style="bright_green", justify="right")
+
+        ss_table.add_row("Overall Score", f"{ss_result['score']:.3f}")
+
+        # Add summary information if available
+        if 'summary' in ss_result:
+            summary = ss_result['summary']
+            ss_table.add_row("Matching Columns", str(summary['matching_columns']))
+            ss_table.add_row("Sdtype Mismatches", str(summary['sdtype_mismatches']))
+            ss_table.add_row("Missing in Synthetic", str(summary['missing_in_synthetic']))
+            ss_table.add_row("Only in Synthetic", str(summary['only_in_synthetic']))
+
+        console.print(ss_table)
+
+        # Show full column-by-column comparison table if available
+        if 'comparison_table' in ss_result and ss_result['comparison_table']:
+            comparison_table = ss_result['comparison_table']
+
+            # Create full comparison table
+            full_comparison = Table(
+                title="Column-by-Column Comparison (Semantic Types)",
+                show_header=True,
+                header_style="bold blue",
+                show_lines=False
+            )
+            full_comparison.add_column("Column", style="cyan", no_wrap=False)
+            full_comparison.add_column("Real sdtype", style="green")
+            full_comparison.add_column("Synthetic sdtype", style="magenta")
+            full_comparison.add_column("Status", style="white")
+
+            # Status display mapping
+            status_display = {
+                "match": "✓ Match",
+                "sdtype_mismatch": "⚠ Sdtype mismatch",
+                "missing_in_synthetic": "✗ Missing in synth",
+                "only_in_synthetic": "⚠ Only in synth"
+            }
+
+            # Status colors
+            status_colors = {
+                "match": "bright_green",
+                "sdtype_mismatch": "yellow",
+                "missing_in_synthetic": "red",
+                "only_in_synthetic": "yellow"
+            }
+
+            # Add all columns to the table
+            for item in comparison_table:
+                status_text = status_display.get(item['status'], item['status'])
+                status_color = status_colors.get(item['status'], "white")
+
+                full_comparison.add_row(
+                    item['column'],
+                    str(item['real_sdtype']) if item['real_sdtype'] else '-',
+                    str(item['synthetic_sdtype']) if item['synthetic_sdtype'] else '-',
+                    f"[{status_color}]{status_text}[/{status_color}]"
+                )
+
+            console.print("\n")
+            console.print(full_comparison)
+    else:
+        console.print("❌ SemanticStructure failed", style="bold red")
 
     # NewRowSynthesis results table
     if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":

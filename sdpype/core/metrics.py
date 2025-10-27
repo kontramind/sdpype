@@ -169,6 +169,13 @@ AVAILABLE_METRICS = {
             "outputs": ["score"],
             "reference": "SDMetrics library - Single table diagnostic metric for structure validation"
         },
+        "semantic_structure": {
+            "description": "Measures whether synthetic data captures the same semantic column types (sdtypes) as real data, more forgiving than strict dtype matching",
+            "library": "sdpype",
+            "parameters": {},  # No configurable parameters
+            "outputs": ["score", "summary", "column_details", "comparison_table"],
+            "reference": "Uses SDV metadata sdtypes (numerical, categorical, datetime, etc.) instead of pandas dtypes (int64, float64, object, etc.) for semantic type comparison"
+        },
         "boundary_adherence": {
             "description": "Measures whether synthetic column values respect the min/max boundaries of real data",
             "library": "sdmetrics",
