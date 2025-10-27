@@ -188,11 +188,56 @@ def main(cfg: DictConfig) -> None:
         # Create TableStructure results table
         ts_table = Table(title=f"✅ TableStructure Results ({params_display})", show_header=True, header_style="bold blue")
         ts_table.add_column("Metric", style="cyan", no_wrap=True)
-        ts_table.add_column("Score", style="bright_green", justify="right")
+        ts_table.add_column("Value", style="bright_green", justify="right")
 
-        ts_table.add_row("Table Structure Score", f"{ts_result['score']:.3f}")
+        ts_table.add_row("Overall Score", f"{ts_result['score']:.3f}")
+
+        # Add summary information if available (backward compatible)
+        if 'summary' in ts_result:
+            summary = ts_result['summary']
+            ts_table.add_row("Matching Columns", str(summary['matching_columns']))
+            ts_table.add_row("Dtype Mismatches", str(summary['dtype_mismatches']))
+            ts_table.add_row("Missing in Synthetic", str(summary['missing_in_synthetic']))
+            ts_table.add_row("Only in Synthetic", str(summary['only_in_synthetic']))
 
         console.print(ts_table)
+
+        # Show detailed comparison preview if there are mismatches
+        if 'summary' in ts_result and 'comparison_table' in ts_result:
+            summary = ts_result['summary']
+            has_issues = (summary['dtype_mismatches'] > 0 or
+                         summary['missing_in_synthetic'] > 0 or
+                         summary['only_in_synthetic'] > 0)
+
+            if has_issues:
+                console.print("\n⚠️  Column mismatches detected. See full comparison in statistical_report_*.txt", style="yellow")
+
+                # Show a preview of the first few mismatches
+                comparison_table = ts_result['comparison_table']
+                mismatched_items = [item for item in comparison_table if item['status'] != 'match']
+
+                if mismatched_items:
+                    preview_table = Table(title="Preview of Column Mismatches (first 5)", show_header=True, header_style="bold yellow")
+                    preview_table.add_column("Column", style="cyan")
+                    preview_table.add_column("Real dtype", style="green")
+                    preview_table.add_column("Synthetic dtype", style="magenta")
+                    preview_table.add_column("Status", style="yellow")
+
+                    status_display = {
+                        "dtype_mismatch": "⚠ Dtype mismatch",
+                        "missing_in_synthetic": "✗ Missing in synth",
+                        "only_in_synthetic": "⚠ Only in synth"
+                    }
+
+                    for item in mismatched_items[:5]:  # Show first 5 mismatches
+                        preview_table.add_row(
+                            item['column'],
+                            str(item['real_dtype']) if item['real_dtype'] else '-',
+                            str(item['synthetic_dtype']) if item['synthetic_dtype'] else '-',
+                            status_display.get(item['status'], item['status'])
+                        )
+
+                    console.print(preview_table)
     else:
         console.print("❌ TableStructure failed", style="bold red")
 
