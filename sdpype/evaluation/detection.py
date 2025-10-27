@@ -14,53 +14,38 @@ from sdv.metadata import SingleTableMetadata
 # Import synthcity detection evaluators
 from synthcity.metrics.eval_detection import (
     SyntheticDetectionGMM,
-    SyntheticDetectionXGB, 
+    SyntheticDetectionXGB,
     SyntheticDetectionMLP,
     SyntheticDetectionLinear
 )
 from synthcity.plugins.core.dataloader import GenericDataLoader
 
+# Import shared utilities from statistical metrics
+from sdpype.evaluation.statistical import get_columns_by_sdtype, get_encoded_numeric_columns, log_column_selection
 
-def get_columns_by_sdtype(metadata: SingleTableMetadata, sdtypes: list) -> list:
-    """
-    Extract column names that match specified sdtypes from metadata.
-
-    Args:
-        metadata: SDV SingleTableMetadata object
-        sdtypes: List of sdtypes to filter (e.g., ['numerical', 'categorical'])
-
-    Returns:
-        List of column names matching the specified sdtypes
-    """
-    if not metadata or not hasattr(metadata, 'columns'):
-        return []
-
-    columns = []
-    for column_name, column_info in metadata.columns.items():
-        sdtype = column_info.get('sdtype', 'unknown')
-        if sdtype in sdtypes:
-            columns.append(column_name)
-
-    return columns
 
 def evaluate_detection_metrics(
-    original: pd.DataFrame, 
-    synthetic: pd.DataFrame, 
+    original: pd.DataFrame,
+    synthetic: pd.DataFrame,
     metadata: SingleTableMetadata,
     methods_config: List[Dict[str, Any]],
     common_params: Dict[str, Any],
-    experiment_name: str
+    experiment_name: str,
+    encoding_config: dict = None
 ) -> Dict[str, Any]:
     """
     Evaluate detection-based metrics using synthcity's proven implementations.
-    
+
     Args:
-        original: Original dataset
-        synthetic: Synthetic dataset  
+        original: Original dataset (encoded)
+        synthetic: Synthetic dataset (encoded)
         metadata: SDV metadata
         methods_config: List of detection methods to run
+        common_params: Common parameters for all detection methods
         experiment_name: Experiment identifier
-        
+        encoding_config: Encoding configuration dict (from load_encoding_config) used to
+                        determine which columns are numeric and exclude IDs
+
     Returns:
         Complete detection metrics results
     """
@@ -82,13 +67,13 @@ def evaluate_detection_metrics(
     
     # Convert to synthcity DataLoader objects
     try:
-        original_loader = _convert_to_dataloader(original, metadata)
-        synthetic_loader = _convert_to_dataloader(synthetic, metadata)
-        
+        original_loader = _convert_to_dataloader(original, metadata, encoding_config)
+        synthetic_loader = _convert_to_dataloader(synthetic, metadata, encoding_config)
+
         if original_loader is None or synthetic_loader is None:
             results["error"] = "Failed to convert data to synthcity DataLoader format"
             return results
-            
+
     except Exception as e:
         results["error"] = f"Data conversion error: {str(e)}"
         return results
@@ -152,34 +137,55 @@ def evaluate_detection_metrics(
     return results
 
 
-def _convert_to_dataloader(df: pd.DataFrame, metadata: SingleTableMetadata) -> GenericDataLoader:
+def _convert_to_dataloader(df: pd.DataFrame, metadata: SingleTableMetadata,
+                          encoding_config: dict = None) -> GenericDataLoader:
     """
-    Convert pandas DataFrame to synthcity DataLoader, filtering to numeric-compatible columns only.
+    Convert pandas DataFrame to synthcity DataLoader, using encoding config to determine
+    which columns are numeric and excluding ID columns.
+
+    Args:
+        df: Encoded DataFrame (all-numeric)
+        metadata: SDV metadata
+        encoding_config: Encoding configuration dict (from load_encoding_config)
+
+    Returns:
+        GenericDataLoader with filtered columns (excludes IDs, includes datetime)
     """
 
     try:
-        # Get columns that are either numerical OR categorical with numeric representation
-        numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-        categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+        # Use encoding config as source of truth for which columns are numeric
+        if encoding_config:
+            # Get all encoded columns, excluding IDs (CRITICAL for valid detection!)
+            usable_cols = get_encoded_numeric_columns(encoding_config, df, metadata, exclude_ids=True)
+            log_column_selection("Detection", encoding_config, df, metadata, usable_cols, exclude_ids=True)
+        else:
+            # Fallback to old logic (with warning about potential ID leakage)
+            print("  ⚠️  WARNING: No encoding config provided")
+            print("     Using fallback column detection - ID columns may be included!")
+            print("     This can cause invalid detection results due to data leakage")
 
-        # Filter categorical columns to only those with numeric dtype
-        numeric_categorical_cols = [
-            col for col in categorical_cols
-            if pd.api.types.is_numeric_dtype(df[col])
-        ]
+            # Get columns that are either numerical OR categorical with numeric representation
+            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
 
-        # Combine numerical + numeric categorical columns (exclude datetime and strings)
-        usable_cols = numeric_cols + numeric_categorical_cols
+            # Filter categorical columns to only those with numeric dtype
+            numeric_categorical_cols = [
+                col for col in categorical_cols
+                if pd.api.types.is_numeric_dtype(df[col])
+            ]
+
+            # Combine numerical + numeric categorical columns (datetime excluded in fallback)
+            usable_cols = numeric_cols + numeric_categorical_cols
 
         if not usable_cols:
-            raise ValueError("No numerical or numerically-encoded categorical columns found for detection metrics")
+            raise ValueError("No numeric columns found for detection metrics")
 
         # Filter dataframe to usable columns only
         df_filtered = df[usable_cols].copy()
 
         loader = GenericDataLoader(df_filtered)
         return loader
-        
+
     except Exception as e:
         print(f"Error converting DataFrame to DataLoader: {e}")
         return None

@@ -86,6 +86,120 @@ def get_columns_by_sdtype(metadata: dict, sdtypes: list) -> list:
 
     return columns
 
+
+def get_encoded_numeric_columns(encoding_config: dict, encoded_df: pd.DataFrame,
+                                metadata: SingleTableMetadata, exclude_ids: bool = True) -> list:
+    """
+    Get columns that are numeric in the encoded DataFrame based on encoding config.
+
+    This is the SOURCE OF TRUTH for which columns should be used in encoded data metrics.
+    All transformers in the encoding config produce numeric output, so any column that
+    was encoded will be numeric in the resulting DataFrame.
+
+    Handles:
+    - Direct column transformations (e.g., age -> numeric)
+    - OneHotEncoder expansion (e.g., city -> city.NYC, city.LA, city.SF)
+    - ID column exclusion (IDs shouldn't be in distance metrics)
+
+    Args:
+        encoding_config: Dict from load_encoding_config() with 'transformers' key
+        encoded_df: The encoded DataFrame (to get actual column names after OneHot expansion)
+        metadata: SDV SingleTableMetadata (to identify ID columns)
+        exclude_ids: Whether to exclude ID columns from metrics (default: True)
+
+    Returns:
+        List of column names that are numeric and suitable for encoded data metrics
+
+    Example:
+        >>> config = load_encoding_config('encoding.yaml')
+        >>> numeric_cols = get_encoded_numeric_columns(config, encoded_df, metadata)
+        >>> # Returns: ['age', 'income', 'date_encoded', 'city.NYC', 'city.LA']
+    """
+    # Get base column names from transformers config (these were encoded)
+    encoded_base_cols = set(encoding_config.get('transformers', {}).keys())
+
+    # Get ID columns to exclude
+    id_cols = set(get_columns_by_sdtype(metadata, ['id'])) if exclude_ids else set()
+
+    # Include columns that either:
+    # 1. Are directly in transformers config (e.g., 'age')
+    # 2. Start with a base column name (for OneHot expansion like 'city.NYC' -> 'city')
+    numeric_cols = []
+    for col in encoded_df.columns:
+        # Handle OneHot expansion: city.NYC -> city
+        base_col = col.split('.')[0]
+
+        # Skip ID columns
+        if col in id_cols or base_col in id_cols:
+            continue
+
+        # Include if the column or its base was encoded
+        if col in encoded_base_cols or base_col in encoded_base_cols:
+            numeric_cols.append(col)
+
+    return numeric_cols
+
+
+def log_column_selection(metric_name: str, encoding_config: dict, encoded_df: pd.DataFrame,
+                         metadata: SingleTableMetadata, usable_cols: list, exclude_ids: bool = True):
+    """
+    Log detailed information about column selection for metrics using Rich formatting.
+
+    Args:
+        metric_name: Name of the metric being evaluated
+        encoding_config: Encoding configuration dict
+        encoded_df: The encoded DataFrame
+        metadata: SDV SingleTableMetadata
+        usable_cols: List of columns that will be used for evaluation
+        exclude_ids: Whether ID columns were excluded
+    """
+    from rich.panel import Panel
+    from rich.text import Text
+
+    # Get information about columns
+    all_encoded_cols = set(encoding_config.get('transformers', {}).keys())
+    id_cols = set(get_columns_by_sdtype(metadata, ['id'])) if exclude_ids else set()
+    datetime_cols = set(get_columns_by_sdtype(metadata, ['datetime']))
+
+    # Identify datetime columns that are in usable_cols
+    datetime_in_use = [col for col in usable_cols if col.split('.')[0] in datetime_cols]
+
+    # Identify one-hot encoded columns (contain a dot)
+    onehot_cols = [col for col in usable_cols if '.' in col]
+    onehot_base = set([col.split('.')[0] for col in onehot_cols])
+
+    # Build info text
+    info_lines = []
+    info_lines.append(f"[bold cyan]📊 {metric_name} - Column Selection[/bold cyan]")
+    info_lines.append(f"[green]✓[/green] Total encoded columns from config: [bold]{len(all_encoded_cols)}[/bold]")
+
+    if id_cols:
+        id_list = ', '.join(sorted(id_cols))
+        info_lines.append(f"[yellow]⊘[/yellow] Excluded ID columns ({len(id_cols)}): {id_list}")
+
+    if datetime_in_use:
+        dt_list = ', '.join(sorted(set([col.split('.')[0] for col in datetime_in_use])))
+        info_lines.append(f"[blue]◷[/blue] Including datetime columns ({len(set([col.split('.')[0] for col in datetime_in_use]))}): {dt_list}")
+
+    if onehot_base:
+        onehot_list = ', '.join(sorted(onehot_base))
+        info_lines.append(f"[magenta]⊕[/magenta] One-hot encoded features ({len(onehot_base)}): {onehot_list}")
+        info_lines.append(f"    → Expanded to {len(onehot_cols)} binary columns")
+
+    info_lines.append(f"[bold green]→[/bold green] Final evaluation set: [bold]{len(usable_cols)}[/bold] columns")
+
+    # Show first few column names if reasonable
+    if len(usable_cols) <= 10:
+        col_preview = ', '.join(usable_cols)
+        info_lines.append(f"    Columns: {col_preview}")
+    else:
+        col_preview = ', '.join(usable_cols[:5])
+        info_lines.append(f"    Columns (first 5): {col_preview}, ...")
+
+    # Print with Rich
+    print("\n".join(info_lines))
+    print()
+
 class AlphaPrecisionMetric:
     """Alpha Precision metric implementation"""
 
@@ -93,29 +207,32 @@ class AlphaPrecisionMetric:
         self.evaluator = AlphaPrecision()
         self.parameters = parameters  # Store for reporting
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Alpha Precision metric"""
 
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                log_column_selection("Alpha Precision", encoding_config, original, metadata, usable_cols)
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  Alpha Precision using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for Alpha Precision metric")
+                raise ValueError("No numeric columns found for Alpha Precision metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
@@ -164,28 +281,31 @@ class PRDCScoreMetric:
         self.parameters = parameters
         self.evaluator = PRDCScore(nearest_k=parameters.get("nearest_k", 5))
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate PRDC Score metric"""
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                log_column_selection("PRDC Score", encoding_config, original, metadata, usable_cols)
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  PRDC Score using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for PRDC Score metric")
+                raise ValueError("No numeric columns found for PRDC Score metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
@@ -226,28 +346,31 @@ class WassersteinDistanceMetric:
         self.parameters = parameters
         self.evaluator = WassersteinDistance()
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Wasserstein Distance metric"""
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                log_column_selection("Wasserstein Distance", encoding_config, original, metadata, usable_cols)
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  Wasserstein Distance using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for Wasserstein Distance metric")
+                raise ValueError("No numeric columns found for Wasserstein Distance metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
@@ -283,28 +406,31 @@ class MaximumMeanDiscrepancyMetric:
         kernel = parameters.get("kernel", "rbf")
         self.evaluator = MaximumMeanDiscrepancy(kernel=kernel)
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Maximum Mean Discrepancy metric"""
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                log_column_selection("Maximum Mean Discrepancy", encoding_config, original, metadata, usable_cols)
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  Maximum Mean Discrepancy using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for Maximum Mean Discrepancy metric")
+                raise ValueError("No numeric columns found for Maximum Mean Discrepancy metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
@@ -343,28 +469,31 @@ class JensenShannonSynthcityMetric:
         n_histogram_bins = parameters.get("n_histogram_bins", 10)
         self.evaluator = JensenShannonDistance(normalize=normalize, n_histogram_bins=n_histogram_bins)
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Jensen-Shannon Distance metric using Synthcity"""
         start_time = time.time()
 
         try:
-            # Get columns that are either numerical OR categorical with numeric representation
-            numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
-            categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
-
-            # Filter categorical columns to only those with numeric dtype
-            numeric_categorical_cols = [
-                col for col in categorical_cols
-                if pd.api.types.is_numeric_dtype(original[col])
-            ]
-
-            # Combine numerical + numeric categorical columns
-            usable_cols = numeric_cols + numeric_categorical_cols
+            # Use encoding config as source of truth for which columns are numeric
+            if encoding_config:
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                log_column_selection("Jensen-Shannon Distance (Synthcity)", encoding_config, original, metadata, usable_cols)
+            else:
+                # Fallback to old logic if no encoding config provided
+                numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+                datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+                categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+                numeric_categorical_cols = [
+                    col for col in categorical_cols
+                    if pd.api.types.is_numeric_dtype(original[col])
+                ]
+                usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+                print(f"  Jensen-Shannon Distance (Synthcity) using {len(usable_cols)} columns (fallback mode)")
 
             if not usable_cols:
-                raise ValueError("No numerical or numerically-encoded categorical columns found for Jensen-Shannon Distance metric")
+                raise ValueError("No numeric columns found for Jensen-Shannon Distance metric")
 
-            # Select only usable columns, excluding datetime and string columns
+            # Select only usable columns
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
@@ -405,7 +534,7 @@ class JensenShannonSyndatMetric:
         self.parameters = parameters
         self.n_unique_threshold = parameters.get("n_unique_threshold", 10)
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Jensen-Shannon Distance metric using SYNDAT"""
         start_time = time.time()
 
@@ -441,56 +570,89 @@ class JensenShannonNannyMLMetric:
     def __init__(self, **parameters):
         self.parameters = parameters
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Jensen-Shannon Distance metric using NannyML's binning methodology"""
         start_time = time.time()
 
         try:
             column_scores = {}
-            
-            for column in original.columns:
-                try:
-                    # Determine if column is continuous or categorical
-                    if pd.api.types.is_numeric_dtype(original[column]):
-                        # Continuous feature - use Doane's formula for binning
+
+            # Use encoding config as source of truth for which columns to evaluate
+            if encoding_config:
+                # Get columns that were encoded (all are numeric after encoding)
+                usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+                log_column_selection("Jensen-Shannon Distance (NannyML)", encoding_config, original, metadata, usable_cols)
+
+                # All encoded columns are numeric - use Doane's binning for all
+                for column in usable_cols:
+                    try:
+                        # Continuous feature - use Doane's formula for adaptive binning
                         n_bins = int(1 + np.log2(len(original)) + np.log2(1 + np.abs(original[column].skew()) / np.sqrt(6 * (len(original) - 2) / ((len(original) + 1) * (len(original) + 3)))))
                         n_bins = max(10, min(n_bins, 50))  # Bound bins between 10-50
-                        
+
                         # Create bins from original (reference)
                         bins = np.histogram_bin_edges(original[column].dropna(), bins=n_bins)
-                        
+
                         # Calculate histograms
                         orig_hist, _ = np.histogram(original[column].dropna(), bins=bins)
                         synth_hist, _ = np.histogram(synthetic[column].dropna(), bins=bins)
-                        
+
                         # Normalize to get probabilities
                         orig_prob = orig_hist / orig_hist.sum() if orig_hist.sum() > 0 else orig_hist
                         synth_prob = synth_hist / synth_hist.sum() if synth_hist.sum() > 0 else synth_hist
-                        
+
                         # Compute JSD
                         from scipy.spatial.distance import jensenshannon
                         jsd = jensenshannon(orig_prob, synth_prob)
-                        
-                    else:
-                        # Categorical feature - use frequency counts
-                        orig_counts = original[column].value_counts(normalize=True)
-                        synth_counts = synthetic[column].value_counts(normalize=True)
-                        
-                        # Align categories
-                        all_cats = orig_counts.index.union(synth_counts.index)
-                        orig_prob = orig_counts.reindex(all_cats, fill_value=0).values
-                        synth_prob = synth_counts.reindex(all_cats, fill_value=0).values
-                        
-                        from scipy.spatial.distance import jensenshannon
-                        jsd = jensenshannon(orig_prob, synth_prob)
-                    
-                    column_scores[column] = float(jsd)
 
-                except Exception as e:
-                    # print(f"🔴 Column '{column}' failed: {e}")
-                    # import traceback
-                    # traceback.print_exc()
-                    continue
+                        column_scores[column] = float(jsd)
+                    except Exception as e:
+                        # Skip column on failure but continue
+                        continue
+            else:
+                # Fallback mode: iterate all columns and determine type at runtime
+                print(f"  Jensen-Shannon Distance (NannyML) using fallback mode (no encoding config)")
+                for column in original.columns:
+                    try:
+                        # Determine if column is continuous or categorical
+                        if pd.api.types.is_numeric_dtype(original[column]):
+                            # Continuous feature - use Doane's formula for binning
+                            n_bins = int(1 + np.log2(len(original)) + np.log2(1 + np.abs(original[column].skew()) / np.sqrt(6 * (len(original) - 2) / ((len(original) + 1) * (len(original) + 3)))))
+                            n_bins = max(10, min(n_bins, 50))  # Bound bins between 10-50
+
+                            # Create bins from original (reference)
+                            bins = np.histogram_bin_edges(original[column].dropna(), bins=n_bins)
+
+                            # Calculate histograms
+                            orig_hist, _ = np.histogram(original[column].dropna(), bins=bins)
+                            synth_hist, _ = np.histogram(synthetic[column].dropna(), bins=bins)
+
+                            # Normalize to get probabilities
+                            orig_prob = orig_hist / orig_hist.sum() if orig_hist.sum() > 0 else orig_hist
+                            synth_prob = synth_hist / synth_hist.sum() if synth_hist.sum() > 0 else synth_hist
+
+                            # Compute JSD
+                            from scipy.spatial.distance import jensenshannon
+                            jsd = jensenshannon(orig_prob, synth_prob)
+
+                        else:
+                            # Categorical feature - use frequency counts
+                            orig_counts = original[column].value_counts(normalize=True)
+                            synth_counts = synthetic[column].value_counts(normalize=True)
+
+                            # Align categories
+                            all_cats = orig_counts.index.union(synth_counts.index)
+                            orig_prob = orig_counts.reindex(all_cats, fill_value=0).values
+                            synth_prob = synth_counts.reindex(all_cats, fill_value=0).values
+
+                            from scipy.spatial.distance import jensenshannon
+                            jsd = jensenshannon(orig_prob, synth_prob)
+
+                        column_scores[column] = float(jsd)
+
+                    except Exception as e:
+                        # Skip column on failure but continue
+                        continue
 
             # Calculate aggregate distance, lower=better
             if column_scores:
@@ -528,7 +690,7 @@ class NewRowSynthesisMetric:
         self.numerical_match_tolerance = parameters.get("numerical_match_tolerance", 0.01)
         self.synthetic_sample_size = parameters.get("synthetic_sample_size", None)
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate NewRowSynthesis metric"""
         start_time = time.time()
 
@@ -569,7 +731,7 @@ class KSComplementMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all numerical/datetime
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate KSComplement metric across compatible columns"""
         start_time = time.time()
 
@@ -594,25 +756,42 @@ class KSComplementMetric:
                 }
 
             column_scores = {}
+            failed_columns = []
             for column in compatible_columns:
                 try:
+                    # Convert datetime columns to datetime64 dtype if needed
+                    # SDMetrics KSComplement expects datetime64, not object/string
+                    orig_col = original[column]
+                    synth_col = synthetic[column]
+
+                    # Check if column should be datetime based on metadata
+                    col_sdtype = metadata.columns[column].get('sdtype') if column in metadata.columns else None
+                    if col_sdtype == 'datetime' and orig_col.dtype == 'object':
+                        # Convert string datetime to datetime64
+                        orig_col = pd.to_datetime(orig_col, errors='coerce')
+                        synth_col = pd.to_datetime(synth_col, errors='coerce')
+
                     score = KSComplement.compute(
-                        real_data=original[column],
-                        synthetic_data=synthetic[column]
+                        real_data=orig_col,
+                        synthetic_data=synth_col
                     )
                     column_scores[column] = float(score)
                 except Exception as e:
-                    # Handle individual column failures
-                    column_scores[column] = 0.0
+                    # Handle individual column failures - use None instead of 0.0
+                    column_scores[column] = None
+                    failed_columns.append(column)
                     print(f"Warning: KSComplement failed for column '{column}': {e}")
 
-            # Calculate aggregate score
-            aggregate_score = sum(column_scores.values()) / len(column_scores) if column_scores else 0.0
+            # Calculate aggregate score - exclude failed (None) columns
+            successful_scores = [score for score in column_scores.values() if score is not None]
+            aggregate_score = float(np.mean(successful_scores)) if successful_scores else None
 
             return {
-                "aggregate_score": float(aggregate_score),
+                "aggregate_score": aggregate_score,
                 "column_scores": column_scores,
                 "compatible_columns": compatible_columns,
+                "failed_columns": failed_columns,
+                "successful_columns": len(successful_scores),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
@@ -647,7 +826,7 @@ class TVComplementMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all categorical/boolean
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate TVComplement metric across compatible columns"""
         start_time = time.time()
 
@@ -672,6 +851,7 @@ class TVComplementMetric:
                 }
 
             column_scores = {}
+            failed_columns = []
             for column in compatible_columns:
                 try:
                     score = TVComplement.compute(
@@ -680,17 +860,21 @@ class TVComplementMetric:
                     )
                     column_scores[column] = float(score)
                 except Exception as e:
-                    # Handle individual column failures
-                    column_scores[column] = 0.0
+                    # Handle individual column failures - use None instead of 0.0
+                    column_scores[column] = None
+                    failed_columns.append(column)
                     print(f"Warning: TVComplement failed for column '{column}': {e}")
 
-            # Calculate aggregate score
-            aggregate_score = sum(column_scores.values()) / len(column_scores) if column_scores else 0.0
+            # Calculate aggregate score - exclude failed (None) columns
+            successful_scores = [score for score in column_scores.values() if score is not None]
+            aggregate_score = float(np.mean(successful_scores)) if successful_scores else None
 
             return {
-                "aggregate_score": float(aggregate_score),
+                "aggregate_score": aggregate_score,
                 "column_scores": column_scores,
                 "compatible_columns": compatible_columns,
+                "failed_columns": failed_columns,
+                "successful_columns": len(successful_scores),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
@@ -724,7 +908,7 @@ class TableStructureMetric:
     def __init__(self, **parameters):
         self.parameters = parameters
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate TableStructure metric"""
         start_time = time.time()
 
@@ -758,7 +942,7 @@ class BoundaryAdherenceMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all numerical/datetime
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate BoundaryAdherence metric across compatible columns"""
         start_time = time.time()
 
@@ -804,35 +988,56 @@ class BoundaryAdherenceMetric:
 
             # Calculate BoundaryAdherence for each compatible column
             column_scores = {}
+            failed_columns = []
             for column in columns_to_evaluate:
                 try:
+                    # Convert datetime columns to datetime64 dtype if needed
+                    # SDMetrics BoundaryAdherence expects datetime64, not object/string
+                    orig_col = original[column]
+                    synth_col = synthetic[column]
+
+                    # Check if column should be datetime based on metadata
+                    col_sdtype = metadata.columns[column].get('sdtype') if column in metadata.columns else None
+                    if col_sdtype == 'datetime' and orig_col.dtype == 'object':
+                        # Convert string datetime to datetime64
+                        orig_col = pd.to_datetime(orig_col, errors='coerce')
+                        synth_col = pd.to_datetime(synth_col, errors='coerce')
+
                     score = BoundaryAdherence.compute(
-                        real_data=original[column],
-                        synthetic_data=synthetic[column]
+                        real_data=orig_col,
+                        synthetic_data=synth_col
                     )
                     column_scores[column] = float(score)
                 except Exception as e:
                     print(f"Error computing BoundaryAdherence for column {column}: {e}")
-                    # Skip this column but continue with others
+                    column_scores[column] = None
+                    failed_columns.append(column)
 
-            if not column_scores:
+            # Extract successful scores (exclude None values from failures)
+            successful_scores = [score for score in column_scores.values() if score is not None]
+
+            if not successful_scores:
                 return {
                     "aggregate_score": None,
-                    "column_scores": {},
+                    "column_scores": column_scores,
                     "compatible_columns": compatible_columns,
+                    "failed_columns": failed_columns,
+                    "successful_columns": 0,
                     "parameters": self.parameters,
                     "execution_time": time.time() - start_time,
                     "status": "success",
                     "message": "All column evaluations failed"
                 }
 
-            # Calculate aggregate score as mean of individual column scores
-            aggregate_score = float(np.mean(list(column_scores.values())))
+            # Calculate aggregate score as mean of successful column scores only
+            aggregate_score = float(np.mean(successful_scores))
 
             return {
                 "aggregate_score": aggregate_score,
                 "column_scores": column_scores,
                 "compatible_columns": compatible_columns,
+                "failed_columns": failed_columns,
+                "successful_columns": len(successful_scores),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
@@ -867,7 +1072,7 @@ class CategoryAdherenceMetric:
         self.parameters = parameters
         self.target_columns = parameters.get("target_columns", None)  # None = all categorical/boolean
 
-    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata) -> Dict[str, Any]:
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate CategoryAdherence metric across compatible columns"""
         start_time = time.time()
 
@@ -903,6 +1108,7 @@ class CategoryAdherenceMetric:
 
             # Evaluate each column
             column_scores = {}
+            failed_columns = []
             for column in columns_to_evaluate:
                 try:
                     score = CategoryAdherence.compute(
@@ -912,18 +1118,19 @@ class CategoryAdherenceMetric:
                     column_scores[column] = float(score)
                 except Exception as e:
                     print(f"Warning: Failed to compute CategoryAdherence for column '{column}': {str(e)}")
-                    column_scores[column] = 0.0
+                    column_scores[column] = None
+                    failed_columns.append(column)
 
-            # Calculate aggregate score (average of all column scores)
-            if column_scores:
-                aggregate_score = sum(column_scores.values()) / len(column_scores)
-            else:
-                aggregate_score = 0.0
+            # Calculate aggregate score - exclude failed (None) columns
+            successful_scores = [score for score in column_scores.values() if score is not None]
+            aggregate_score = float(np.mean(successful_scores)) if successful_scores else None
 
             return {
                 "aggregate_score": aggregate_score,
                 "column_scores": column_scores,
                 "compatible_columns": compatible_columns,
+                "failed_columns": failed_columns,
+                "successful_columns": len(successful_scores),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
@@ -961,7 +1168,8 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
                                 reference_data_encoded: pd.DataFrame = None,
                                 synthetic_data_encoded: pd.DataFrame = None,
                                 encoded_metrics: set = None,
-                                decoded_metrics: set = None) -> Dict[str, Any]:
+                                decoded_metrics: set = None,
+                                encoding_config: dict = None) -> Dict[str, Any]:
     """
     Evaluate configured statistical metrics with data format routing
 
@@ -977,6 +1185,8 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
         synthetic_data_encoded: Encoded synthetic data (for synthcity metrics)
         encoded_metrics: Set of metric names that need encoded data
         decoded_metrics: Set of metric names that need decoded data
+        encoding_config: Encoding configuration dict (from load_encoding_config) used to
+                        determine which columns are numeric in encoded data
 
     Returns:
         Complete statistical metrics results
@@ -1033,7 +1243,7 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
 
         try:
             evaluator = get_metric_evaluator(metric_name, parameters)
-            metric_result = evaluator.evaluate(ref_data, syn_data, metadata)
+            metric_result = evaluator.evaluate(ref_data, syn_data, metadata, encoding_config=encoding_config)
             results["metrics"][metric_name] = metric_result
 
             # Collect scores for overall calculation
@@ -1282,18 +1492,24 @@ Metrics Results
   Status: {ks_result['message']}
 """
             else:
+                # Format aggregate score (handle None for failed columns)
+                agg_score_str = f"{ks_result['aggregate_score']:.3f}" if ks_result['aggregate_score'] is not None else "N/A (all columns failed)"
+
                 report += f"""KSComplement Results:
   Parameters: target_columns={target_cols}
   Execution time: {ks_result['execution_time']:.2f}s
 
   Distribution Similarity:
-  → Aggregate Score:   {ks_result['aggregate_score']:.3f}
+  → Aggregate Score:   {agg_score_str}
   → Columns Evaluated: {len(ks_result['compatible_columns'])}
+  → Successful:        {ks_result.get('successful_columns', 'unknown')}
+  → Failed:            {len(ks_result.get('failed_columns', []))}
 
   Individual Column Scores:"""
                 for col, score in ks_result['column_scores'].items():
+                    score_str = f"{score:.3f}" if score is not None else "FAILED"
                     report += f"""
-    → {col}: {score:.3f}"""
+    → {col}: {score_str}"""
                 report += "\n"
         else:
             report += f"""KSComplement: ERROR
@@ -1315,18 +1531,24 @@ Metrics Results
   Status: {tv_result['message']}
 """
             else:
+                # Format aggregate score (handle None for failed columns)
+                agg_score_str = f"{tv_result['aggregate_score']:.3f}" if tv_result['aggregate_score'] is not None else "N/A (all columns failed)"
+
                 report += f"""TVComplement Results:
   Parameters: target_columns={target_cols}
   Execution time: {tv_result['execution_time']:.2f}s
 
   Categorical Distribution Similarity:
-  → Aggregate Score:   {tv_result['aggregate_score']:.3f}
+  → Aggregate Score:   {agg_score_str}
   → Columns Evaluated: {len(tv_result['compatible_columns'])}
+  → Successful:        {tv_result.get('successful_columns', 'unknown')}
+  → Failed:            {len(tv_result.get('failed_columns', []))}
 
   Individual Column Scores:"""
                 for col, score in tv_result['column_scores'].items():
+                    score_str = f"{score:.3f}" if score is not None else "FAILED"
                     report += f"""
-    → {col}: {score:.3f}"""
+    → {col}: {score_str}"""
                 report += "\n"
         else:
             report += f"""TVComplement: ERROR
@@ -1363,18 +1585,24 @@ Metrics Results
   Status: {ba_result['message']}
 """
             else:
+                # Format aggregate score (handle None for failed columns)
+                agg_score_str = f"{ba_result['aggregate_score']:.3f}" if ba_result['aggregate_score'] is not None else "N/A (all columns failed)"
+
                 report += f"""BoundaryAdherence Results:
   Parameters: target_columns={target_cols}
   Execution time: {ba_result['execution_time']:.2f}s
 
   Boundary Compliance:
-  → Aggregate Score:   {ba_result['aggregate_score']:.3f}
+  → Aggregate Score:   {agg_score_str}
   → Columns Evaluated: {len(ba_result['compatible_columns'])}
+  → Successful:        {ba_result.get('successful_columns', 'unknown')}
+  → Failed:            {len(ba_result.get('failed_columns', []))}
 
   Individual Column Scores:"""
                 for col, score in ba_result['column_scores'].items():
+                    score_str = f"{score:.3f}" if score is not None else "FAILED"
                     report += f"""
-    → {col}: {score:.3f}"""
+    → {col}: {score_str}"""
                 report += "\n"
         else:
             report += f"""BoundaryAdherence: ERROR
@@ -1396,18 +1624,24 @@ Metrics Results
   Status: {ca_result['message']}
 """
             else:
+                # Format aggregate score (handle None for failed columns)
+                agg_score_str = f"{ca_result['aggregate_score']:.3f}" if ca_result['aggregate_score'] is not None else "N/A (all columns failed)"
+
                 report += f"""CategoryAdherence Results:
   Parameters: target_columns={target_cols}
   Execution time: {ca_result['execution_time']:.2f}s
 
   Category Compliance:
-  → Aggregate Score:   {ca_result['aggregate_score']:.3f}
+  → Aggregate Score:   {agg_score_str}
   → Columns Evaluated: {len(ca_result['compatible_columns'])}
+  → Successful:        {ca_result.get('successful_columns', 'unknown')}
+  → Failed:            {len(ca_result.get('failed_columns', []))}
 
   Individual Column Scores:"""
                 for col, score in ca_result['column_scores'].items():
+                    score_str = f"{score:.3f}" if score is not None else "FAILED"
                     report += f"""
-    → {col}: {score:.3f}"""
+    → {col}: {score_str}"""
                 report += "\n"
         else:
             report += f"""CategoryAdherence: ERROR

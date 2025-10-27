@@ -13,6 +13,7 @@ from rich.table import Table
 
 from sdv.metadata import SingleTableMetadata
 from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate_statistical_report
+from sdpype.encoding import load_encoding_config
 
 console = Console()
 
@@ -45,7 +46,9 @@ def main(cfg: DictConfig) -> None:
     config_hash = _get_config_hash()
 
     # Define which metrics need encoded vs decoded data
-    # Metrics from synthcity need all-numeric (encoded) data
+    # Metrics that need all-numeric (encoded) data:
+    # - Synthcity distance metrics require numeric data
+    # - KSComplement works on distributions and should evaluate ALL encoded columns
     ENCODED_METRICS = {
         'alpha_precision',
         'prdc_score',
@@ -53,17 +56,18 @@ def main(cfg: DictConfig) -> None:
         'jensenshannon_syndat',
         'jensenshannon_nannyml',
         'wasserstein_distance',
-        'maximum_mean_discrepancy'
+        'maximum_mean_discrepancy',
+        'ks_complement'  # Moved to encoded to evaluate all numeric columns including one-hot
     }
 
-    # Metrics from SDV understand sdtypes (decoded/native data)
+    # Metrics from SDV that understand sdtypes (decoded/native data)
+    # These need semantic understanding of original data types
     DECODED_METRICS = {
-        'ks_complement',
-        'tv_complement',
-        'table_structure',
-        'boundary_adherence',
-        'category_adherence',
-        'new_row_synthesis'
+        'tv_complement',        # Needs original categorical columns
+        'table_structure',      # Needs original table structure
+        'boundary_adherence',   # Needs original numeric ranges
+        'category_adherence',   # Needs original categories
+        'new_row_synthesis'     # Needs to compare original rows
     }
 
     # Determine which data formats we need based on configured metrics
@@ -82,6 +86,17 @@ def main(cfg: DictConfig) -> None:
     if not Path(metadata_path).exists():
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
     metadata = SingleTableMetadata.load_from_json(metadata_path)
+
+    # Load encoding config (for determining numeric columns in encoded data)
+    encoding_config = None
+    if needs_encoded and hasattr(cfg, 'encoding') and cfg.encoding.get('config_file'):
+        encoding_config_path = Path(cfg.encoding.config_file)
+        if encoding_config_path.exists():
+            print(f"📋 Loading encoding config: {encoding_config_path}")
+            encoding_config = load_encoding_config(encoding_config_path)
+        else:
+            print(f"⚠️  Warning: Encoding config not found at {encoding_config_path}")
+            print(f"   Metrics will use fallback column detection")
 
     # Load reference data (both formats if needed)
     base_name = f"{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}"
@@ -139,7 +154,8 @@ def main(cfg: DictConfig) -> None:
         reference_data_encoded=reference_data_encoded,
         synthetic_data_encoded=synthetic_data_encoded,
         encoded_metrics=ENCODED_METRICS,
-        decoded_metrics=DECODED_METRICS
+        decoded_metrics=DECODED_METRICS,
+        encoding_config=encoding_config
     )
 
     # Save statistical similarity results
