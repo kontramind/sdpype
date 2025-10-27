@@ -908,6 +908,109 @@ class TableStructureMetric:
     def __init__(self, **parameters):
         self.parameters = parameters
 
+    def _build_column_comparison(self, original: pd.DataFrame, synthetic: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Build detailed column comparison between original and synthetic data.
+
+        Following SDV's TableStructure logic:
+        - Numerator: columns with same name AND same pandas dtype
+        - Denominator: all combinations of (column name, dtype) across both datasets
+
+        Args:
+            original: Original DataFrame
+            synthetic: Synthetic DataFrame
+
+        Returns:
+            Dict with comparison details including counts and per-column status
+        """
+        # Get column information
+        real_cols = set(original.columns)
+        synth_cols = set(synthetic.columns)
+
+        # Initialize counters
+        n_matching = 0
+        n_dtype_mismatch = 0
+        n_missing = 0
+        n_extra = 0
+
+        # Build detailed comparison
+        column_details = {}
+        comparison_table = []
+
+        # Columns in both datasets
+        common_cols = real_cols & synth_cols
+        for col in sorted(common_cols):
+            real_dtype = str(original[col].dtype)
+            synth_dtype = str(synthetic[col].dtype)
+
+            if real_dtype == synth_dtype:
+                status = "match"
+                n_matching += 1
+            else:
+                status = "dtype_mismatch"
+                n_dtype_mismatch += 1
+
+            column_details[col] = {
+                "real_dtype": real_dtype,
+                "synthetic_dtype": synth_dtype,
+                "status": status
+            }
+            comparison_table.append({
+                "column": col,
+                "real_dtype": real_dtype,
+                "synthetic_dtype": synth_dtype,
+                "status": status
+            })
+
+        # Columns only in real data (missing in synthetic)
+        missing_cols = real_cols - synth_cols
+        for col in sorted(missing_cols):
+            real_dtype = str(original[col].dtype)
+            n_missing += 1
+
+            column_details[col] = {
+                "real_dtype": real_dtype,
+                "synthetic_dtype": None,
+                "status": "missing_in_synthetic"
+            }
+            comparison_table.append({
+                "column": col,
+                "real_dtype": real_dtype,
+                "synthetic_dtype": None,
+                "status": "missing_in_synthetic"
+            })
+
+        # Columns only in synthetic data (extra/unexpected)
+        extra_cols = synth_cols - real_cols
+        for col in sorted(extra_cols):
+            synth_dtype = str(synthetic[col].dtype)
+            n_extra += 1
+
+            column_details[col] = {
+                "real_dtype": None,
+                "synthetic_dtype": synth_dtype,
+                "status": "only_in_synthetic"
+            }
+            comparison_table.append({
+                "column": col,
+                "real_dtype": None,
+                "synthetic_dtype": synth_dtype,
+                "status": "only_in_synthetic"
+            })
+
+        return {
+            "summary": {
+                "total_real_columns": len(real_cols),
+                "total_synthetic_columns": len(synth_cols),
+                "matching_columns": n_matching,
+                "dtype_mismatches": n_dtype_mismatch,
+                "missing_in_synthetic": n_missing,
+                "only_in_synthetic": n_extra
+            },
+            "column_details": column_details,
+            "comparison_table": comparison_table
+        }
+
     def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate TableStructure metric"""
         start_time = time.time()
@@ -919,8 +1022,14 @@ class TableStructureMetric:
                 synthetic_data=synthetic
             )
 
+            # Build detailed column comparison
+            comparison_data = self._build_column_comparison(original, synthetic)
+
             return {
                 "score": float(score),
+                "summary": comparison_data["summary"],
+                "column_details": comparison_data["column_details"],
+                "comparison_table": comparison_data["comparison_table"],
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
@@ -1565,6 +1674,43 @@ Metrics Results
   Structure Similarity:
   → Table Structure Score: {ts_result['score']:.3f}
 """
+            # Add summary if available (backward compatible)
+            if 'summary' in ts_result:
+                summary = ts_result['summary']
+                report += f"""
+  Summary:
+  → Total columns (real/synthetic): {summary['total_real_columns']}/{summary['total_synthetic_columns']}
+  → Matching columns (name + dtype): {summary['matching_columns']}
+  → Dtype mismatches: {summary['dtype_mismatches']}
+  → Missing in synthetic: {summary['missing_in_synthetic']}
+  → Only in synthetic: {summary['only_in_synthetic']}
+"""
+
+            # Add column-by-column comparison table if available
+            if 'comparison_table' in ts_result and ts_result['comparison_table']:
+                report += f"""
+  Column-by-Column Comparison:
+  {'─' * 80}
+  {"Column":<25} {"Real dtype":<20} {"Synthetic dtype":<20} {"Status":<15}
+  {'─' * 80}
+"""
+                # Status symbols for better readability
+                status_symbols = {
+                    "match": "✓ Match",
+                    "dtype_mismatch": "⚠ Dtype mismatch",
+                    "missing_in_synthetic": "✗ Missing in synth",
+                    "only_in_synthetic": "⚠ Only in synth"
+                }
+
+                for item in ts_result['comparison_table']:
+                    col = item['column'][:24]  # Truncate long column names
+                    real_dtype = item['real_dtype'] if item['real_dtype'] else '-'
+                    synth_dtype = item['synthetic_dtype'] if item['synthetic_dtype'] else '-'
+                    status = status_symbols.get(item['status'], item['status'])
+
+                    report += f"  {col:<25} {real_dtype:<20} {synth_dtype:<20} {status:<15}\n"
+
+                report += f"  {'─' * 80}\n"
         else:
             report += f"""TableStructure: ERROR
   Error: {ts_result.get('error_message', 'Unknown error')}

@@ -188,11 +188,66 @@ def main(cfg: DictConfig) -> None:
         # Create TableStructure results table
         ts_table = Table(title=f"✅ TableStructure Results ({params_display})", show_header=True, header_style="bold blue")
         ts_table.add_column("Metric", style="cyan", no_wrap=True)
-        ts_table.add_column("Score", style="bright_green", justify="right")
+        ts_table.add_column("Value", style="bright_green", justify="right")
 
-        ts_table.add_row("Table Structure Score", f"{ts_result['score']:.3f}")
+        ts_table.add_row("Overall Score", f"{ts_result['score']:.3f}")
+
+        # Add summary information if available (backward compatible)
+        if 'summary' in ts_result:
+            summary = ts_result['summary']
+            ts_table.add_row("Matching Columns", str(summary['matching_columns']))
+            ts_table.add_row("Dtype Mismatches", str(summary['dtype_mismatches']))
+            ts_table.add_row("Missing in Synthetic", str(summary['missing_in_synthetic']))
+            ts_table.add_row("Only in Synthetic", str(summary['only_in_synthetic']))
 
         console.print(ts_table)
+
+        # Show full column-by-column comparison table if available
+        if 'comparison_table' in ts_result and ts_result['comparison_table']:
+            comparison_table = ts_result['comparison_table']
+
+            # Create full comparison table
+            full_comparison = Table(
+                title="Column-by-Column Comparison",
+                show_header=True,
+                header_style="bold blue",
+                show_lines=False
+            )
+            full_comparison.add_column("Column", style="cyan", no_wrap=False)
+            full_comparison.add_column("Real dtype", style="green")
+            full_comparison.add_column("Synthetic dtype", style="magenta")
+            full_comparison.add_column("Status", style="white")
+
+            # Status display mapping
+            status_display = {
+                "match": "✓ Match",
+                "dtype_mismatch": "⚠ Dtype mismatch",
+                "missing_in_synthetic": "✗ Missing in synth",
+                "only_in_synthetic": "⚠ Only in synth"
+            }
+
+            # Status colors
+            status_colors = {
+                "match": "bright_green",
+                "dtype_mismatch": "yellow",
+                "missing_in_synthetic": "red",
+                "only_in_synthetic": "yellow"
+            }
+
+            # Add all columns to the table
+            for item in comparison_table:
+                status_text = status_display.get(item['status'], item['status'])
+                status_color = status_colors.get(item['status'], "white")
+
+                full_comparison.add_row(
+                    item['column'],
+                    str(item['real_dtype']) if item['real_dtype'] else '-',
+                    str(item['synthetic_dtype']) if item['synthetic_dtype'] else '-',
+                    f"[{status_color}]{status_text}[/{status_color}]"
+                )
+
+            console.print("\n")
+            console.print(full_comparison)
     else:
         console.print("❌ TableStructure failed", style="bold red")
 
