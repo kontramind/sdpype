@@ -202,42 +202,52 @@ def main(cfg: DictConfig) -> None:
 
         console.print(ts_table)
 
-        # Show detailed comparison preview if there are mismatches
-        if 'summary' in ts_result and 'comparison_table' in ts_result:
-            summary = ts_result['summary']
-            has_issues = (summary['dtype_mismatches'] > 0 or
-                         summary['missing_in_synthetic'] > 0 or
-                         summary['only_in_synthetic'] > 0)
+        # Show full column-by-column comparison table if available
+        if 'comparison_table' in ts_result and ts_result['comparison_table']:
+            comparison_table = ts_result['comparison_table']
 
-            if has_issues:
-                console.print("\n⚠️  Column mismatches detected. See full comparison in statistical_report_*.txt", style="yellow")
+            # Create full comparison table
+            full_comparison = Table(
+                title="Column-by-Column Comparison",
+                show_header=True,
+                header_style="bold blue",
+                show_lines=False
+            )
+            full_comparison.add_column("Column", style="cyan", no_wrap=False)
+            full_comparison.add_column("Real dtype", style="green")
+            full_comparison.add_column("Synthetic dtype", style="magenta")
+            full_comparison.add_column("Status", style="white")
 
-                # Show a preview of the first few mismatches
-                comparison_table = ts_result['comparison_table']
-                mismatched_items = [item for item in comparison_table if item['status'] != 'match']
+            # Status display mapping
+            status_display = {
+                "match": "✓ Match",
+                "dtype_mismatch": "⚠ Dtype mismatch",
+                "missing_in_synthetic": "✗ Missing in synth",
+                "only_in_synthetic": "⚠ Only in synth"
+            }
 
-                if mismatched_items:
-                    preview_table = Table(title="Preview of Column Mismatches (first 5)", show_header=True, header_style="bold yellow")
-                    preview_table.add_column("Column", style="cyan")
-                    preview_table.add_column("Real dtype", style="green")
-                    preview_table.add_column("Synthetic dtype", style="magenta")
-                    preview_table.add_column("Status", style="yellow")
+            # Status colors
+            status_colors = {
+                "match": "bright_green",
+                "dtype_mismatch": "yellow",
+                "missing_in_synthetic": "red",
+                "only_in_synthetic": "yellow"
+            }
 
-                    status_display = {
-                        "dtype_mismatch": "⚠ Dtype mismatch",
-                        "missing_in_synthetic": "✗ Missing in synth",
-                        "only_in_synthetic": "⚠ Only in synth"
-                    }
+            # Add all columns to the table
+            for item in comparison_table:
+                status_text = status_display.get(item['status'], item['status'])
+                status_color = status_colors.get(item['status'], "white")
 
-                    for item in mismatched_items[:5]:  # Show first 5 mismatches
-                        preview_table.add_row(
-                            item['column'],
-                            str(item['real_dtype']) if item['real_dtype'] else '-',
-                            str(item['synthetic_dtype']) if item['synthetic_dtype'] else '-',
-                            status_display.get(item['status'], item['status'])
-                        )
+                full_comparison.add_row(
+                    item['column'],
+                    str(item['real_dtype']) if item['real_dtype'] else '-',
+                    str(item['synthetic_dtype']) if item['synthetic_dtype'] else '-',
+                    f"[{status_color}]{status_text}[/{status_color}]"
+                )
 
-                    console.print(preview_table)
+            console.print("\n")
+            console.print(full_comparison)
     else:
         console.print("❌ TableStructure failed", style="bold red")
 
