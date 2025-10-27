@@ -65,6 +65,7 @@ def main(cfg: DictConfig) -> None:
     DECODED_METRICS = {
         'tv_complement',        # Needs original categorical columns
         'table_structure',      # Needs original table structure
+        'semantic_structure',   # Needs original sdtypes for comparison
         'boundary_adherence',   # Needs original numeric ranges
         'category_adherence',   # Needs original categories
         'new_row_synthesis'     # Needs to compare original rows
