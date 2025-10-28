@@ -52,7 +52,7 @@ def main(cfg: DictConfig) -> None:
     # All detection metrics are from synthcity and need encoded (all-numeric) data
     metadata_path = cfg.data.metadata_file
     reference_encoded_path = f"experiments/data/encoded/reference_{base_name}.csv"
-    synthetic_encoded_path = f"experiments/data/synthetic/synthetic_data_{base_name}_encoded.csv"
+    synthetic_encoded_path = f"experiments/data/encoded/synthetic_{base_name}.csv"
 
     if not Path(metadata_path).exists():
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")

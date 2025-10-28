@@ -109,7 +109,7 @@ def main(cfg: DictConfig) -> None:
 
     if needs_encoded:
         reference_encoded_path = f"experiments/data/encoded/reference_{base_name}.csv"
-        synthetic_encoded_path = f"experiments/data/synthetic/synthetic_data_{base_name}_encoded.csv"
+        synthetic_encoded_path = f"experiments/data/encoded/synthetic_{base_name}.csv"
 
         if not Path(reference_encoded_path).exists():
             raise FileNotFoundError(f"Encoded reference data not found: {reference_encoded_path}")

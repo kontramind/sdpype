@@ -139,7 +139,7 @@ def main(cfg: DictConfig) -> None:
     print(f"✓ Encoded reference → {encoded_reference_path}")
 
     # Save encoded synthetic (for detection + encoded metrics)
-    encoded_synthetic_path = synthetic_dir / f"synthetic_data_{base_name}_encoded.csv"
+    encoded_synthetic_path = encoded_dir / f"synthetic_{base_name}.csv"
     encoded_synthetic.to_csv(encoded_synthetic_path, index=False)
     print(f"✓ Encoded synthetic → {encoded_synthetic_path}")
 
