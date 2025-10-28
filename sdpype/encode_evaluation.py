@@ -87,29 +87,22 @@ def main(cfg: DictConfig) -> None:
             f"Make sure generation stage completed successfully."
         )
 
-    reference_data = pd.read_csv(reference_file)
-    synthetic_data = pd.read_csv(synthetic_decoded_path)
+    # CRITICAL: Force categorical columns to load as strings to prevent pandas auto-conversion
+    # of numeric strings (e.g., "4835") to int64 when loading CSV
+    print(f"\n🔧 Preparing dtype specification for CSV loading...")
+    categorical_cols = [col for col, sdtype in config['sdtypes'].items() if sdtype == 'categorical']
+    dtype_spec = {col: str for col in categorical_cols}
 
+    if dtype_spec:
+        print(f"   Forcing {len(dtype_spec)} categorical columns to load as strings")
+        print(f"   Columns: {', '.join(categorical_cols)}")
+
+    reference_data = pd.read_csv(reference_file, dtype=dtype_spec)
+    synthetic_data = pd.read_csv(synthetic_decoded_path, dtype=dtype_spec)
+
+    print(f"\n📊 Loading datasets...")
     print(f"✓ Reference data: {reference_data.shape}")
     print(f"✓ Synthetic data: {synthetic_data.shape}")
-
-    # CRITICAL: Convert categorical columns to strings before encoding
-    # (CSVs may load numeric IDs as int64 instead of object)
-    print(f"\n🔄 Normalizing categorical column dtypes to strings...")
-    categorical_cols = [col for col, sdtype in config['sdtypes'].items() if sdtype == 'categorical']
-    converted_count = 0
-    for col in categorical_cols:
-        if col in reference_data.columns and reference_data[col].dtype != 'object':
-            reference_data[col] = reference_data[col].astype(str)
-            print(f"   ✓ Reference {col}: {reference_data[col].dtype} → object")
-            converted_count += 1
-        if col in synthetic_data.columns and synthetic_data[col].dtype != 'object':
-            synthetic_data[col] = synthetic_data[col].astype(str)
-            print(f"   ✓ Synthetic {col}: {synthetic_data[col].dtype} → object")
-            converted_count += 1
-
-    if converted_count == 0:
-        print(f"   ✓ All categorical columns already object type")
 
     # 3. Create and fit encoder on REFERENCE data
     print(f"\n🔧 Fitting encoders on REFERENCE data...")
