@@ -93,17 +93,23 @@ def main(cfg: DictConfig) -> None:
     print(f"✓ Reference data: {reference_data.shape}")
     print(f"✓ Synthetic data: {synthetic_data.shape}")
 
-    # Convert categorical columns to strings for consistent encoding
-    # (Prevents issues when CSVs load numeric IDs as int64 instead of object)
+    # CRITICAL: Convert categorical columns to strings before encoding
+    # (CSVs may load numeric IDs as int64 instead of object)
     print(f"\n🔄 Normalizing categorical column dtypes to strings...")
     categorical_cols = [col for col, sdtype in config['sdtypes'].items() if sdtype == 'categorical']
+    converted_count = 0
     for col in categorical_cols:
         if col in reference_data.columns and reference_data[col].dtype != 'object':
             reference_data[col] = reference_data[col].astype(str)
-            print(f"   ✓ Reference {col}: converted to object")
+            print(f"   ✓ Reference {col}: {reference_data[col].dtype} → object")
+            converted_count += 1
         if col in synthetic_data.columns and synthetic_data[col].dtype != 'object':
             synthetic_data[col] = synthetic_data[col].astype(str)
-            print(f"   ✓ Synthetic {col}: converted to object")
+            print(f"   ✓ Synthetic {col}: {synthetic_data[col].dtype} → object")
+            converted_count += 1
+
+    if converted_count == 0:
+        print(f"   ✓ All categorical columns already object type")
 
     # 3. Create and fit encoder on REFERENCE data
     print(f"\n🔧 Fitting encoders on REFERENCE data...")
