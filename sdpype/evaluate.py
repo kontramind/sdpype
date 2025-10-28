@@ -109,7 +109,7 @@ def main(cfg: DictConfig) -> None:
 
     if needs_encoded:
         reference_encoded_path = f"experiments/data/encoded/reference_{base_name}.csv"
-        synthetic_encoded_path = f"experiments/data/synthetic/synthetic_data_{base_name}_encoded.csv"
+        synthetic_encoded_path = f"experiments/data/encoded/synthetic_{base_name}.csv"
 
         if not Path(reference_encoded_path).exists():
             raise FileNotFoundError(f"Encoded reference data not found: {reference_encoded_path}")
@@ -134,8 +134,19 @@ def main(cfg: DictConfig) -> None:
         print(f"📊 Loading decoded reference data: {reference_decoded_path}")
         print(f"📊 Loading decoded synthetic data: {synthetic_decoded_path}")
 
-        reference_data_decoded = pd.read_csv(reference_decoded_path)
-        synthetic_data_decoded = pd.read_csv(synthetic_decoded_path)
+        # CRITICAL: Force categorical columns to load as strings to prevent pandas auto-conversion
+        # of numeric strings (e.g., "4835") back to int64
+        dtype_spec = {}
+        categorical_cols = [col for col, sdtype in metadata.columns.items()
+                          if sdtype.get('sdtype') == 'categorical']
+        for col in categorical_cols:
+            dtype_spec[col] = str
+
+        if dtype_spec:
+            print(f"🔧 Forcing {len(dtype_spec)} categorical columns to load as strings")
+
+        reference_data_decoded = pd.read_csv(reference_decoded_path, dtype=dtype_spec)
+        synthetic_data_decoded = pd.read_csv(synthetic_decoded_path, dtype=dtype_spec)
 
     # Set reference_data for display purposes (prefer decoded for original column names)
     reference_data = reference_data_decoded if reference_data_decoded is not None else reference_data_encoded

@@ -1,10 +1,10 @@
 stages:
-  encode_dataset:
-    cmd: python -m sdpype.encoding
+  encode_training:
+    cmd: python -m sdpype.encode_training
     deps:
+      - sdpype/encode_training.py
       - sdpype/encoding.py
       - ${data.training_file}
-      - ${data.reference_file}
       - ${encoding.config_file}
     params:
       - encoding
@@ -13,12 +13,10 @@ stages:
       - config_hash
     outs:
       - experiments/data/encoded/training_${experiment.name}_${config_hash}_${experiment.seed}.csv
-      - experiments/data/encoded/reference_${experiment.name}_${config_hash}_${experiment.seed}.csv
       - experiments/data/decoded/training_${experiment.name}_${config_hash}_${experiment.seed}.csv
-      - experiments/data/decoded/reference_${experiment.name}_${config_hash}_${experiment.seed}.csv
-      - experiments/models/encoders_${experiment.name}_${config_hash}_${experiment.seed}.pkl
+      - experiments/models/training_encoder_${experiment.name}_${config_hash}_${experiment.seed}.pkl
     metrics:
-      - experiments/metrics/encoding_${experiment.name}_${config_hash}_${experiment.seed}.json
+      - experiments/metrics/encoding_training_${experiment.name}_${config_hash}_${experiment.seed}.json
 
   train_sdg:
     cmd: python -m sdpype.training
@@ -26,7 +24,7 @@ stages:
       - sdpype/training.py
       - ${data.training_file}
       - ${data.metadata_file}
-      - experiments/models/encoders_${experiment.name}_${config_hash}_${experiment.seed}.pkl
+      - experiments/models/training_encoder_${experiment.name}_${config_hash}_${experiment.seed}.pkl
     params:
       - sdg
       - experiment.seed
@@ -43,7 +41,7 @@ stages:
       - sdpype/generation.py
       - ${data.reference_file}
       - experiments/models/sdg_model_${experiment.name}_${config_hash}_${experiment.seed}.pkl
-      - experiments/models/encoders_${experiment.name}_${config_hash}_${experiment.seed}.pkl
+      - experiments/models/training_encoder_${experiment.name}_${config_hash}_${experiment.seed}.pkl
     params:
       - generation
       - experiment.seed
@@ -55,6 +53,28 @@ stages:
     metrics:
       - experiments/metrics/generation_${experiment.name}_${config_hash}_${experiment.seed}.json
 
+  encode_evaluation:
+    cmd: python -m sdpype.encode_evaluation
+    deps:
+      - sdpype/encode_evaluation.py
+      - sdpype/encoding.py
+      - ${data.reference_file}
+      - ${encoding.config_file}
+      - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}_decoded.csv
+    params:
+      - encoding
+      - experiment.seed
+      - experiment.name
+      - config_hash
+    outs:
+      - experiments/data/encoded/reference_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/decoded/reference_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/encoded/synthetic_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/decoded/synthetic_${experiment.name}_${config_hash}_${experiment.seed}_decoded.csv
+      - experiments/models/evaluation_encoder_${experiment.name}_${config_hash}_${experiment.seed}.pkl
+    metrics:
+      - experiments/metrics/encoding_evaluation_${experiment.name}_${config_hash}_${experiment.seed}.json
+
   statistical_similarity:
     cmd: python -m sdpype.evaluate
     deps:
@@ -64,7 +84,7 @@ stages:
       - ${data.metadata_file}
       - experiments/data/encoded/reference_${experiment.name}_${config_hash}_${experiment.seed}.csv
       - experiments/data/decoded/reference_${experiment.name}_${config_hash}_${experiment.seed}.csv
-      - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}_encoded.csv
+      - experiments/data/encoded/synthetic_${experiment.name}_${config_hash}_${experiment.seed}.csv
       - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}_decoded.csv
     params:
       - evaluation
@@ -83,7 +103,7 @@ stages:
       - ${data.reference_file}
       - ${data.metadata_file}
       - experiments/data/encoded/reference_${experiment.name}_${config_hash}_${experiment.seed}.csv
-      - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}_encoded.csv
+      - experiments/data/encoded/synthetic_${experiment.name}_${config_hash}_${experiment.seed}.csv
     params:
       - evaluation.detection_evaluation
       - experiment.seed

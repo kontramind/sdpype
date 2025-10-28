@@ -16,16 +16,16 @@ experiment:
 # =============================================================================
 sdg:
   library: sdv
-  model_type: ctgan
+  model_type: tvae
   parameters: {}
 
 # =============================================================================
 # DATA CONFIGURATION
 # =============================================================================
 data:
-  training_file: experiments/data/processed/trn_sample_data.csv
-  reference_file: experiments/data/processed/ref_sample_data.csv
-  metadata_file: experiments/data/processed/sample_data_metadata.json
+  training_file: experiments/data/processed/canada_covid19_case_details_sample_5k.csv
+  reference_file: experiments/data/processed/canada_covid19_case_details_sample_5k.csv
+  metadata_file: experiments/data/processed/canada_covid19_case_details_sample_5k_encoded_metadata.json
 
 # =============================================================================
 # ENCODING CONFIGURATION
@@ -33,7 +33,7 @@ data:
 encoding:
   # Path to RDT encoding configuration YAML file
   # This file specifies transformers for each column
-  config_file: experiments/configs/encoding/sample_data_transformer.yaml
+  config_file: experiments/configs/encoding/canada_covid19_case_details.yaml
 
   # Whether to enable encoding stage (set to false to skip encoding)
   enabled: true
@@ -43,6 +43,18 @@ encoding:
 # =============================================================================
 generation:
   n_samples:       # Number of synthetic samples to generate # Set to null to match original dataset size
+
+# =============================================================================
+# POST-PROCESSING CONFIGURATION
+# =============================================================================
+post_processing:
+  # Fix invalid categories in synthetic data
+  fix_invalid_categories:
+    enabled: true
+    method: "knn"              # Options: "knn", "weighted", "random", "none"
+    knn_neighbors: 5           # Number of neighbors for KNN method
+    distance_metric: "hamming" # Distance metric for categorical data
+    fallback: "weighted"       # Fallback method if column has 100% invalid categories
 
 # =============================================================================
 # STATISTICAL SIMILARITY EVALUATION CONFIGURATION
