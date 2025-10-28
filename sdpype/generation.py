@@ -75,12 +75,12 @@ def main(cfg: DictConfig) -> None:
         print("💡 Model file may be corrupted or incompatible")
         raise
 
-    # Load encoder (fitted HyperTransformer) for dual pipeline
-    encoder_path = Path(f"experiments/models/encoders_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.pkl")
+    # Load encoder (fitted HyperTransformer for generation) - uses training encoder
+    encoder_path = Path(f"experiments/models/training_encoder_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.pkl")
     if not encoder_path.exists():
-        print(f"❌ Encoder not found: {encoder_path}")
-        print("💡 Run encoding stage first: dvc repro -s encode_dataset")
-        raise FileNotFoundError(f"Encoder file not found: {encoder_path}")
+        print(f"❌ Training encoder not found: {encoder_path}")
+        print("💡 Run training encoding stage first: dvc repro -s encode_training")
+        raise FileNotFoundError(f"Training encoder file not found: {encoder_path}")
 
     print(f"📦 Loading fitted encoder: {encoder_path}")
     encoder = RDTDatasetEncoder.load(encoder_path)
