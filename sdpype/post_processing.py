@@ -28,6 +28,27 @@ def get_categorical_columns(sdtypes: Dict[str, str]) -> List[str]:
     return [col for col, sdtype in sdtypes.items() if sdtype == 'categorical']
 
 
+def normalize_categorical_column(df: pd.DataFrame, column: str) -> pd.Series:
+    """
+    Normalize a categorical column to consistent string dtype.
+
+    This handles cases where generators produce numeric types (int64, float64)
+    for categorical columns, ensuring consistent string comparison.
+
+    Args:
+        df: DataFrame containing the column
+        column: Column name to normalize
+
+    Returns:
+        Series with values converted to strings
+    """
+    series = df[column]
+
+    # Convert to string, handling NaN/None properly
+    # This works for int64, float64, object, etc.
+    return series.astype(str).replace('nan', pd.NA).replace('None', pd.NA)
+
+
 def identify_invalid_categories(
     synthetic_df: pd.DataFrame,
     reference_df: pd.DataFrame,
@@ -35,6 +56,9 @@ def identify_invalid_categories(
 ) -> Dict[str, Set]:
     """
     Identify categories in synthetic data that don't exist in reference data.
+
+    Normalizes columns to strings before comparison to handle dtype mismatches
+    (e.g., when generators produce int64 for categorical columns).
 
     Args:
         synthetic_df: Synthetic dataframe to check
@@ -51,12 +75,21 @@ def identify_invalid_categories(
             logger.warning(f"Column '{col}' not found in both dataframes, skipping")
             continue
 
-        valid_cats = set(reference_df[col].dropna().unique())
-        synthetic_cats = set(synthetic_df[col].dropna().unique())
+        # Normalize both columns to strings for consistent comparison
+        # This handles int64, float64, object dtypes automatically
+        ref_normalized = normalize_categorical_column(reference_df, col)
+        syn_normalized = normalize_categorical_column(synthetic_df, col)
+
+        valid_cats = set(ref_normalized.dropna().unique())
+        synthetic_cats = set(syn_normalized.dropna().unique())
         invalid = synthetic_cats - valid_cats
 
         if invalid:
             invalid_categories[col] = invalid
+            logger.debug(
+                f"Column '{col}': Found {len(invalid)} invalid categories "
+                f"(ref dtype: {reference_df[col].dtype}, syn dtype: {synthetic_df[col].dtype})"
+            )
 
     return invalid_categories
 
@@ -77,8 +110,9 @@ def fix_invalid_categories_random(
         invalid_mask: Boolean mask indicating invalid rows
 
     Returns:
-        Series with fixed values
+        Series with fixed values (original dtype preserved)
     """
+    # Get valid categories (using original dtype from reference)
     valid_cats = reference_df[column].dropna().unique()
     n_invalid = invalid_mask.sum()
 
@@ -253,8 +287,12 @@ def fix_invalid_categories(
     metrics = {}
 
     for col, invalid_cats in invalid_categories.items():
-        # Get mask for invalid rows
-        invalid_mask = fixed_df[col].isin(invalid_cats)
+        # Normalize column for consistent comparison
+        # (invalid_cats was identified using normalized strings)
+        col_normalized = normalize_categorical_column(fixed_df, col)
+
+        # Get mask for invalid rows (using normalized values)
+        invalid_mask = col_normalized.isin(invalid_cats)
         n_invalid = invalid_mask.sum()
 
         if n_invalid == 0:
