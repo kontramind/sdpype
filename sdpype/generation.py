@@ -86,6 +86,21 @@ def _apply_post_processing(
         fallback=fix_config.fallback
     )
 
+    # CRITICAL: Convert ALL categorical columns to strings
+    # This ensures consistent dtype for categorical comparisons in evaluation
+    # (RDT encoders expect strings for categorical columns, not int64/float64)
+    print(f"\n🔄 Normalizing categorical dtypes to strings...")
+    for col in categorical_columns:
+        if col in fixed_df.columns:
+            current_dtype = fixed_df[col].dtype
+
+            # Convert to string if not already object type
+            if current_dtype != 'object':
+                fixed_df[col] = fixed_df[col].astype(str)
+                print(f"   ✓ Converted {col}: {current_dtype} → object (string)")
+            else:
+                print(f"   ✓ {col}: already object (string)")
+
     # Print summary
     if fix_metrics:
         total_fixed = sum(fix_metrics.values())
