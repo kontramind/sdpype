@@ -45,6 +45,18 @@ generation:
   n_samples:       # Number of synthetic samples to generate # Set to null to match original dataset size
 
 # =============================================================================
+# POST-PROCESSING CONFIGURATION
+# =============================================================================
+post_processing:
+  # Fix invalid categories in synthetic data
+  fix_invalid_categories:
+    enabled: true
+    method: "knn"              # Options: "knn", "weighted", "random", "none"
+    knn_neighbors: 5           # Number of neighbors for KNN method
+    distance_metric: "hamming" # Distance metric for categorical data
+    fallback: "weighted"       # Fallback method if column has 100% invalid categories
+
+# =============================================================================
 # STATISTICAL SIMILARITY EVALUATION CONFIGURATION
 # =============================================================================
 evaluation:

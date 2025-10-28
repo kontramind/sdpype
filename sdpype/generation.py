@@ -7,6 +7,7 @@ import json
 import time
 from pathlib import Path
 from datetime import datetime
+from typing import Tuple, Optional, Dict
 
 import hydra
 import numpy as np
@@ -20,6 +21,9 @@ from sdpype.serialization import load_model
 from sdpype.encoding import RDTDatasetEncoder
 from sdpype.label_encoding import SimpleLabelEncoder
 
+# Import post-processing for fixing invalid categories
+from sdpype.post_processing import fix_invalid_categories, get_categorical_columns
+
 
 def _get_config_hash() -> str:
     """Get config hash from temporary file created during pipeline execution"""
@@ -30,6 +34,68 @@ def _get_config_hash() -> str:
         return "nohash"
     except Exception:
         return "nohash"
+
+
+def _apply_post_processing(
+    synthetic_decoded: pd.DataFrame,
+    training_data: pd.DataFrame,
+    encoder: RDTDatasetEncoder,
+    cfg: DictConfig
+) -> Tuple[pd.DataFrame, Optional[Dict[str, int]]]:
+    """
+    Apply post-processing to fix invalid categories in synthetic data.
+
+    Args:
+        synthetic_decoded: Decoded synthetic data
+        training_data: Training data (source of valid categories)
+        encoder: Fitted encoder with sdtypes information
+        cfg: Hydra configuration
+
+    Returns:
+        Tuple of (processed_dataframe, fix_metrics)
+    """
+    # Check if post-processing is enabled
+    if not hasattr(cfg, 'post_processing'):
+        return synthetic_decoded, None
+
+    fix_config = cfg.post_processing.fix_invalid_categories
+
+    if not fix_config.enabled:
+        print("⏭️  Category fixing disabled in config")
+        return synthetic_decoded, None
+
+    # Get categorical columns from encoder
+    categorical_columns = get_categorical_columns(encoder.sdtypes)
+
+    if not categorical_columns:
+        print("ℹ️  No categorical columns to fix")
+        return synthetic_decoded, None
+
+    print(f"\n🔧 Post-processing: Fixing invalid categories")
+    print(f"   Method: {fix_config.method}")
+    print(f"   Categorical columns: {len(categorical_columns)}")
+
+    # Apply fixes
+    fixed_df, fix_metrics = fix_invalid_categories(
+        synthetic_df=synthetic_decoded,
+        reference_df=training_data,  # Training data = valid categories for this generation
+        categorical_columns=categorical_columns,
+        method=fix_config.method,
+        knn_neighbors=fix_config.knn_neighbors,
+        distance_metric=fix_config.distance_metric,
+        fallback=fix_config.fallback
+    )
+
+    # Print summary
+    if fix_metrics:
+        total_fixed = sum(fix_metrics.values())
+        print(f"   ✓ Fixed {total_fixed} invalid values across {len(fix_metrics)} columns:")
+        for col, count in fix_metrics.items():
+            print(f"      - {col}: {count} values")
+    else:
+        print(f"   ✓ No invalid categories found")
+
+    return fixed_df, fix_metrics
 
 
 @hydra.main(version_base=None, config_path="../", config_name="params")
@@ -84,6 +150,15 @@ def main(cfg: DictConfig) -> None:
 
     print(f"📦 Loading fitted encoder: {encoder_path}")
     encoder = RDTDatasetEncoder.load(encoder_path)
+
+    # Load training data (needed for post-processing invalid categories)
+    training_file = Path(cfg.data.training_file)
+    if not training_file.exists():
+        print(f"❌ Training file not found: {training_file}")
+        raise FileNotFoundError(f"Training file not found: {training_file}")
+
+    print(f"📦 Loading training data: {training_file}")
+    training_data = pd.read_csv(training_file)
 
     # Generate synthetic data
     n_samples = cfg.generation.n_samples
@@ -158,6 +233,11 @@ def main(cfg: DictConfig) -> None:
         synthetic_decoded = synthetic_data
         print(f"📊 SDV output (decoded/native): {synthetic_decoded.shape}")
 
+        # Apply post-processing (fix invalid categories)
+        synthetic_decoded, fix_metrics = _apply_post_processing(
+            synthetic_decoded, training_data, encoder, cfg
+        )
+
         # Transform to encoded version for metrics
         print(f"🔄 Transforming to encoded version...")
         synthetic_encoded = encoder.transform(synthetic_decoded)
@@ -177,6 +257,11 @@ def main(cfg: DictConfig) -> None:
         print(f"🔄 Decoding label-encoded data to original format...")
         synthetic_decoded = label_encoder.inverse_transform(synthetic_label_encoded)
         print(f"📊 Decoded version: {synthetic_decoded.shape}")
+
+        # Apply post-processing (fix invalid categories)
+        synthetic_decoded, fix_metrics = _apply_post_processing(
+            synthetic_decoded, training_data, encoder, cfg
+        )
 
         # Create RDT-encoded version for metrics (dual pipeline)
         print(f"🔄 Encoding with RDT for metrics compatibility...")
@@ -205,6 +290,11 @@ def main(cfg: DictConfig) -> None:
         print(f"🔄 Reverse transforming to decoded version...")
         synthetic_decoded = encoder.reverse_transform(synthetic_encoded)
         print(f"📊 Decoded version: {synthetic_decoded.shape}")
+
+        # Apply post-processing (fix invalid categories)
+        synthetic_decoded, fix_metrics = _apply_post_processing(
+            synthetic_decoded, training_data, encoder, cfg
+        )
 
     # Save both versions
     Path("experiments/data/synthetic").mkdir(parents=True, exist_ok=True)
@@ -242,6 +332,23 @@ def main(cfg: DictConfig) -> None:
         "model_source": f"experiments/models/sdg_model_{cfg.experiment.name}_{cfg.experiment.seed}.pkl",
         "encoder_source": str(encoder_path)
     }
+
+    # Add post-processing metrics (category fixes)
+    if fix_metrics:
+        total_fixed = sum(fix_metrics.values())
+        metrics["post_processing"] = {
+            "invalid_categories_fixed": True,
+            "total_values_fixed": total_fixed,
+            "columns_fixed": len(fix_metrics),
+            "fix_details": fix_metrics
+        }
+    else:
+        metrics["post_processing"] = {
+            "invalid_categories_fixed": False,
+            "total_values_fixed": 0,
+            "columns_fixed": 0,
+            "fix_details": {}
+        }
 
     # Add basic data quality metrics (using decoded version for interpretability)
     numeric_cols = synthetic_decoded.select_dtypes(include=[np.number]).columns
