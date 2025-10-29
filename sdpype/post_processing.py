@@ -335,7 +335,7 @@ def fix_invalid_categories(
 
             # Apply fixes
             fixed_df.loc[invalid_mask, col] = fixed_values
-            metrics[col] = n_invalid
+            metrics[col] = int(n_invalid)  # Convert numpy int64 to Python int for JSON serialization
 
         except Exception as e:
             logger.error(f"Error fixing column '{col}': {e}")
