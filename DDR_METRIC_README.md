@@ -29,8 +29,14 @@ DDR measures the proportion of synthetic records that are:
 
 ## Key Metrics Computed
 
+The tool computes metrics using **two perspectives**:
+
+1. **Unique-based**: Metrics based on distinct records only (duplicates counted once)
+2. **Total-based**: Metrics including all duplicates as they were generated
+
 | Metric | Formula | Interpretation | Goal |
 |--------|---------|----------------|------|
+| **Duplicate Rate** | (Total - Unique) / Total | Proportion of duplicate rows | Track quality |
 | **DDR** | \|(S ∩ P) \ T\| / \|S\| | Factual AND novel records | **MAXIMIZE** |
 | **Training Copy Rate** | \|S ∩ T\| / \|S\| | Exact training copies | **MINIMIZE** |
 | **Hallucination Rate** | \|S \ P\| / \|S\| | Fabricated records | **MINIMIZE** |
@@ -40,6 +46,12 @@ DDR measures the proportion of synthetic records that are:
 ```
 100% = DDR Rate + Training Copy Rate + Hallucination Rate
 ```
+
+### Why Dual Perspective?
+
+Duplicates matter! If a generator creates 100 copies of the same training record, that's a bigger privacy risk than creating it once. The dual approach shows:
+- **Unique metrics**: The diversity of generated patterns
+- **Total metrics**: The actual distribution as generated (privacy & utility)
 
 ## Installation
 
@@ -112,23 +124,43 @@ python ddr_metric.py formula
 
 ## Output Examples
 
-### Metrics Table
+### Duplicate Analysis
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                 📊 Synthetic Data Quality Metrics                   │
-├──────────────────────────┬──────────┬───────────┬─────────────────...│
-│ Metric                   │    Count │ Rate (%)  │ Interpretation    │
-├──────────────────────────┼──────────┼───────────┼─────────────────...│
-│ Total Synthetic Records  │   10,000 │    100.00 │ All generated ... │
-├──────────────────────────┼──────────┼───────────┼─────────────────...│
-│ ✓ DDR (Desirable Diverse)│    7,234 │     72.34 │ Factual AND No... │
-├──────────────────────────┼──────────┼───────────┼─────────────────...│
-│ ⚠ Training Copies        │    1,456 │     14.56 │ Privacy risk -... │
-│ ✗ Hallucinations         │    1,310 │     13.10 │ Fabricated - n... │
-├──────────────────────────┼──────────┼───────────┼─────────────────...│
-│ Population Matches       │    8,690 │     86.90 │ Factual (inclu... │
-└──────────────────────────┴──────────┴───────────┴─────────────────...┘
+📦 Duplicate Analysis
+  Total Generated Rows:     5,000
+  Unique Records:           4,860 (97.20%)
+  Duplicate Records:          140 (2.80%)
+
+🔄 Duplicate Breakdown by Category
+  ✓ DDR duplicates:          12 unique records → 24 duplicate rows
+  ⚠ Training copy duplicates: 8 unique records → 16 duplicate rows
+  ✗ Hallucination duplicates: 95 unique records → 100 duplicate rows
+  Most duplicated: ✗ Hallucination record appears 5 times
+```
+
+### Dual Perspective Metrics Table
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│              📊 Synthetic Data Quality Metrics - Dual Perspective                  │
+├──────────────────────┬──────────┬────────────┬──────────┬────────────┬────────────...│
+│ Metric               │ Unique   │ Unique     │ Total    │ Total      │ Interpret...│
+│                      │ Count    │ Rate       │ Count    │ Rate       │              │
+├──────────────────────┼──────────┼────────────┼──────────┼────────────┼────────────...│
+│ Total Synthetic      │    4,860 │    100.00% │    5,000 │    100.00% │ All records  │
+├──────────────────────┼──────────┼────────────┼──────────┼────────────┼────────────...│
+│ ✓ DDR                │       74 │      1.52% │       86 │      1.72% │ IDEAL        │
+├──────────────────────┼──────────┼────────────┼──────────┼────────────┼────────────...│
+│ ⚠ Training Copies    │       92 │      1.89% │      108 │      2.16% │ Privacy risk │
+│ ✗ Hallucinations     │    4,694 │     96.58% │    4,806 │     96.12% │ Fabricated   │
+├──────────────────────┼──────────┼────────────┼──────────┼────────────┼────────────...│
+│ Population Matches   │      166 │      3.42% │      194 │      3.88% │ Factual      │
+└──────────────────────┴──────────┴────────────┴──────────┴────────────┴────────────...┘
+
+Interpretation:
+  • Unique Count/Rate: Metrics based on distinct records only
+  • Total Count/Rate:  Metrics including all duplicates (as generated)
 ```
 
 ### Quality Interpretation
@@ -158,26 +190,44 @@ Each visualization shows:
 
 ## Understanding the Results
 
-### Ideal Scenario
+### Ideal Scenario (Unique vs Total)
 ```
-DDR Rate: 85%           ← High diversity
-Training Copy Rate: 5%  ← Low privacy risk
-Hallucination Rate: 10% ← Acceptable quality
-```
-
-### Privacy Concern
-```
-DDR Rate: 30%           ← Low
-Training Copy Rate: 60% ← HIGH - memorizing training data!
-Hallucination Rate: 10%
+                        Unique    Total
+DDR Rate:               85%       82%     ← High diversity, some good duplicates
+Training Copy Rate:      5%        6%     ← Low privacy risk
+Hallucination Rate:     10%       12%     ← Acceptable quality
+Duplicate Rate:          -        3%      ← Low duplication
 ```
 
-### Quality Concern
+### Privacy Concern - Training Memorization
 ```
-DDR Rate: 40%           ← Moderate
-Training Copy Rate: 5%  ← Good
-Hallucination Rate: 55% ← HIGH - fabricating too much!
+                        Unique    Total
+DDR Rate:               30%       25%     ← Low
+Training Copy Rate:     60%       70%     ← HIGH - memorizing AND duplicating!
+Hallucination Rate:     10%        5%
+Duplicate Rate:          -        15%     ← Duplicating training copies!
 ```
+**Issue**: Generator is both memorizing training data AND creating duplicates of those copies.
+
+### Quality Concern - Fabrication
+```
+                        Unique    Total
+DDR Rate:               40%       38%     ← Moderate
+Training Copy Rate:      5%        5%     ← Good
+Hallucination Rate:     55%       57%     ← HIGH - fabricating too much!
+Duplicate Rate:          -        5%
+```
+**Issue**: Generator creates many fabricated records, some appearing multiple times.
+
+### Duplication Concern
+```
+                        Unique    Total
+DDR Rate:               70%       50%     ← Drops significantly!
+Training Copy Rate:      5%       10%     ← Doubles with duplicates
+Hallucination Rate:     25%       40%     ← Increases
+Duplicate Rate:          -        30%     ← Very HIGH duplication
+```
+**Issue**: High duplicate rate changes the picture dramatically. Many records appear multiple times, skewing the distribution.
 
 ## Implementation Details
 

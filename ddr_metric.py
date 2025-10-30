@@ -98,6 +98,7 @@ def compute_ddr_metrics(
 ) -> dict:
     """
     Compute DDR and related metrics using hash-based set operations.
+    Computes metrics both for unique records and including duplicates.
 
     Returns:
         Dictionary with metric results and record sets
@@ -109,6 +110,12 @@ def compute_ddr_metrics(
     train_hashes = pd.util.hash_pandas_object(train, index=False).astype("uint64")
     syn_hashes = pd.util.hash_pandas_object(syn, index=False).astype("uint64")
 
+    # Count duplicates in synthetic data
+    syn_hash_counts = syn_hashes.value_counts()
+    total_syn_rows = len(syn_hashes)  # Total including duplicates
+    unique_syn_rows = len(syn_hash_counts)  # Unique records
+    duplicate_rows = total_syn_rows - unique_syn_rows
+
     # Convert to sets
     P = set(pop_hashes.tolist())
     T = set(train_hashes.tolist())
@@ -117,7 +124,7 @@ def compute_ddr_metrics(
     # Create hash to index mappings for later lookup
     syn_hash_to_idx = {h: idx for idx, h in enumerate(syn_hashes)}
 
-    # Compute set operations
+    # Compute set operations (unique-based)
     S_intersect_P = S & P  # Synthetic records in population (factual)
     S_intersect_T = S & T  # Synthetic records in training (copies)
     S_minus_P = S - P      # Synthetic records not in population (hallucinated)
@@ -126,101 +133,224 @@ def compute_ddr_metrics(
     # (S ∩ P) \ T = factual AND novel
     DDR_set = S_intersect_P - T
 
-    # Compute counts
-    total_syn = len(S)
-    hallucinated_count = len(S_minus_P)
-    training_copy_count = len(S_intersect_T)
-    population_match_count = len(S_intersect_P)
-    ddr_count = len(DDR_set)
+    # ===== UNIQUE-BASED METRICS =====
+    unique_total = len(S)
+    unique_hallucinated = len(S_minus_P)
+    unique_training_copies = len(S_intersect_T)
+    unique_population_matches = len(S_intersect_P)
+    unique_ddr = len(DDR_set)
 
-    # Compute rates
-    hr = (hallucinated_count / total_syn * 100) if total_syn > 0 else 0.0
-    training_copy_rate = (training_copy_count / total_syn * 100) if total_syn > 0 else 0.0
-    pop_match_rate = (population_match_count / total_syn * 100) if total_syn > 0 else 0.0
-    ddr_rate = (ddr_count / total_syn * 100) if total_syn > 0 else 0.0
+    unique_hr = (unique_hallucinated / unique_total * 100) if unique_total > 0 else 0.0
+    unique_training_copy_rate = (unique_training_copies / unique_total * 100) if unique_total > 0 else 0.0
+    unique_pop_match_rate = (unique_population_matches / unique_total * 100) if unique_total > 0 else 0.0
+    unique_ddr_rate = (unique_ddr / unique_total * 100) if unique_total > 0 else 0.0
 
-    console.print("✓ Metrics computed\n", style="green")
+    # ===== TOTAL-BASED METRICS (including duplicates) =====
+    # Count how many times each category appears (weighted by duplicates)
+    total_hallucinated = sum(syn_hash_counts[h] for h in S_minus_P)
+    total_training_copies = sum(syn_hash_counts[h] for h in S_intersect_T)
+    total_population_matches = sum(syn_hash_counts[h] for h in S_intersect_P)
+    total_ddr = sum(syn_hash_counts[h] for h in DDR_set)
+
+    total_hr = (total_hallucinated / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
+    total_training_copy_rate = (total_training_copies / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
+    total_pop_match_rate = (total_population_matches / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
+    total_ddr_rate = (total_ddr / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
+
+    # Duplicate rate
+    duplicate_rate = (duplicate_rows / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
+
+    console.print("✓ Metrics computed (unique + total)\n", style="green")
 
     return {
-        "total_synthetic": total_syn,
-        "hallucinated_count": hallucinated_count,
-        "training_copy_count": training_copy_count,
-        "population_match_count": population_match_count,
-        "ddr_count": ddr_count,
-        "hallucination_rate": hr,
-        "training_copy_rate": training_copy_rate,
-        "population_match_rate": pop_match_rate,
-        "ddr_rate": ddr_rate,
+        # Duplicate info
+        "total_rows": total_syn_rows,
+        "unique_rows": unique_syn_rows,
+        "duplicate_rows": duplicate_rows,
+        "duplicate_rate": duplicate_rate,
+
+        # UNIQUE-based metrics
+        "unique": {
+            "total_synthetic": unique_total,
+            "hallucinated_count": unique_hallucinated,
+            "training_copy_count": unique_training_copies,
+            "population_match_count": unique_population_matches,
+            "ddr_count": unique_ddr,
+            "hallucination_rate": unique_hr,
+            "training_copy_rate": unique_training_copy_rate,
+            "population_match_rate": unique_pop_match_rate,
+            "ddr_rate": unique_ddr_rate,
+        },
+
+        # TOTAL-based metrics (including duplicates)
+        "total": {
+            "total_synthetic": total_syn_rows,
+            "hallucinated_count": total_hallucinated,
+            "training_copy_count": total_training_copies,
+            "population_match_count": total_population_matches,
+            "ddr_count": total_ddr,
+            "hallucination_rate": total_hr,
+            "training_copy_rate": total_training_copy_rate,
+            "population_match_rate": total_pop_match_rate,
+            "ddr_rate": total_ddr_rate,
+        },
+
         # Sets for visualization
         "S_minus_P": S_minus_P,
         "S_intersect_T": S_intersect_T,
         "DDR_set": DDR_set,
         "syn_hash_to_idx": syn_hash_to_idx,
+        "syn_hash_counts": syn_hash_counts,
     }
 
 
-def display_metrics_table(metrics: dict):
-    """Display metrics in a formatted Rich table."""
+def display_duplicate_breakdown(metrics: dict):
+    """Display detailed breakdown of duplicates by category."""
 
-    table = Table(
-        title="📊 Synthetic Data Quality Metrics",
+    if metrics['duplicate_rows'] == 0:
+        return  # No duplicates, skip this section
+
+    syn_hash_counts = metrics['syn_hash_counts']
+
+    # Find records that appear more than once
+    duplicated_hashes = syn_hash_counts[syn_hash_counts > 1]
+
+    if len(duplicated_hashes) == 0:
+        return
+
+    # Categorize duplicated records
+    ddr_set = metrics['DDR_set']
+    train_copies = metrics['S_intersect_T']
+    hallucinations = metrics['S_minus_P']
+
+    ddr_dups = {h: count for h, count in duplicated_hashes.items() if h in ddr_set}
+    train_dups = {h: count for h, count in duplicated_hashes.items() if h in train_copies}
+    hall_dups = {h: count for h, count in duplicated_hashes.items() if h in hallucinations}
+
+    total_ddr_dup_rows = sum(ddr_dups.values()) - len(ddr_dups) if ddr_dups else 0
+    total_train_dup_rows = sum(train_dups.values()) - len(train_dups) if train_dups else 0
+    total_hall_dup_rows = sum(hall_dups.values()) - len(hall_dups) if hall_dups else 0
+
+    console.print("🔄 Duplicate Breakdown by Category", style="bold yellow")
+    console.print(f"  ✓ DDR duplicates:          {len(ddr_dups):,} unique records → {total_ddr_dup_rows:,} duplicate rows")
+    console.print(f"  ⚠ Training copy duplicates: {len(train_dups):,} unique records → {total_train_dup_rows:,} duplicate rows")
+    console.print(f"  ✗ Hallucination duplicates: {len(hall_dups):,} unique records → {total_hall_dup_rows:,} duplicate rows")
+
+    # Show most duplicated record
+    if len(duplicated_hashes) > 0:
+        most_dup_hash = duplicated_hashes.idxmax()
+        most_dup_count = duplicated_hashes.max()
+
+        if most_dup_hash in ddr_set:
+            category = "✓ DDR"
+            color = "green"
+        elif most_dup_hash in train_copies:
+            category = "⚠ Training Copy"
+            color = "yellow"
+        else:
+            category = "✗ Hallucination"
+            color = "red"
+
+        console.print(f"  Most duplicated: [{color}]{category}[/{color}] record appears {most_dup_count:,} times")
+    console.print()
+
+
+def display_metrics_table(metrics: dict):
+    """Display metrics in formatted Rich tables (both unique and total perspectives)."""
+
+    # First show duplicate summary
+    console.print()
+    console.print("📦 Duplicate Analysis", style="bold blue")
+    console.print(f"  Total Generated Rows:     {metrics['total_rows']:,}")
+    console.print(f"  Unique Records:           {metrics['unique_rows']:,} ({100 - metrics['duplicate_rate']:.2f}%)")
+    console.print(f"  Duplicate Records:        {metrics['duplicate_rows']:,} ({metrics['duplicate_rate']:.2f}%)")
+    console.print()
+
+    # Show duplicate breakdown if there are duplicates
+    display_duplicate_breakdown(metrics)
+
+    # Create side-by-side comparison table
+    comparison_table = Table(
+        title="📊 Synthetic Data Quality Metrics - Dual Perspective",
         show_header=True,
         header_style="bold magenta",
         box=box.ROUNDED,
         title_style="bold blue"
     )
 
-    table.add_column("Metric", style="cyan", no_wrap=True)
-    table.add_column("Count", justify="right", style="yellow")
-    table.add_column("Rate (%)", justify="right", style="green")
-    table.add_column("Interpretation", style="white")
+    comparison_table.add_column("Metric", style="cyan", no_wrap=True)
+    comparison_table.add_column("Unique Count", justify="right", style="yellow")
+    comparison_table.add_column("Unique Rate", justify="right", style="green")
+    comparison_table.add_column("Total Count", justify="right", style="yellow")
+    comparison_table.add_column("Total Rate", justify="right", style="green")
+    comparison_table.add_column("Interpretation", style="white")
 
-    total = metrics["total_synthetic"]
+    unique = metrics["unique"]
+    total = metrics["total"]
 
-    # Add rows
-    table.add_row(
+    # Total row
+    comparison_table.add_row(
         "Total Synthetic Records",
-        f"{total:,}",
-        "100.00",
-        "All generated records"
+        f"{unique['total_synthetic']:,}",
+        "100.00%",
+        f"{total['total_synthetic']:,}",
+        "100.00%",
+        "All records (unique vs including duplicates)"
     )
 
-    table.add_section()
+    comparison_table.add_section()
 
-    table.add_row(
+    # DDR row
+    comparison_table.add_row(
         "✓ DDR (Desirable Diverse)",
-        f"{metrics['ddr_count']:,}",
-        f"{metrics['ddr_rate']:.2f}",
+        f"{unique['ddr_count']:,}",
+        f"{unique['ddr_rate']:.2f}%",
+        f"{total['ddr_count']:,}",
+        f"{total['ddr_rate']:.2f}%",
         "[bold green]Factual AND Novel (IDEAL)[/bold green]"
     )
 
-    table.add_section()
+    comparison_table.add_section()
 
-    table.add_row(
+    # Training copies
+    comparison_table.add_row(
         "⚠ Training Copies",
-        f"{metrics['training_copy_count']:,}",
-        f"{metrics['training_copy_rate']:.2f}",
-        "[yellow]Privacy risk - memorized training[/yellow]"
+        f"{unique['training_copy_count']:,}",
+        f"{unique['training_copy_rate']:.2f}%",
+        f"{total['training_copy_count']:,}",
+        f"{total['training_copy_rate']:.2f}%",
+        "[yellow]Privacy risk - memorized[/yellow]"
     )
 
-    table.add_row(
+    # Hallucinations
+    comparison_table.add_row(
         "✗ Hallucinations",
-        f"{metrics['hallucinated_count']:,}",
-        f"{metrics['hallucination_rate']:.2f}",
+        f"{unique['hallucinated_count']:,}",
+        f"{unique['hallucination_rate']:.2f}%",
+        f"{total['hallucinated_count']:,}",
+        f"{total['hallucination_rate']:.2f}%",
         "[bold red]Fabricated - not in population[/bold red]"
     )
 
-    table.add_section()
+    comparison_table.add_section()
 
-    table.add_row(
-        "Population Matches (Total)",
-        f"{metrics['population_match_count']:,}",
-        f"{metrics['population_match_rate']:.2f}",
-        "Factual (includes training copies)"
+    # Population matches
+    comparison_table.add_row(
+        "Population Matches",
+        f"{unique['population_match_count']:,}",
+        f"{unique['population_match_rate']:.2f}%",
+        f"{total['population_match_count']:,}",
+        f"{total['population_match_rate']:.2f}%",
+        "Factual (includes copies)"
     )
 
+    console.print(comparison_table)
     console.print()
-    console.print(table)
+
+    # Show interpretation note
+    console.print("[bold cyan]Interpretation:[/bold cyan]")
+    console.print("  • [yellow]Unique Count/Rate[/yellow]: Metrics based on distinct records only")
+    console.print("  • [yellow]Total Count/Rate[/yellow]:  Metrics including all duplicates (as generated)")
     console.print()
 
 
@@ -385,25 +515,47 @@ def visualize_samples(
 
 def sanity_checks(metrics: dict):
     """
-    Perform sanity checks on computed metrics.
+    Perform sanity checks on computed metrics (both unique and total).
     """
-    total = metrics["total_synthetic"]
-    ddr = metrics["ddr_count"]
-    train_copies = metrics["training_copy_count"]
-    hallucinations = metrics["hallucinated_count"]
+    # Check unique metrics
+    unique = metrics["unique"]
+    unique_total = unique["total_synthetic"]
+    unique_ddr = unique["ddr_count"]
+    unique_train_copies = unique["training_copy_count"]
+    unique_hallucinations = unique["hallucinated_count"]
+    unique_computed = unique_ddr + unique_train_copies + unique_hallucinations
 
-    # Check: DDR + Training Copies + Hallucinations should equal Total
-    computed_total = ddr + train_copies + hallucinations
+    # Check total metrics
+    total = metrics["total"]
+    total_total = total["total_synthetic"]
+    total_ddr = total["ddr_count"]
+    total_train_copies = total["training_copy_count"]
+    total_hallucinations = total["hallucinated_count"]
+    total_computed = total_ddr + total_train_copies + total_hallucinations
 
-    if computed_total != total:
+    console.print("🔍 Sanity Checks:", style="bold blue")
+
+    # Check unique
+    if unique_computed != unique_total:
         console.print(
-            f"[bold red]⚠ Warning:[/bold red] Sanity check failed! "
-            f"DDR({ddr}) + Copies({train_copies}) + Hallucinations({hallucinations}) "
-            f"= {computed_total} ≠ Total({total})",
+            f"  [bold red]✗ Unique metrics:[/bold red] "
+            f"DDR({unique_ddr}) + Copies({unique_train_copies}) + Hallucinations({unique_hallucinations}) "
+            f"= {unique_computed} ≠ Total({unique_total})",
             style="red"
         )
     else:
-        console.print("✓ Sanity check passed: All records accounted for", style="green")
+        console.print(f"  [green]✓ Unique metrics:[/green] All {unique_total:,} records accounted for")
+
+    # Check total
+    if total_computed != total_total:
+        console.print(
+            f"  [bold red]✗ Total metrics:[/bold red] "
+            f"DDR({total_ddr}) + Copies({total_train_copies}) + Hallucinations({total_hallucinations}) "
+            f"= {total_computed} ≠ Total({total_total})",
+            style="red"
+        )
+    else:
+        console.print(f"  [green]✓ Total metrics:[/green] All {total_total:,} records accounted for")
 
 
 @app.command()
@@ -485,18 +637,22 @@ def evaluate(
 
         display_metrics_table(metrics)
 
-        # Interpretation
-        ddr_rate = metrics["ddr_rate"]
-        if ddr_rate >= 70:
+        # Interpretation (based on total metrics as this reflects actual generation quality)
+        ddr_rate_total = metrics["total"]["ddr_rate"]
+        ddr_rate_unique = metrics["unique"]["ddr_rate"]
+
+        if ddr_rate_total >= 70:
             quality = "[bold green]EXCELLENT[/bold green]"
-        elif ddr_rate >= 50:
+        elif ddr_rate_total >= 50:
             quality = "[bold yellow]GOOD[/bold yellow]"
-        elif ddr_rate >= 30:
+        elif ddr_rate_total >= 30:
             quality = "[yellow]MODERATE[/yellow]"
         else:
             quality = "[bold red]POOR[/bold red]"
 
-        console.print(f"Overall Quality: {quality} (DDR = {ddr_rate:.2f}%)")
+        console.print(f"Overall Quality: {quality}")
+        console.print(f"  DDR (Total):  {ddr_rate_total:.2f}% - includes all duplicates as generated")
+        console.print(f"  DDR (Unique): {ddr_rate_unique:.2f}% - distinct records only")
         console.print()
 
         # Visualize samples
