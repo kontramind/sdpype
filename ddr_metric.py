@@ -322,6 +322,8 @@ def display_metrics_table(metrics: dict):
         "[yellow]Privacy risk - memorized[/yellow]"
     )
 
+    comparison_table.add_section()
+
     # Hallucinations
     comparison_table.add_row(
         "✗ Hallucinations",
