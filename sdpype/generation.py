@@ -350,12 +350,12 @@ def main(cfg: DictConfig) -> None:
 
     # Add post-processing metrics (category fixes)
     if fix_metrics:
-        total_fixed = sum(fix_metrics.values())
+        total_fixed = int(sum(fix_metrics.values()))  # Convert to Python int for JSON serialization
         metrics["post_processing"] = {
             "invalid_categories_fixed": True,
             "total_values_fixed": total_fixed,
             "columns_fixed": len(fix_metrics),
-            "fix_details": fix_metrics
+            "fix_details": fix_metrics  # Already converted to int in post_processing.py
         }
     else:
         metrics["post_processing"] = {
