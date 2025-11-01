@@ -356,15 +356,24 @@ class ValidationEngine:
             return pd.Series([False] * len(df), index=df.index)
 
         # Convert tuples to set for fast lookup
+        # IMPORTANT: Convert all values to strings to avoid type mismatches
         if isinstance(unique_tuples, list) and len(unique_tuples) > 0:
-            # Convert to tuples and create set
-            valid_tuples = set(tuple(t) if isinstance(t, list) else t for t in unique_tuples)
+            # Convert to tuples with string values
+            valid_tuples = set()
+            for t in unique_tuples:
+                if isinstance(t, list):
+                    # Convert list elements to strings
+                    valid_tuples.add(tuple(str(v) for v in t))
+                else:
+                    # Already a tuple, convert elements to strings
+                    valid_tuples.add(tuple(str(v) for v in t))
         else:
             valid_tuples = set()
 
-        # Check each row's combination
+        # Check each row's combination (convert values to strings)
         def is_valid_combination(row):
-            combo = tuple(row[columns].values)
+            # Convert all values in the combination to strings
+            combo = tuple(str(v) for v in row[columns].values)
             return combo in valid_tuples
 
         valid = df.apply(is_valid_combination, axis=1)
@@ -372,9 +381,21 @@ class ValidationEngine:
         return valid
 
     def _extract_unique_combinations(self, df: pd.DataFrame, columns: List[str]) -> List[Tuple]:
-        """Extract unique combinations of columns from dataframe."""
-        combinations = df[columns].drop_duplicates().values.tolist()
-        return [tuple(combo) for combo in combinations]
+        """Extract unique combinations of columns from dataframe.
+
+        Converts all values to strings to ensure consistent comparison.
+        """
+        # Get unique combinations and convert all values to strings
+        unique_combos = df[columns].drop_duplicates()
+
+        # Convert to list of tuples with string values
+        result = []
+        for _, row in unique_combos.iterrows():
+            # Convert each value to string
+            string_tuple = tuple(str(v) for v in row.values)
+            result.append(string_tuple)
+
+        return result
 
 
 # ============================================================================
