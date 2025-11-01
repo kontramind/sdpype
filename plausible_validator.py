@@ -505,15 +505,12 @@ def display_validation_results(
 
             # Show record data with highlighting
             record_data = synthetic_df.loc[idx].to_dict()
-            for col, val in list(record_data.items())[:8]:  # Show first 8 columns
+            for col, val in record_data.items():  # Show all columns
                 if col in failed_columns:
                     # Highlight failed fields in bold red with marker
                     console.print(f"    {col}: [bold red]{val} ← FAILED[/bold red]")
                 else:
                     console.print(f"    {col}: [yellow]{val}[/yellow]")
-
-            if len(record_data) > 8:
-                console.print(f"    ... ({len(record_data) - 8} more columns)")
 
         if len(failed_indices) > n_samples:
             console.print(f"\n  ... and {len(failed_indices) - n_samples} more failing records")
