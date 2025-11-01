@@ -21,6 +21,9 @@ from sdpype.serialization import load_model
 from sdpype.encoding import RDTDatasetEncoder
 from sdpype.label_encoding import SimpleLabelEncoder
 
+# Import metadata utilities
+from sdpype.metadata import load_csv_with_metadata
+
 # Import post-processing for fixing invalid categories
 from sdpype.post_processing import fix_invalid_categories, get_categorical_columns
 
@@ -166,6 +169,12 @@ def main(cfg: DictConfig) -> None:
     print(f"📦 Loading fitted encoder: {encoder_path}")
     encoder = RDTDatasetEncoder.load(encoder_path)
 
+    # Load metadata for type-safe CSV loading
+    metadata_file = Path(cfg.data.metadata_file)
+    if not metadata_file.exists():
+        print(f"❌ Metadata file not found: {metadata_file}")
+        raise FileNotFoundError(f"Metadata file not found: {metadata_file}")
+
     # Load training data (needed for post-processing invalid categories)
     training_file = Path(cfg.data.training_file)
     if not training_file.exists():
@@ -173,7 +182,7 @@ def main(cfg: DictConfig) -> None:
         raise FileNotFoundError(f"Training file not found: {training_file}")
 
     print(f"📦 Loading training data: {training_file}")
-    training_data = pd.read_csv(training_file)
+    training_data = load_csv_with_metadata(training_file, metadata_file)
 
     # Generate synthetic data
     n_samples = cfg.generation.n_samples
@@ -188,7 +197,7 @@ def main(cfg: DictConfig) -> None:
             print("💡 Check your data.reference_file path in params.yaml!")
             raise FileNotFoundError(f"Reference data file not found: {reference_data_file}")
 
-        reference_data = pd.read_csv(reference_data_file)
+        reference_data = load_csv_with_metadata(Path(reference_data_file), metadata_file)
         n_samples = len(reference_data)
 
         # Validate that we got a reasonable sample count

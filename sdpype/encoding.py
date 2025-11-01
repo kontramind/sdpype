@@ -25,6 +25,7 @@ import pandas as pd
 import hydra
 from omegaconf import DictConfig
 from rdt import HyperTransformer
+from sdpype.metadata import load_csv_with_metadata
 from rdt.transformers import (
     UniformEncoder,
     OrderedUniformEncoder,
@@ -477,18 +478,21 @@ def main(cfg: DictConfig) -> None:
     config = load_encoding_config(encoding_config_path)
     print(f"✓ Loaded config with {len(config['transformers'])} transformers")
 
-    # 2. Load datasets
+    # 2. Load datasets with metadata for type consistency
     print(f"\n📊 Loading datasets...")
     training_file = Path(cfg.data.training_file)
     reference_file = Path(cfg.data.reference_file)
+    metadata_file = Path(cfg.data.metadata_file)
 
     if not training_file.exists():
         raise FileNotFoundError(f"Training file not found: {training_file}")
     if not reference_file.exists():
         raise FileNotFoundError(f"Reference file not found: {reference_file}")
+    if not metadata_file.exists():
+        raise FileNotFoundError(f"Metadata file not found: {metadata_file}")
 
-    training_data = pd.read_csv(training_file)
-    reference_data = pd.read_csv(reference_file)
+    training_data = load_csv_with_metadata(training_file, metadata_file)
+    reference_data = load_csv_with_metadata(reference_file, metadata_file)
 
     print(f"✓ Training data: {training_data.shape}")
     print(f"✓ Reference data: {reference_data.shape}")

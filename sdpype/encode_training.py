@@ -19,6 +19,7 @@ import hydra
 from omegaconf import DictConfig
 
 from sdpype.encoding import RDTDatasetEncoder, load_encoding_config
+from sdpype.metadata import load_csv_with_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -64,14 +65,17 @@ def main(cfg: DictConfig) -> None:
     config = load_encoding_config(encoding_config_path)
     print(f"✓ Config loaded - {len(config['sdtypes'])} columns")
 
-    # 2. Load training dataset
+    # 2. Load training dataset with metadata for type consistency
     print(f"\n📊 Loading training dataset...")
     training_file = Path(cfg.data.training_file)
+    metadata_file = Path(cfg.data.metadata_file)
 
     if not training_file.exists():
         raise FileNotFoundError(f"Training file not found: {training_file}")
+    if not metadata_file.exists():
+        raise FileNotFoundError(f"Metadata file not found: {metadata_file}")
 
-    training_data = pd.read_csv(training_file)
+    training_data = load_csv_with_metadata(training_file, metadata_file)
     print(f"✓ Training data: {training_data.shape}")
 
     # 3. Create and fit encoder on TRAINING data

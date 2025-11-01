@@ -25,6 +25,7 @@ sdg:
 data:
   training_file: experiments/data/processed/canada_covid19_case_details_sample_5k.csv
   reference_file: experiments/data/processed/canada_covid19_case_details_sample_5k.csv
+  population_file: experiments/data/processed/canada_covid19_case_details_sample_5k.csv  # Population dataset for hallucination evaluation (typically larger than training)
   metadata_file: experiments/data/processed/canada_covid19_case_details_sample_5k_encoded_metadata.json
 
 # =============================================================================
@@ -125,3 +126,8 @@ evaluation:
     - name: "detection_linear"
       parameters: {}
             # Override common params if needed
+
+# Hallucination evaluation using DDR and plausibility metrics
+  hallucination:
+    # Path to SQL validation queries file (dataset-specific)
+    query_file: queries/validation.sql

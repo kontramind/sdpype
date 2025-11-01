@@ -5,6 +5,7 @@ Statistical metrics evaluation script for SDPype - Alpha Precision and PRDC
 import json
 from pathlib import Path
 
+import duckdb
 import hydra
 import pandas as pd
 from omegaconf import DictConfig
@@ -14,6 +15,7 @@ from rich.table import Table
 from sdv.metadata import SingleTableMetadata
 from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate_statistical_report
 from sdpype.encoding import load_encoding_config
+from sdpype.metadata import load_csv_with_metadata
 
 console = Console()
 
@@ -27,6 +29,99 @@ def _get_config_hash() -> str:
         return "nohash"
     except Exception:
         return "nohash"
+
+
+def _validate_reference_subset_of_population(
+    population_file: Path,
+    reference_file: Path,
+    metadata_file: Path
+):
+    """
+    Validate that all reference records exist in the population dataset.
+
+    In recursive training (RD → SD gen0 → SD gen1 ...), the reference dataset
+    is always the original real data, fixed across all generations. It must be
+    a subset of the population for meaningful evaluation.
+
+    Args:
+        population_file: Path to population CSV (full real dataset)
+        reference_file: Path to reference CSV (evaluation real dataset)
+        metadata_file: Path to metadata JSON for type consistency
+
+    Raises:
+        ValueError: If reference contains records not found in population
+    """
+
+    if not population_file.exists():
+        print(f"⚠️  Population file not found, skipping reference validation: {population_file}")
+        return
+
+    if not reference_file.exists():
+        print(f"⚠️  Reference file not found, skipping reference validation: {reference_file}")
+        return
+
+    print("🔍 Validating reference ⊆ population assumption...")
+
+    # Load both datasets with metadata for type consistency
+    population = load_csv_with_metadata(population_file, metadata_file, low_memory=False)
+    reference = load_csv_with_metadata(reference_file, metadata_file, low_memory=False)
+
+    # Use DuckDB to efficiently compute hashes and check set membership
+    con = duckdb.connect()
+    con.register('population', population)
+    con.register('reference', reference)
+
+    # Build hash expression with actual column names
+    columns = population.columns.tolist()
+    hash_cols = ', '.join([f'"{col}"' for col in columns])
+
+    # Query to find reference records not in population
+    validation_query = f"""
+    WITH
+    population_hashes AS (
+        SELECT DISTINCT hash({hash_cols}) as row_hash FROM population
+    ),
+    reference_hashes AS (
+        SELECT hash({hash_cols}) as row_hash FROM reference
+    ),
+    reference_not_in_pop AS (
+        SELECT COUNT(*) as count
+        FROM reference_hashes r
+        WHERE r.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+    )
+    SELECT count FROM reference_not_in_pop;
+    """
+
+    result = con.execute(validation_query).fetchone()
+    con.close()
+
+    invalid_count = result[0]
+
+    if invalid_count > 0:
+        raise ValueError(
+            f"❌ Reference dataset validation failed!\n"
+            f"\n"
+            f"Found {invalid_count} reference records that DO NOT exist in population.\n"
+            f"\n"
+            f"CRITICAL ASSUMPTION VIOLATED: reference ⊆ population\n"
+            f"\n"
+            f"In recursive training (RD → SD gen0 → SD gen1 ...), the reference dataset\n"
+            f"represents the original real data and must be a subset of the population.\n"
+            f"This ensures meaningful evaluation across generations:\n"
+            f"  - Statistical metrics track drift from real data distribution\n"
+            f"  - Detection metrics measure synthetic vs. real distinguishability\n"
+            f"  - Results are comparable across generations\n"
+            f"\n"
+            f"Please check your data configuration:\n"
+            f"  - data.population_file: Should contain the full real dataset\n"
+            f"  - data.reference_file: Should be a subset of population (original real data)\n"
+            f"\n"
+            f"Population: {population.shape[0]:,} rows\n"
+            f"Reference: {reference.shape[0]:,} rows\n"
+            f"Invalid: {invalid_count:,} reference rows not in population"
+        )
+
+    print(f"✅ Validation passed: All {reference.shape[0]:,} reference records exist in population")
 
 
 @hydra.main(version_base=None, config_path="../", config_name="params")
@@ -88,6 +183,17 @@ def main(cfg: DictConfig) -> None:
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
     metadata = SingleTableMetadata.load_from_json(metadata_path)
 
+    # Validate that reference ⊆ population (important for recursive training)
+    # Reference is always real data, even in later generations, so it should be in population
+    population_file = cfg.data.get("population_file")
+    reference_file = cfg.data.get("reference_file")
+    if population_file and reference_file:
+        _validate_reference_subset_of_population(
+            Path(population_file),
+            Path(reference_file),
+            Path(metadata_path)
+        )
+
     # Load encoding config (for determining numeric columns in encoded data)
     encoding_config = None
     if needs_encoded and hasattr(cfg, 'encoding') and cfg.encoding.get('config_file'):
@@ -134,19 +240,9 @@ def main(cfg: DictConfig) -> None:
         print(f"📊 Loading decoded reference data: {reference_decoded_path}")
         print(f"📊 Loading decoded synthetic data: {synthetic_decoded_path}")
 
-        # CRITICAL: Force categorical columns to load as strings to prevent pandas auto-conversion
-        # of numeric strings (e.g., "4835") back to int64
-        dtype_spec = {}
-        categorical_cols = [col for col, sdtype in metadata.columns.items()
-                          if sdtype.get('sdtype') == 'categorical']
-        for col in categorical_cols:
-            dtype_spec[col] = str
-
-        if dtype_spec:
-            print(f"🔧 Forcing {len(dtype_spec)} categorical columns to load as strings")
-
-        reference_data_decoded = pd.read_csv(reference_decoded_path, dtype=dtype_spec)
-        synthetic_data_decoded = pd.read_csv(synthetic_decoded_path, dtype=dtype_spec)
+        # Use metadata-based loading for type consistency
+        reference_data_decoded = load_csv_with_metadata(Path(reference_decoded_path), Path(metadata_path))
+        synthetic_data_decoded = load_csv_with_metadata(Path(synthetic_decoded_path), Path(metadata_path))
 
     # Set reference_data for display purposes (prefer decoded for original column names)
     reference_data = reference_data_decoded if reference_data_decoded is not None else reference_data_encoded

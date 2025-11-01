@@ -13,6 +13,7 @@ from omegaconf import DictConfig
 from sdv.metadata import SingleTableMetadata
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
+from sdpype.metadata import load_csv_with_metadata
 
 def _get_config_hash() -> str:
     """Get config hash from temporary file created during pipeline execution"""
@@ -49,10 +50,9 @@ def main(cfg: DictConfig) -> None:
     print(f"🔄 Starting preprocessing for {cfg.experiment.name} (seed: {cfg.experiment.seed})")
     print(f"🎲 Experiment seed: {cfg.experiment.seed}")
 
-    # Load data (updated path for monolithic structure)
-    # Load both datasets
-    training_data = pd.read_csv(training_file_path)
-    reference_data = pd.read_csv(reference_file_path)
+    # Load data with metadata for type consistency
+    training_data = load_csv_with_metadata(training_file_path, metadata_file_path)
+    reference_data = load_csv_with_metadata(reference_file_path, metadata_file_path)
     print(f"Loaded training data: {training_data.shape}")
     print(f"Loaded reference data: {reference_data.shape}")
 
