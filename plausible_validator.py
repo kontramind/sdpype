@@ -361,7 +361,36 @@ class ValidationEngine:
 # Output Formatters
 # ============================================================================
 
-def display_validation_results(result: ValidationResult, synthetic_df: pd.DataFrame, n_samples: int = 5):
+def _extract_failed_columns(rules: ValidationRules, failed_rule_names: List[str]) -> Set[str]:
+    """Extract column names involved in failed rules."""
+    failed_columns = set()
+
+    for rule_name in failed_rule_names:
+        # Parse rule name format: "type:column" or "type:name"
+        if ":" in rule_name:
+            rule_type, rule_identifier = rule_name.split(":", 1)
+
+            if rule_type == "categorical":
+                # categorical:Column Name
+                failed_columns.add(rule_identifier)
+            elif rule_type == "range":
+                # range:Column Name
+                failed_columns.add(rule_identifier)
+            elif rule_type == "combination":
+                # combination:rule_name - need to find the columns from rules
+                for combo_rule in rules.combination_rules:
+                    if combo_rule.get("name") == rule_identifier:
+                        failed_columns.update(combo_rule.get("columns", []))
+
+    return failed_columns
+
+
+def display_validation_results(
+    result: ValidationResult,
+    synthetic_df: pd.DataFrame,
+    rules: ValidationRules,
+    n_samples: int = 5
+):
     """Display validation results in Rich format."""
 
     # Summary table
@@ -427,13 +456,20 @@ def display_validation_results(result: ValidationResult, synthetic_df: pd.DataFr
         for i, idx in enumerate(sample_indices, start=1):
             failed_rules = result.failure_details.get(idx, [])
 
+            # Extract which columns are involved in failures
+            failed_columns = _extract_failed_columns(rules, failed_rules)
+
             console.print(f"\n[bold red]Record #{i}[/bold red] (Index: {idx})")
             console.print(f"  Failed rules: {', '.join(failed_rules)}")
 
-            # Show record data
+            # Show record data with highlighting
             record_data = synthetic_df.loc[idx].to_dict()
             for col, val in list(record_data.items())[:8]:  # Show first 8 columns
-                console.print(f"    {col}: [yellow]{val}[/yellow]")
+                if col in failed_columns:
+                    # Highlight failed fields in bold red with marker
+                    console.print(f"    {col}: [bold red]{val} ← FAILED[/bold red]")
+                else:
+                    console.print(f"    {col}: [yellow]{val}[/yellow]")
 
             if len(record_data) > 8:
                 console.print(f"    ... ({len(record_data) - 8} more columns)")
@@ -608,7 +644,7 @@ def validate(
         result = engine.validate(synthetic)
 
         # Display results
-        display_validation_results(result, synthetic, n_samples)
+        display_validation_results(result, synthetic, rules, n_samples)
 
         # Save JSON if requested
         if output_json:
