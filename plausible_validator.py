@@ -265,19 +265,38 @@ class ValidationEngine:
     def _validate_categorical(self, df: pd.DataFrame, rule: Dict[str, Any]) -> pd.Series:
         """Validate categorical membership rule."""
         col = rule["column"]
-        allowed_values = set(rule["allowed_values"])
+        allowed_values = rule["allowed_values"]
         allow_null = rule.get("allow_null", False)
 
         if col not in df.columns:
             console.print(f"⚠ Warning: Column '{col}' not found in synthetic data", style="yellow")
             return pd.Series([False] * len(df), index=df.index)
 
-        # Check if values are in allowed set
-        valid = df[col].isin(allowed_values)
+        # Convert both data and allowed values to string for consistent comparison
+        # This handles cases where CSV has numbers but YAML has strings (e.g., 591 vs '591')
+        col_data = df[col]
 
-        # Handle nulls
-        if allow_null:
-            valid = valid | df[col].isna()
+        # Check if "Missing" is in allowed values (special case for NaN)
+        has_missing_value = "Missing" in allowed_values
+
+        # Convert allowed values to strings, excluding None/"Missing"
+        allowed_values_str = set(
+            str(v) for v in allowed_values
+            if v is not None and v != "Missing"
+        )
+
+        # Convert column to string, keeping NaN as NaN for now
+        col_as_str = col_data.astype(str)
+
+        # Check membership (comparing strings to strings)
+        valid = col_as_str.isin(allowed_values_str)
+
+        # Handle nulls/NaN values
+        is_null = col_data.isna()
+
+        if allow_null or has_missing_value:
+            # If column has NaN and "Missing" is allowed or nulls are allowed
+            valid = valid | is_null
 
         return valid
 
