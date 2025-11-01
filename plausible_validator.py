@@ -276,26 +276,27 @@ class ValidationEngine:
         # This handles cases where CSV has numbers but YAML has strings (e.g., 591 vs '591')
         col_data = df[col]
 
-        # Check if "Missing" is in allowed values (special case for NaN)
+        # Check if "Missing" is in allowed values (accepts both string "Missing" and NaN)
         has_missing_value = "Missing" in allowed_values
 
-        # Convert allowed values to strings, excluding None/"Missing"
+        # Convert allowed values to strings (keep "Missing" in the set!)
         allowed_values_str = set(
             str(v) for v in allowed_values
-            if v is not None and v != "Missing"
+            if v is not None  # Only exclude None/null, keep "Missing" string
         )
 
-        # Convert column to string, keeping NaN as NaN for now
+        # Convert column data to string
+        # NaN becomes the string "nan", actual "Missing" stays "Missing"
         col_as_str = col_data.astype(str)
 
         # Check membership (comparing strings to strings)
         valid = col_as_str.isin(allowed_values_str)
 
-        # Handle nulls/NaN values
+        # Handle NaN/null values: if data has NaN and "Missing" or nulls are allowed
         is_null = col_data.isna()
 
         if allow_null or has_missing_value:
-            # If column has NaN and "Missing" is allowed or nulls are allowed
+            # Mark NaN values as valid if nulls or "Missing" are allowed
             valid = valid | is_null
 
         return valid
