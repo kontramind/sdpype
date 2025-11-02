@@ -430,7 +430,8 @@ def display_validation_results(
     result: ValidationResult,
     synthetic_df: pd.DataFrame,
     rules: ValidationRules,
-    n_samples: int = 5
+    n_samples: int = 5,
+    no_visualization: bool = False
 ):
     """Display validation results in Rich format."""
 
@@ -488,7 +489,7 @@ def display_validation_results(
         console.print()
 
     # Sample failing records
-    if result.failed_records > 0 and n_samples > 0:
+    if result.failed_records > 0 and n_samples > 0 and not no_visualization:
         console.print("🔍 Sample Failing Records", style="bold blue")
 
         failed_indices = [idx for idx, valid in result.record_validation.items() if not valid]
@@ -642,6 +643,11 @@ def validate(
         "--samples", "-n",
         help="Number of failing records to display"
     ),
+    no_visualization: bool = typer.Option(
+        False,
+        "--no-viz",
+        help="Skip sample failing records visualization"
+    ),
 ):
     """
     Validate synthetic data against rules.
@@ -682,7 +688,7 @@ def validate(
         result = engine.validate(synthetic)
 
         # Display results
-        display_validation_results(result, synthetic, rules, n_samples)
+        display_validation_results(result, synthetic, rules, n_samples, no_visualization)
 
         # Save JSON if requested
         if output_json:
