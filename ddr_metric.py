@@ -29,6 +29,9 @@ from rich.panel import Panel
 from rich import box
 from typing import Optional, Tuple, Set
 
+# Import metadata utilities for type-safe loading
+from sdpype.metadata import load_csv_with_metadata
+
 console = Console()
 app = typer.Typer(add_completion=False)
 
@@ -39,19 +42,33 @@ DEFAULT_SYNTHETIC_FILE = "experiments/data/synthetic/synthetic_data_sdv_ctgan_fe
 
 
 def read_and_align(
-    pop_csv: Path, train_csv: Path, syn_csv: Path
+    pop_csv: Path,
+    train_csv: Path,
+    syn_csv: Path,
+    metadata_path: Path
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, list]:
     """
-    Read all three CSVs and align their columns.
+    Read all three CSVs with type-safe loading using metadata.
+
+    Uses SDV metadata to enforce consistent column types across all datasets,
+    preventing string/number mismatches (e.g., "591" vs 591 in categorical fields).
+
+    Args:
+        pop_csv: Path to population CSV
+        train_csv: Path to training CSV
+        syn_csv: Path to synthetic CSV
+        metadata_path: Path to SDV metadata JSON (REQUIRED)
 
     Returns:
         Tuple of (population_df, training_df, synthetic_df, sorted_columns)
     """
-    console.print("📂 Loading datasets...", style="bold blue")
+    console.print("📂 Loading datasets with metadata...", style="bold blue")
+    console.print(f"  Using metadata: {metadata_path}")
 
-    pop = pd.read_csv(pop_csv, low_memory=False)
-    train = pd.read_csv(train_csv, low_memory=False)
-    syn = pd.read_csv(syn_csv, low_memory=False)
+    # Load all datasets with metadata-enforced types
+    pop = load_csv_with_metadata(pop_csv, metadata_path, low_memory=False)
+    train = load_csv_with_metadata(train_csv, metadata_path, low_memory=False)
+    syn = load_csv_with_metadata(syn_csv, metadata_path, low_memory=False)
 
     console.print(f"  Population: {len(pop):,} rows × {len(pop.columns)} columns")
     console.print(f"  Training:   {len(train):,} rows × {len(train.columns)} columns")
@@ -83,12 +100,12 @@ def read_and_align(
     # Sort columns for consistent comparison
     cols = sorted(pop.columns)
 
-    # Convert to strings to avoid dtype surprises
-    pop = pop[cols].astype(str)
-    train = train[cols].astype(str)
-    syn = syn[cols].astype(str)
+    # Reorder columns (types are already enforced by metadata loader)
+    pop = pop[cols]
+    train = train[cols]
+    syn = syn[cols]
 
-    console.print("✓ All datasets aligned\n", style="green")
+    console.print("✓ All datasets aligned with consistent types\n", style="green")
 
     return pop, train, syn, cols
 
@@ -586,6 +603,14 @@ def evaluate(
         file_okay=True,
         dir_okay=False
     ),
+    metadata_json: Path = typer.Option(
+        ...,
+        "--metadata", "-m",
+        help="Path to SDV metadata JSON (REQUIRED for type consistency)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False
+    ),
     n_samples: int = typer.Option(
         3,
         "--samples", "-n",
@@ -623,8 +648,10 @@ def evaluate(
     console.print()
 
     try:
-        # Load and align datasets
-        pop, train, syn, cols = read_and_align(population_csv, training_csv, synthetic_csv)
+        # Load and align datasets with metadata
+        pop, train, syn, cols = read_and_align(
+            population_csv, training_csv, synthetic_csv, metadata_json
+        )
 
         # Compute metrics
         metrics = compute_ddr_metrics(pop, train, syn)

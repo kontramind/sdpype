@@ -28,6 +28,9 @@ from rich.panel import Panel
 from rich import box
 import json
 
+# Import metadata utilities for type-safe loading
+from sdpype.metadata import load_csv_with_metadata
+
 console = Console()
 app = typer.Typer(add_completion=False)
 
@@ -554,6 +557,14 @@ def generate_rules(
         file_okay=True,
         dir_okay=False
     ),
+    metadata_json: Path = typer.Option(
+        ...,
+        "--metadata", "-m",
+        help="Path to SDV metadata JSON (REQUIRED for type consistency)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False
+    ),
     output: Path = typer.Option(
         ...,
         "--output", "-o",
@@ -580,9 +591,10 @@ def generate_rules(
     console.print()
 
     try:
-        # Load population data
+        # Load population data with metadata for type consistency
         console.print(f"📂 Loading population data from: {population_csv}", style="bold")
-        population = pd.read_csv(population_csv, low_memory=False)
+        console.print(f"   Using metadata: {metadata_json}")
+        population = load_csv_with_metadata(population_csv, metadata_json, low_memory=False)
         console.print(f"   Loaded {len(population):,} rows × {len(population.columns)} columns\n")
 
         # Generate rules
@@ -621,6 +633,14 @@ def validate(
         ...,
         "--rules", "-r",
         help="Path to validation rules YAML file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False
+    ),
+    metadata_json: Path = typer.Option(
+        ...,
+        "--metadata", "-m",
+        help="Path to SDV metadata JSON (REQUIRED for type consistency)",
         exists=True,
         file_okay=True,
         dir_okay=False
@@ -664,9 +684,10 @@ def validate(
     console.print()
 
     try:
-        # Load synthetic data
+        # Load synthetic data with metadata for type consistency
         console.print(f"📂 Loading synthetic data from: {synthetic_csv}", style="bold")
-        synthetic = pd.read_csv(synthetic_csv, low_memory=False)
+        console.print(f"   Using metadata: {metadata_json}")
+        synthetic = load_csv_with_metadata(synthetic_csv, metadata_json, low_memory=False)
         console.print(f"   Loaded {len(synthetic):,} rows × {len(synthetic.columns)} columns\n")
 
         # Load rules
@@ -676,11 +697,12 @@ def validate(
         console.print(f"   Loaded {len(rules.range_rules)} range rules")
         console.print(f"   Loaded {len(rules.combination_rules)} combination rules\n")
 
-        # Load population if needed
+        # Load population if needed (with metadata)
         population = None
         if population_csv:
             console.print(f"📂 Loading population data from: {population_csv}", style="bold")
-            population = pd.read_csv(population_csv, low_memory=False)
+            console.print(f"   Using metadata: {metadata_json}")
+            population = load_csv_with_metadata(population_csv, metadata_json, low_memory=False)
             console.print(f"   Loaded {len(population):,} rows\n")
 
         # Run validation
