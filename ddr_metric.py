@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Desirable Diverse Records Rate (DDR) Metric Tool
+Desirable Diverse Records Rate (DDR) Metric Tool - DuckDB Implementation
 
 Evaluates synthetic tabular data quality by measuring the proportion of
 synthetic records that are both factual (exist in population) AND novel
@@ -18,8 +18,14 @@ Where:
 - S = Synthetic dataset
 - P = Population dataset (ground truth)
 - T = Training dataset (subset of P used to train generator)
+
+Implementation:
+Uses DuckDB for efficient set operations on pandas DataFrames.
+SQL queries are loaded from external files for flexibility.
 """
 
+import json
+import duckdb
 import pandas as pd
 import typer
 from pathlib import Path
@@ -27,7 +33,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
-from typing import Optional, Tuple, Set
+from typing import Optional, Dict, Any
 
 # Import metadata utilities for type-safe loading
 from sdpype.metadata import load_csv_with_metadata
@@ -35,49 +41,41 @@ from sdpype.metadata import load_csv_with_metadata
 console = Console()
 app = typer.Typer(add_completion=False)
 
-# --- Defaults (can be overridden via CLI) ---
-DEFAULT_POPULATION_FILE = "experiments/data/processed/canada_covid19_case_details_population.csv"
-DEFAULT_TRAINING_FILE = "experiments/data/processed/canada_covid19_case_details_train.csv"
-DEFAULT_SYNTHETIC_FILE = "experiments/data/synthetic/synthetic_data_sdv_ctgan_fe6856ff_fe6856ff_fe6856ff_gen_0_b7748603_99_decoded.csv"
 
-
-def read_and_align(
+def load_datasets(
     pop_csv: Path,
     train_csv: Path,
     syn_csv: Path,
     metadata_path: Path
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, list]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Read all three CSVs with type-safe loading using metadata.
-
-    Uses SDV metadata to enforce consistent column types across all datasets,
-    preventing string/number mismatches (e.g., "591" vs 591 in categorical fields).
+    Load all three datasets with metadata-enforced type consistency.
 
     Args:
         pop_csv: Path to population CSV
         train_csv: Path to training CSV
         syn_csv: Path to synthetic CSV
-        metadata_path: Path to SDV metadata JSON (REQUIRED)
+        metadata_path: Path to SDV metadata JSON
 
     Returns:
-        Tuple of (population_df, training_df, synthetic_df, sorted_columns)
+        Tuple of (population_df, training_df, synthetic_df)
     """
     console.print("📂 Loading datasets with metadata...", style="bold blue")
     console.print(f"  Using metadata: {metadata_path}")
 
     # Load all datasets with metadata-enforced types
-    pop = load_csv_with_metadata(pop_csv, metadata_path, low_memory=False)
-    train = load_csv_with_metadata(train_csv, metadata_path, low_memory=False)
-    syn = load_csv_with_metadata(syn_csv, metadata_path, low_memory=False)
+    population = load_csv_with_metadata(pop_csv, metadata_path, low_memory=False)
+    training = load_csv_with_metadata(train_csv, metadata_path, low_memory=False)
+    synthetic = load_csv_with_metadata(syn_csv, metadata_path, low_memory=False)
 
-    console.print(f"  Population: {len(pop):,} rows × {len(pop.columns)} columns")
-    console.print(f"  Training:   {len(train):,} rows × {len(train.columns)} columns")
-    console.print(f"  Synthetic:  {len(syn):,} rows × {len(syn.columns)} columns")
+    console.print(f"  Population: {len(population):,} rows × {len(population.columns)} columns")
+    console.print(f"  Training:   {len(training):,} rows × {len(training.columns)} columns")
+    console.print(f"  Synthetic:  {len(synthetic):,} rows × {len(synthetic.columns)} columns")
 
     # Verify all have same columns
-    pop_cols = set(pop.columns)
-    train_cols = set(train.columns)
-    syn_cols = set(syn.columns)
+    pop_cols = set(population.columns)
+    train_cols = set(training.columns)
+    syn_cols = set(synthetic.columns)
 
     if not (pop_cols == train_cols == syn_cols):
         missing_in_syn = pop_cols - syn_cols
@@ -97,279 +95,231 @@ def read_and_align(
 
         raise ValueError(error_msg)
 
-    # Sort columns for consistent comparison
-    cols = sorted(pop.columns)
-
-    # Reorder columns (types are already enforced by metadata loader)
-    pop = pop[cols]
-    train = train[cols]
-    syn = syn[cols]
-
     console.print("✓ All datasets aligned with consistent types\n", style="green")
 
-    return pop, train, syn, cols
+    return population, training, synthetic
 
 
-def compute_ddr_metrics(
-    pop: pd.DataFrame, train: pd.DataFrame, syn: pd.DataFrame
-) -> dict:
+def parse_query_file(query_file: Path) -> Dict[str, str]:
     """
-    Compute DDR and related metrics using hash-based set operations.
-    Computes metrics both for unique records and including duplicates.
+    Parse SQL file containing multiple queries separated by -- @query: name markers.
+
+    Args:
+        query_file: Path to SQL file
 
     Returns:
-        Dictionary with metric results and record sets
+        Dictionary mapping query names to SQL text
+
+    Example SQL file format:
+        -- @query: summary
+        SELECT COUNT(*) FROM table;
+
+        -- @query: details
+        SELECT * FROM table;
     """
-    console.print("🔢 Computing metrics...", style="bold blue")
+    if not query_file.exists():
+        raise FileNotFoundError(f"Query file not found: {query_file}")
 
-    # Compute row hashes for fast set operations
-    pop_hashes = pd.util.hash_pandas_object(pop, index=False).astype("uint64")
-    train_hashes = pd.util.hash_pandas_object(train, index=False).astype("uint64")
-    syn_hashes = pd.util.hash_pandas_object(syn, index=False).astype("uint64")
+    with open(query_file, 'r') as f:
+        content = f.read()
 
-    # Count duplicates in synthetic data
-    syn_hash_counts = syn_hashes.value_counts()
-    total_syn_rows = len(syn_hashes)  # Total including duplicates
-    unique_syn_rows = len(syn_hash_counts)  # Unique records
-    duplicate_rows = total_syn_rows - unique_syn_rows
+    queries = {}
+    current_query_name = None
+    current_query_lines = []
 
-    # Convert to sets
-    P = set(pop_hashes.tolist())
-    T = set(train_hashes.tolist())
-    S = set(syn_hashes.tolist())
+    for line in content.split('\n'):
+        # Check if line is a query marker
+        if line.strip().startswith('-- @query:'):
+            # Save previous query if exists
+            if current_query_name:
+                queries[current_query_name] = '\n'.join(current_query_lines).strip()
 
-    # Create hash to index mappings for later lookup
-    syn_hash_to_idx = {h: idx for idx, h in enumerate(syn_hashes)}
+            # Start new query
+            current_query_name = line.split('-- @query:', 1)[1].strip()
+            current_query_lines = []
+        elif current_query_name:
+            # Accumulate query lines
+            current_query_lines.append(line)
 
-    # Compute set operations (unique-based)
-    S_intersect_P = S & P  # Synthetic records in population (factual)
-    S_intersect_T = S & T  # Synthetic records in training (copies)
-    S_minus_P = S - P      # Synthetic records not in population (hallucinated)
+    # Save last query
+    if current_query_name:
+        queries[current_query_name] = '\n'.join(current_query_lines).strip()
 
-    # DDR: Records in population but not in training
-    # (S ∩ P) \ T = factual AND novel
-    DDR_set = S_intersect_P - T
-
-    # ===== UNIQUE-BASED METRICS =====
-    unique_total = len(S)
-    unique_hallucinated = len(S_minus_P)
-    unique_training_copies = len(S_intersect_T)
-    unique_population_matches = len(S_intersect_P)
-    unique_ddr = len(DDR_set)
-
-    unique_hr = (unique_hallucinated / unique_total * 100) if unique_total > 0 else 0.0
-    unique_training_copy_rate = (unique_training_copies / unique_total * 100) if unique_total > 0 else 0.0
-    unique_pop_match_rate = (unique_population_matches / unique_total * 100) if unique_total > 0 else 0.0
-    unique_ddr_rate = (unique_ddr / unique_total * 100) if unique_total > 0 else 0.0
-
-    # ===== TOTAL-BASED METRICS (including duplicates) =====
-    # Count how many times each category appears (weighted by duplicates)
-    total_hallucinated = sum(syn_hash_counts[h] for h in S_minus_P)
-    total_training_copies = sum(syn_hash_counts[h] for h in S_intersect_T)
-    total_population_matches = sum(syn_hash_counts[h] for h in S_intersect_P)
-    total_ddr = sum(syn_hash_counts[h] for h in DDR_set)
-
-    total_hr = (total_hallucinated / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
-    total_training_copy_rate = (total_training_copies / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
-    total_pop_match_rate = (total_population_matches / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
-    total_ddr_rate = (total_ddr / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
-
-    # Duplicate rate
-    duplicate_rate = (duplicate_rows / total_syn_rows * 100) if total_syn_rows > 0 else 0.0
-
-    console.print("✓ Metrics computed (unique + total)\n", style="green")
-
-    return {
-        # Duplicate info
-        "total_rows": total_syn_rows,
-        "unique_rows": unique_syn_rows,
-        "duplicate_rows": duplicate_rows,
-        "duplicate_rate": duplicate_rate,
-
-        # UNIQUE-based metrics
-        "unique": {
-            "total_synthetic": unique_total,
-            "hallucinated_count": unique_hallucinated,
-            "training_copy_count": unique_training_copies,
-            "population_match_count": unique_population_matches,
-            "ddr_count": unique_ddr,
-            "hallucination_rate": unique_hr,
-            "training_copy_rate": unique_training_copy_rate,
-            "population_match_rate": unique_pop_match_rate,
-            "ddr_rate": unique_ddr_rate,
-        },
-
-        # TOTAL-based metrics (including duplicates)
-        "total": {
-            "total_synthetic": total_syn_rows,
-            "hallucinated_count": total_hallucinated,
-            "training_copy_count": total_training_copies,
-            "population_match_count": total_population_matches,
-            "ddr_count": total_ddr,
-            "hallucination_rate": total_hr,
-            "training_copy_rate": total_training_copy_rate,
-            "population_match_rate": total_pop_match_rate,
-            "ddr_rate": total_ddr_rate,
-        },
-
-        # Sets for visualization
-        "S_minus_P": S_minus_P,
-        "S_intersect_T": S_intersect_T,
-        "DDR_set": DDR_set,
-        "syn_hash_to_idx": syn_hash_to_idx,
-        "syn_hash_counts": syn_hash_counts,
-    }
+    return queries
 
 
-def display_duplicate_breakdown(metrics: dict):
-    """Display detailed breakdown of duplicates by category."""
+def execute_ddr_queries(
+    population: pd.DataFrame,
+    training: pd.DataFrame,
+    synthetic: pd.DataFrame,
+    query_file: Path
+) -> Dict[str, Any]:
+    """
+    Execute DDR metric queries using DuckDB.
 
-    if metrics['duplicate_rows'] == 0:
-        return  # No duplicates, skip this section
+    Args:
+        population: Population DataFrame
+        training: Training DataFrame
+        synthetic: Synthetic DataFrame
+        query_file: Path to SQL file containing queries
 
-    syn_hash_counts = metrics['syn_hash_counts']
+    Returns:
+        Dictionary with all metrics and results
+    """
+    console.print("🔍 Executing DDR queries with DuckDB...", style="bold blue")
 
-    # Find records that appear more than once
-    duplicated_hashes = syn_hash_counts[syn_hash_counts > 1]
+    # Parse query file
+    console.print(f"  📄 Loading queries from: {query_file.name}")
+    queries = parse_query_file(query_file)
+    console.print(f"  ✓ Found {len(queries)} queries: {', '.join(queries.keys())}")
 
-    if len(duplicated_hashes) == 0:
-        return
+    # Create DuckDB connection
+    con = duckdb.connect()
 
-    # Categorize duplicated records
-    ddr_set = metrics['DDR_set']
-    train_copies = metrics['S_intersect_T']
-    hallucinations = metrics['S_minus_P']
+    # Register DataFrames (DuckDB will query them directly - zero-copy!)
+    con.register('population', population)
+    con.register('training', training)
+    con.register('synthetic', synthetic)
 
-    ddr_dups = {h: count for h, count in duplicated_hashes.items() if h in ddr_set}
-    train_dups = {h: count for h, count in duplicated_hashes.items() if h in train_copies}
-    hall_dups = {h: count for h, count in duplicated_hashes.items() if h in hallucinations}
+    console.print("  ✓ Registered DataFrames with DuckDB")
 
-    total_ddr_dup_rows = sum(ddr_dups.values()) - len(ddr_dups) if ddr_dups else 0
-    total_train_dup_rows = sum(train_dups.values()) - len(train_dups) if train_dups else 0
-    total_hall_dup_rows = sum(hall_dups.values()) - len(hall_dups) if hall_dups else 0
+    # Build hash expression with actual column names
+    # DuckDB's hash() requires explicit columns: hash(col1, col2, col3, ...)
+    columns = synthetic.columns.tolist()
+    hash_cols = ', '.join([f'"{col}"' for col in columns])
+    console.print(f"  🔧 Building hash expression with {len(columns)} columns")
 
-    console.print("🔄 Duplicate Breakdown by Category", style="bold yellow")
-    console.print(f"  ✓ DDR duplicates:          {len(ddr_dups):,} unique records → {total_ddr_dup_rows:,} duplicate rows")
-    console.print(f"  ⚠ Training copy duplicates: {len(train_dups):,} unique records → {total_train_dup_rows:,} duplicate rows")
-    console.print(f"  ✗ Hallucination duplicates: {len(hall_dups):,} unique records → {total_hall_dup_rows:,} duplicate rows")
+    # Execute summary query to get all metrics at once
+    if 'summary' not in queries:
+        raise ValueError("Query file must contain a 'summary' query marked with -- @query: summary")
 
-    # Show most duplicated record
-    if len(duplicated_hashes) > 0:
-        most_dup_hash = duplicated_hashes.idxmax()
-        most_dup_count = duplicated_hashes.max()
+    console.print(f"  📊 Executing summary query")
 
-        if most_dup_hash in ddr_set:
-            category = "✓ DDR"
-            color = "green"
-        elif most_dup_hash in train_copies:
-            category = "⚠ Training Copy"
-            color = "yellow"
-        else:
-            category = "✗ Hallucination"
-            color = "red"
+    # Replace {{HASH_COLS}} placeholder with actual column list
+    summary_query = queries['summary'].replace('{{HASH_COLS}}', hash_cols)
+    summary_result = con.execute(summary_query).fetchdf()
 
-        console.print(f"  Most duplicated: [{color}]{category}[/{color}] record appears {most_dup_count:,} times")
+    # Convert to dict (single row)
+    metrics = summary_result.to_dict('records')[0]
+
+    console.print("  ✓ Summary metrics computed")
+
+    # Optionally execute individual queries for detailed records (if needed)
+    # For now, we'll just use the summary
+
+    con.close()
+    console.print("✓ All queries executed successfully\n", style="green")
+
+    return metrics
+
+
+def display_metrics(metrics: Dict[str, Any]):
+    """Display metrics in formatted Rich tables with dual perspective."""
+
+    console.print()
+    console.print("📦 Synthetic Data Summary", style="bold blue")
+    console.print(f"  Total Generated Rows:     {metrics['total_synthetic_records']:,}")
+    console.print(f"  Unique Records:           {metrics['unique_synthetic_records']:,} ({100 - metrics['duplicate_rate_pct']:.2f}%)")
+    console.print(f"  Duplicate Records:        {metrics['duplicate_records']:,} ({metrics['duplicate_rate_pct']:.2f}%)")
     console.print()
 
-
-def display_metrics_table(metrics: dict):
-    """Display metrics in formatted Rich tables (both unique and total perspectives)."""
-
-    # First show duplicate summary
-    console.print()
-    console.print("📦 Duplicate Analysis", style="bold blue")
-    console.print(f"  Total Generated Rows:     {metrics['total_rows']:,}")
-    console.print(f"  Unique Records:           {metrics['unique_rows']:,} ({100 - metrics['duplicate_rate']:.2f}%)")
-    console.print(f"  Duplicate Records:        {metrics['duplicate_rows']:,} ({metrics['duplicate_rate']:.2f}%)")
-    console.print()
-
-    # Show duplicate breakdown if there are duplicates
-    display_duplicate_breakdown(metrics)
-
-    # Create side-by-side comparison table
-    comparison_table = Table(
-        title="📊 Synthetic Data Quality Metrics - Dual Perspective",
+    # Dual perspective metrics table
+    metrics_table = Table(
+        title="📊 DDR Metrics - Synthetic Data Quality (Dual Perspective)",
         show_header=True,
         header_style="bold magenta",
         box=box.ROUNDED,
         title_style="bold blue"
     )
 
-    comparison_table.add_column("Metric", style="cyan", no_wrap=True)
-    comparison_table.add_column("Unique Count", justify="right", style="yellow")
-    comparison_table.add_column("Unique Rate", justify="right", style="green")
-    comparison_table.add_column("Total Count", justify="right", style="yellow")
-    comparison_table.add_column("Total Rate", justify="right", style="green")
-    comparison_table.add_column("Interpretation", style="white")
-
-    unique = metrics["unique"]
-    total = metrics["total"]
+    metrics_table.add_column("Metric", style="cyan", no_wrap=True)
+    metrics_table.add_column("Unique Count", justify="right", style="yellow")
+    metrics_table.add_column("Unique Rate", justify="right", style="green")
+    metrics_table.add_column("Total Count", justify="right", style="yellow")
+    metrics_table.add_column("Total Rate", justify="right", style="green")
+    metrics_table.add_column("Interpretation", style="white")
 
     # Total row
-    comparison_table.add_row(
+    metrics_table.add_row(
         "Total Synthetic Records",
-        f"{unique['total_synthetic']:,}",
+        f"{metrics['unique_synthetic_records']:,}",
         "100.00%",
-        f"{total['total_synthetic']:,}",
+        f"{metrics['total_synthetic_records']:,}",
         "100.00%",
-        "All records (unique vs including duplicates)"
+        "All records"
     )
 
-    comparison_table.add_section()
+    metrics_table.add_section()
 
     # DDR row
-    comparison_table.add_row(
+    metrics_table.add_row(
         "✓ DDR (Desirable Diverse)",
-        f"{unique['ddr_count']:,}",
-        f"{unique['ddr_rate']:.2f}%",
-        f"{total['ddr_count']:,}",
-        f"{total['ddr_rate']:.2f}%",
-        "[bold green]Factual AND Novel (IDEAL)[/bold green]"
+        f"{metrics['ddr_unique_count']:,}",
+        f"{metrics['ddr_unique_rate_pct']:.2f}%",
+        f"{metrics['ddr_total_count']:,}",
+        f"{metrics['ddr_total_rate_pct']:.2f}%",
+        "[bold green]Factual AND Novel[/bold green]"
     )
 
-    comparison_table.add_section()
+    metrics_table.add_section()
 
     # Training copies
-    comparison_table.add_row(
+    metrics_table.add_row(
         "⚠ Training Copies",
-        f"{unique['training_copy_count']:,}",
-        f"{unique['training_copy_rate']:.2f}%",
-        f"{total['training_copy_count']:,}",
-        f"{total['training_copy_rate']:.2f}%",
-        "[yellow]Privacy risk - memorized[/yellow]"
+        f"{metrics['training_copy_unique_count']:,}",
+        f"{metrics['training_copy_unique_rate_pct']:.2f}%",
+        f"{metrics['training_copy_total_count']:,}",
+        f"{metrics['training_copy_total_rate_pct']:.2f}%",
+        "[yellow]Privacy risk[/yellow]"
     )
 
-    comparison_table.add_section()
+    metrics_table.add_section()
 
     # Hallucinations
-    comparison_table.add_row(
+    metrics_table.add_row(
         "✗ Hallucinations",
-        f"{unique['hallucinated_count']:,}",
-        f"{unique['hallucination_rate']:.2f}%",
-        f"{total['hallucinated_count']:,}",
-        f"{total['hallucination_rate']:.2f}%",
-        "[bold red]Fabricated - not in population[/bold red]"
+        f"{metrics['hallucination_unique_count']:,}",
+        f"{metrics['hallucination_unique_rate_pct']:.2f}%",
+        f"{metrics['hallucination_total_count']:,}",
+        f"{metrics['hallucination_total_rate_pct']:.2f}%",
+        "[bold red]Fabricated[/bold red]"
     )
 
-    comparison_table.add_section()
+    metrics_table.add_section()
 
     # Population matches
-    comparison_table.add_row(
+    metrics_table.add_row(
         "Population Matches",
-        f"{unique['population_match_count']:,}",
-        f"{unique['population_match_rate']:.2f}%",
-        f"{total['population_match_count']:,}",
-        f"{total['population_match_rate']:.2f}%",
-        "Factual (includes copies)"
+        f"{metrics['population_match_unique_count']:,}",
+        f"{metrics['population_match_unique_rate_pct']:.2f}%",
+        f"{metrics['population_match_total_count']:,}",
+        f"{metrics['population_match_total_rate_pct']:.2f}%",
+        "Factual"
     )
 
-    console.print(comparison_table)
+    console.print(metrics_table)
+    console.print()
+    console.print("Interpretation:", style="bold")
+    console.print("  • Unique Count/Rate: Based on distinct records only")
+    console.print("  • Total Count/Rate:  Including all duplicates as generated")
     console.print()
 
-    # Show interpretation note
-    console.print("[bold cyan]Interpretation:[/bold cyan]")
-    console.print("  • [yellow]Unique Count/Rate[/yellow]: Metrics based on distinct records only")
-    console.print("  • [yellow]Total Count/Rate[/yellow]:  Metrics including all duplicates (as generated)")
+    # Quality assessment (using unique rate as primary metric)
+    ddr_unique_rate = metrics['ddr_unique_rate_pct']
+    ddr_total_rate = metrics['ddr_total_rate_pct']
+
+    if ddr_unique_rate >= 70:
+        quality = "[bold green]EXCELLENT[/bold green]"
+    elif ddr_unique_rate >= 50:
+        quality = "[bold yellow]GOOD[/bold yellow]"
+    elif ddr_unique_rate >= 30:
+        quality = "[yellow]MODERATE[/yellow]"
+    else:
+        quality = "[bold red]POOR[/bold red]"
+
+    console.print(f"Overall Quality: {quality}")
+    console.print(f"  DDR (Unique): {ddr_unique_rate:.2f}% - distinct records only")
+    console.print(f"  DDR (Total):  {ddr_total_rate:.2f}% - includes duplicates")
     console.print()
 
 
@@ -415,172 +365,10 @@ Let:
     console.print()
 
 
-def render_record_comparison(
-    syn_row: pd.Series,
-    pop_row: Optional[pd.Series],
-    cols: list,
-    category: str,
-    record_id: int
-):
-    """
-    Render a single record with optional comparison to population match.
-
-    Args:
-        syn_row: Synthetic record
-        pop_row: Matching population record (None if hallucinated)
-        cols: Column names
-        category: Category label
-        record_id: Record number for display
-    """
-    table = Table(show_header=True, header_style="bold", box=box.SIMPLE_HEAVY)
-    table.add_column("Column", style="bold")
-    table.add_column("Synthetic", style="cyan")
-
-    if pop_row is not None:
-        table.add_column("Population", style="green")
-
-        for c in cols:
-            sv = str(syn_row[c])
-            pv = str(pop_row[c])
-
-            if sv == pv:
-                syn_cell = f"[green]{sv}[/green]"
-                pop_cell = f"[green]{pv}[/green]"
-            else:
-                syn_cell = f"[bold red]{sv}[/bold red]"
-                pop_cell = f"[bold red]{pv}[/bold red]"
-
-            table.add_row(c, syn_cell, pop_cell)
-
-        panel_title = f"{category} Record #{record_id}"
-    else:
-        # Hallucinated - no population match
-        for c in cols:
-            sv = str(syn_row[c])
-            table.add_row(c, f"[yellow]{sv}[/yellow]")
-
-        panel_title = f"{category} Record #{record_id} (No population match)"
-
-    console.print(Panel(table, title=panel_title, title_align="left", border_style="blue"))
-
-
-def visualize_samples(
-    syn: pd.DataFrame,
-    pop: pd.DataFrame,
-    train: pd.DataFrame,
-    metrics: dict,
-    cols: list,
-    n_samples: int = 3,
-    seed: int = 42
-):
-    """
-    Visualize sample records from each category.
-
-    Args:
-        syn: Synthetic dataframe
-        pop: Population dataframe
-        train: Training dataframe
-        metrics: Computed metrics dictionary
-        cols: Column names
-        n_samples: Number of samples per category
-        seed: Random seed for sampling
-    """
-    console.print("📋 Sample Records by Category", style="bold blue")
-    console.print()
-
-    syn_hash_to_idx = metrics["syn_hash_to_idx"]
-
-    # Get synthetic hashes for indexing
-    syn_hashes = pd.util.hash_pandas_object(syn, index=False).astype("uint64")
-    pop_hashes = pd.util.hash_pandas_object(pop, index=False).astype("uint64")
-
-    # Create population hash to row mapping
-    pop_hash_to_row = {h: pop.iloc[i] for i, h in enumerate(pop_hashes)}
-
-    # Sample from each category
-    categories = [
-        ("DDR_set", "✓ DDR (Factual & Novel)", "green", True),
-        ("S_intersect_T", "⚠ Training Copy", "yellow", True),
-        ("S_minus_P", "✗ Hallucination", "red", False),
-    ]
-
-    for set_key, label, color, has_pop_match in categories:
-        record_set = metrics[set_key]
-
-        if not record_set:
-            console.print(f"[{color}]{label}:[/{color}] No records in this category")
-            console.print()
-            continue
-
-        console.print(f"[bold {color}]{label}[/bold {color}] ({len(record_set):,} records)")
-
-        # Sample records
-        sample_hashes = list(record_set)[:n_samples] if len(record_set) <= n_samples else \
-                       pd.Series(list(record_set)).sample(n=n_samples, random_state=seed).tolist()
-
-        for i, h in enumerate(sample_hashes, start=1):
-            syn_idx = syn_hash_to_idx[h]
-            syn_row = syn.iloc[syn_idx]
-
-            if has_pop_match:
-                pop_row = pop_hash_to_row.get(h)
-            else:
-                pop_row = None
-
-            render_record_comparison(syn_row, pop_row, cols, label, i)
-
-        console.print()
-
-
-def sanity_checks(metrics: dict):
-    """
-    Perform sanity checks on computed metrics (both unique and total).
-    """
-    # Check unique metrics
-    unique = metrics["unique"]
-    unique_total = unique["total_synthetic"]
-    unique_ddr = unique["ddr_count"]
-    unique_train_copies = unique["training_copy_count"]
-    unique_hallucinations = unique["hallucinated_count"]
-    unique_computed = unique_ddr + unique_train_copies + unique_hallucinations
-
-    # Check total metrics
-    total = metrics["total"]
-    total_total = total["total_synthetic"]
-    total_ddr = total["ddr_count"]
-    total_train_copies = total["training_copy_count"]
-    total_hallucinations = total["hallucinated_count"]
-    total_computed = total_ddr + total_train_copies + total_hallucinations
-
-    console.print("🔍 Sanity Checks:", style="bold blue")
-
-    # Check unique
-    if unique_computed != unique_total:
-        console.print(
-            f"  [bold red]✗ Unique metrics:[/bold red] "
-            f"DDR({unique_ddr}) + Copies({unique_train_copies}) + Hallucinations({unique_hallucinations}) "
-            f"= {unique_computed} ≠ Total({unique_total})",
-            style="red"
-        )
-    else:
-        console.print(f"  [green]✓ Unique metrics:[/green] All {unique_total:,} records accounted for")
-
-    # Check total
-    if total_computed != total_total:
-        console.print(
-            f"  [bold red]✗ Total metrics:[/bold red] "
-            f"DDR({total_ddr}) + Copies({total_train_copies}) + Hallucinations({total_hallucinations}) "
-            f"= {total_computed} ≠ Total({total_total})",
-            style="red"
-        )
-    else:
-        console.print(f"  [green]✓ Total metrics:[/green] All {total_total:,} records accounted for")
-
-
 @app.command()
 def evaluate(
     population_csv: Path = typer.Option(
-        DEFAULT_POPULATION_FILE,
+        ...,
         "--population", "-p",
         help="Path to population CSV (ground truth)",
         exists=True,
@@ -588,7 +376,7 @@ def evaluate(
         dir_okay=False
     ),
     training_csv: Path = typer.Option(
-        DEFAULT_TRAINING_FILE,
+        ...,
         "--training", "-t",
         help="Path to training CSV (subset of population)",
         exists=True,
@@ -596,7 +384,7 @@ def evaluate(
         dir_okay=False
     ),
     synthetic_csv: Path = typer.Option(
-        DEFAULT_SYNTHETIC_FILE,
+        ...,
         "--synthetic", "-s",
         help="Path to synthetic CSV (generated data)",
         exists=True,
@@ -611,26 +399,23 @@ def evaluate(
         file_okay=True,
         dir_okay=False
     ),
-    n_samples: int = typer.Option(
-        3,
-        "--samples", "-n",
-        min=0,
-        help="Number of sample records to visualize per category"
+    query_file: Path = typer.Option(
+        "queries/ddr.sql",
+        "--query-file", "-q",
+        help="Path to SQL file containing all queries",
+        exists=True,
+        file_okay=True,
+        dir_okay=False
     ),
-    seed: int = typer.Option(
-        42,
-        "--seed",
-        help="Random seed for sampling"
+    output_json: Optional[Path] = typer.Option(
+        None,
+        "--output", "-o",
+        help="Save metrics to JSON file"
     ),
     show_formula: bool = typer.Option(
         False,
         "--formula", "-f",
         help="Show mathematical formula explanation"
-    ),
-    no_visualization: bool = typer.Option(
-        False,
-        "--no-viz",
-        help="Skip sample record visualization"
     ),
 ):
     """
@@ -638,55 +423,41 @@ def evaluate(
 
     Computes the proportion of synthetic records that are both factual (exist in
     population) AND novel (not copied from training data).
+
+    Uses DuckDB for efficient set operations. SQL queries are loaded from a single
+    SQL file containing multiple queries separated by -- @query: name markers.
     """
 
     console.print()
     console.print("=" * 80, style="blue")
-    console.print("  DDR METRIC EVALUATION", style="bold blue")
+    console.print("  DDR METRIC EVALUATION (DuckDB)", style="bold blue")
     console.print("  Desirable Diverse Records Rate for Synthetic Data Quality", style="blue")
     console.print("=" * 80, style="blue")
     console.print()
 
     try:
-        # Load and align datasets with metadata
-        pop, train, syn, cols = read_and_align(
+        # Load datasets with metadata
+        population, training, synthetic = load_datasets(
             population_csv, training_csv, synthetic_csv, metadata_json
         )
 
-        # Compute metrics
-        metrics = compute_ddr_metrics(pop, train, syn)
+        # Execute DDR queries
+        metrics = execute_ddr_queries(population, training, synthetic, query_file)
 
-        # Sanity checks
-        sanity_checks(metrics)
-        console.print()
-
-        # Display results
+        # Display formula if requested
         if show_formula:
             display_formula_explanation()
 
-        display_metrics_table(metrics)
+        # Display results
+        display_metrics(metrics)
 
-        # Interpretation (based on total metrics as this reflects actual generation quality)
-        ddr_rate_total = metrics["total"]["ddr_rate"]
-        ddr_rate_unique = metrics["unique"]["ddr_rate"]
-
-        if ddr_rate_total >= 70:
-            quality = "[bold green]EXCELLENT[/bold green]"
-        elif ddr_rate_total >= 50:
-            quality = "[bold yellow]GOOD[/bold yellow]"
-        elif ddr_rate_total >= 30:
-            quality = "[yellow]MODERATE[/yellow]"
-        else:
-            quality = "[bold red]POOR[/bold red]"
-
-        console.print(f"Overall Quality: {quality}")
-        console.print(f"  DDR (Total):  {ddr_rate_total:.2f}% - includes all duplicates as generated")
-        console.print(f"  DDR (Unique): {ddr_rate_unique:.2f}% - distinct records only")
-        console.print()
-
-        # Visualize samples
-        if not no_visualization and n_samples > 0:
-            visualize_samples(syn, pop, train, metrics, cols, n_samples, seed)
+        # Save JSON if requested
+        if output_json:
+            output_json.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_json, 'w') as f:
+                json.dump(metrics, f, indent=2, default=str)
+            console.print(f"💾 Saved metrics to: {output_json}", style="green")
+            console.print()
 
         console.print("=" * 80, style="blue")
         console.print("✓ Evaluation complete!", style="bold green")
