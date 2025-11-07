@@ -27,6 +27,9 @@ from sdpype.serialization import save_model, create_model_metadata
 # Import encoding module for HyperTransformer
 from sdpype.encoding import RDTDatasetEncoder
 
+# Import metadata utilities
+from sdpype.metadata import load_csv_with_metadata
+
 # Synthpop imports
 from synthpop.method import CARTMethod
 from sdpype.label_encoding import SimpleLabelEncoder
@@ -769,7 +772,7 @@ def main(cfg: DictConfig) -> None:
             print("💡 Check your data.training_file path in params.yaml!")
             raise FileNotFoundError(f"Training data file not found: {data_file}")
 
-        training_data = pd.read_csv(data_file)
+        training_data = load_csv_with_metadata(Path(data_file), Path(metadata_file))
         print(f"📊 Training data (raw): {training_data.shape}")
         print(f"🔧 Will inject HyperTransformer into SDV DataProcessor")
 
@@ -780,7 +783,7 @@ def main(cfg: DictConfig) -> None:
             print(f"❌ Training data not found: {data_file}")
             raise FileNotFoundError(f"Training data file not found: {data_file}")
 
-        raw_data = pd.read_csv(data_file)
+        raw_data = load_csv_with_metadata(Path(data_file), Path(metadata_file))
         print(f"📊 Raw training data: {raw_data.shape}")
 
         # Create and fit label encoder

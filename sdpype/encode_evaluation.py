@@ -19,6 +19,7 @@ import hydra
 from omegaconf import DictConfig
 
 from sdpype.encoding import RDTDatasetEncoder, load_encoding_config
+from sdpype.metadata import load_csv_with_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +68,12 @@ def main(cfg: DictConfig) -> None:
     # 2. Load datasets
     print(f"\n📊 Loading datasets...")
     reference_file = Path(cfg.data.reference_file)
+    metadata_path = Path(cfg.data.metadata_file)
 
     if not reference_file.exists():
         raise FileNotFoundError(f"Reference file not found: {reference_file}")
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
 
     # Find synthetic file - check both decoded and original locations
     base_name = f"{experiment_name}_{config_hash}_{seed}"
@@ -87,18 +91,9 @@ def main(cfg: DictConfig) -> None:
             f"Make sure generation stage completed successfully."
         )
 
-    # CRITICAL: Force categorical columns to load as strings to prevent pandas auto-conversion
-    # of numeric strings (e.g., "4835") to int64 when loading CSV
-    print(f"\n🔧 Preparing dtype specification for CSV loading...")
-    categorical_cols = [col for col, sdtype in config['sdtypes'].items() if sdtype == 'categorical']
-    dtype_spec = {col: str for col in categorical_cols}
-
-    if dtype_spec:
-        print(f"   Forcing {len(dtype_spec)} categorical columns to load as strings")
-        print(f"   Columns: {', '.join(categorical_cols)}")
-
-    reference_data = pd.read_csv(reference_file, dtype=dtype_spec)
-    synthetic_data = pd.read_csv(synthetic_decoded_path, dtype=dtype_spec)
+    # Use metadata-based loading for type consistency
+    reference_data = load_csv_with_metadata(reference_file, metadata_path)
+    synthetic_data = load_csv_with_metadata(synthetic_decoded_path, metadata_path)
 
     print(f"\n📊 Loading datasets...")
     print(f"✓ Reference data: {reference_data.shape}")
