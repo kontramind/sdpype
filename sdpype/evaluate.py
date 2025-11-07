@@ -14,6 +14,7 @@ from rich.table import Table
 from sdv.metadata import SingleTableMetadata
 from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate_statistical_report
 from sdpype.encoding import load_encoding_config
+from sdpype.metadata import load_csv_with_metadata
 
 console = Console()
 
@@ -134,19 +135,9 @@ def main(cfg: DictConfig) -> None:
         print(f"📊 Loading decoded reference data: {reference_decoded_path}")
         print(f"📊 Loading decoded synthetic data: {synthetic_decoded_path}")
 
-        # CRITICAL: Force categorical columns to load as strings to prevent pandas auto-conversion
-        # of numeric strings (e.g., "4835") back to int64
-        dtype_spec = {}
-        categorical_cols = [col for col, sdtype in metadata.columns.items()
-                          if sdtype.get('sdtype') == 'categorical']
-        for col in categorical_cols:
-            dtype_spec[col] = str
-
-        if dtype_spec:
-            print(f"🔧 Forcing {len(dtype_spec)} categorical columns to load as strings")
-
-        reference_data_decoded = pd.read_csv(reference_decoded_path, dtype=dtype_spec)
-        synthetic_data_decoded = pd.read_csv(synthetic_decoded_path, dtype=dtype_spec)
+        # Use metadata-based loading for type consistency
+        reference_data_decoded = load_csv_with_metadata(Path(reference_decoded_path), Path(metadata_path))
+        synthetic_data_decoded = load_csv_with_metadata(Path(synthetic_decoded_path), Path(metadata_path))
 
     # Set reference_data for display purposes (prefer decoded for original column names)
     reference_data = reference_data_decoded if reference_data_decoded is not None else reference_data_encoded
