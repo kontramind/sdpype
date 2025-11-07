@@ -183,13 +183,20 @@ def execute_ddr_queries(
 
     console.print("  ✓ Registered DataFrames with DuckDB")
 
+    # Build hash expression with actual column names
+    # DuckDB's hash() requires explicit columns: hash(col1, col2, col3, ...)
+    columns = synthetic.columns.tolist()
+    hash_cols = ', '.join([f'"{col}"' for col in columns])
+    console.print(f"  🔧 Building hash expression with {len(columns)} columns")
+
     # Execute summary query to get all metrics at once
     if 'summary' not in queries:
         raise ValueError("Query file must contain a 'summary' query marked with -- @query: summary")
 
     console.print(f"  📊 Executing summary query")
 
-    summary_query = queries['summary']
+    # Replace {{HASH_COLS}} placeholder with actual column list
+    summary_query = queries['summary'].replace('{{HASH_COLS}}', hash_cols)
     summary_result = con.execute(summary_query).fetchdf()
 
     # Convert to dict (single row)

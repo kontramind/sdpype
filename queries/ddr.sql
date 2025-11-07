@@ -10,16 +10,17 @@
 -- @query: summary
 -- Compute all DDR metrics in a single query - dual perspective (unique + total)
 -- Returns: Single row with all counts and rates
+-- Note: {{HASH_COLS}} is replaced by Python with actual column names
 WITH
 -- Hash all rows for efficient matching
 synthetic_hashed AS (
-    SELECT *, hash(*) as row_hash FROM synthetic
+    SELECT *, hash({{HASH_COLS}}) as row_hash FROM synthetic
 ),
 population_hashes AS (
-    SELECT DISTINCT hash(*) as row_hash FROM population
+    SELECT DISTINCT hash({{HASH_COLS}}) as row_hash FROM population
 ),
 training_hashes AS (
-    SELECT DISTINCT hash(*) as row_hash FROM training
+    SELECT DISTINCT hash({{HASH_COLS}}) as row_hash FROM training
 ),
 
 -- Count total synthetic records (all rows including duplicates)
