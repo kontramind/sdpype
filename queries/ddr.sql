@@ -66,16 +66,16 @@ SELECT
     ROUND(((st.total - su.count)::FLOAT / st.total * 100), 2) as duplicate_rate_pct,
 
     ddr.count as ddr_count,
-    ROUND((ddr.count::FLOAT / st.total * 100), 2) as ddr_rate_pct,
+    ROUND((ddr.count::FLOAT / su.count * 100), 2) as ddr_rate_pct,
 
     hall.count as hallucination_count,
-    ROUND((hall.count::FLOAT / st.total * 100), 2) as hallucination_rate_pct,
+    ROUND((hall.count::FLOAT / su.count * 100), 2) as hallucination_rate_pct,
 
     train.count as training_copy_count,
-    ROUND((train.count::FLOAT / st.total * 100), 2) as training_copy_rate_pct,
+    ROUND((train.count::FLOAT / su.count * 100), 2) as training_copy_rate_pct,
 
     pop.count as population_match_count,
-    ROUND((pop.count::FLOAT / st.total * 100), 2) as population_match_rate_pct
+    ROUND((pop.count::FLOAT / su.count * 100), 2) as population_match_rate_pct
 
 FROM synthetic_total st
 CROSS JOIN ddr_records ddr
