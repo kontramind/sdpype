@@ -8,81 +8,136 @@
 -- ============================================================================
 
 -- @query: summary
--- Compute all DDR metrics in a single query
+-- Compute all DDR metrics in a single query - dual perspective (unique + total)
 -- Returns: Single row with all counts and rates
 WITH
--- Count total synthetic records
+-- Hash all rows for efficient matching
+synthetic_hashed AS (
+    SELECT *, hash(*) as row_hash FROM synthetic
+),
+population_hashes AS (
+    SELECT DISTINCT hash(*) as row_hash FROM population
+),
+training_hashes AS (
+    SELECT DISTINCT hash(*) as row_hash FROM training
+),
+
+-- Count total synthetic records (all rows including duplicates)
 synthetic_total AS (
-    SELECT COUNT(*) as total FROM synthetic
+    SELECT COUNT(*) as total FROM synthetic_hashed
 ),
--- Count DDR records: (S ∩ P) \ T
-ddr_records AS (
-    SELECT COUNT(*) as count FROM (
-        SELECT * FROM (
-            SELECT * FROM synthetic
-            INTERSECT
-            SELECT * FROM population
-        )
-        EXCEPT
-        SELECT * FROM training
-    )
-),
--- Count hallucinations: S \ P
-hallucination_records AS (
-    SELECT COUNT(*) as count FROM (
-        SELECT * FROM synthetic
-        EXCEPT
-        SELECT * FROM population
-    )
-),
--- Count training copies: S ∩ T
-training_copy_records AS (
-    SELECT COUNT(*) as count FROM (
-        SELECT * FROM synthetic
-        INTERSECT
-        SELECT * FROM training
-    )
-),
--- Count population matches: S ∩ P
-population_match_records AS (
-    SELECT COUNT(*) as count FROM (
-        SELECT * FROM synthetic
-        INTERSECT
-        SELECT * FROM population
-    )
-),
+
 -- Count unique synthetic records
 synthetic_unique AS (
-    SELECT COUNT(*) as count FROM (
-        SELECT DISTINCT * FROM synthetic
-    )
+    SELECT COUNT(DISTINCT row_hash) as count FROM synthetic_hashed
+),
+
+-- TOTAL COUNTS (including duplicates) --
+
+-- DDR (total): in population AND not in training
+ddr_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash IN (SELECT row_hash FROM population_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM training_hashes)
+),
+
+-- Hallucinations (total): not in population
+hallucination_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+),
+
+-- Training copies (total): in training
+training_copy_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+),
+
+-- Population matches (total): in population
+population_match_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash IN (SELECT row_hash FROM population_hashes)
+),
+
+-- UNIQUE COUNTS (distinct records only) --
+
+-- DDR (unique): distinct hashes in population AND not in training
+ddr_unique AS (
+    SELECT COUNT(DISTINCT s.row_hash) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash IN (SELECT row_hash FROM population_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM training_hashes)
+),
+
+-- Hallucinations (unique): distinct hashes not in population
+hallucination_unique AS (
+    SELECT COUNT(DISTINCT s.row_hash) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+),
+
+-- Training copies (unique): distinct hashes in training
+training_copy_unique AS (
+    SELECT COUNT(DISTINCT s.row_hash) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+),
+
+-- Population matches (unique): distinct hashes in population
+population_match_unique AS (
+    SELECT COUNT(DISTINCT s.row_hash) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash IN (SELECT row_hash FROM population_hashes)
 )
 
 -- Compute final metrics
 SELECT
+    -- Basic counts
     st.total as total_synthetic_records,
     su.count as unique_synthetic_records,
     (st.total - su.count) as duplicate_records,
     ROUND(((st.total - su.count)::FLOAT / st.total * 100), 2) as duplicate_rate_pct,
 
-    ddr.count as ddr_count,
-    ROUND((ddr.count::FLOAT / su.count * 100), 2) as ddr_rate_pct,
+    -- UNIQUE metrics (distinct records)
+    ddr_u.count as ddr_unique_count,
+    ROUND((ddr_u.count::FLOAT / su.count * 100), 2) as ddr_unique_rate_pct,
 
-    hall.count as hallucination_count,
-    ROUND((hall.count::FLOAT / su.count * 100), 2) as hallucination_rate_pct,
+    hall_u.count as hallucination_unique_count,
+    ROUND((hall_u.count::FLOAT / su.count * 100), 2) as hallucination_unique_rate_pct,
 
-    train.count as training_copy_count,
-    ROUND((train.count::FLOAT / su.count * 100), 2) as training_copy_rate_pct,
+    train_u.count as training_copy_unique_count,
+    ROUND((train_u.count::FLOAT / su.count * 100), 2) as training_copy_unique_rate_pct,
 
-    pop.count as population_match_count,
-    ROUND((pop.count::FLOAT / su.count * 100), 2) as population_match_rate_pct
+    pop_u.count as population_match_unique_count,
+    ROUND((pop_u.count::FLOAT / su.count * 100), 2) as population_match_unique_rate_pct,
+
+    -- TOTAL metrics (including duplicates)
+    ddr_t.count as ddr_total_count,
+    ROUND((ddr_t.count::FLOAT / st.total * 100), 2) as ddr_total_rate_pct,
+
+    hall_t.count as hallucination_total_count,
+    ROUND((hall_t.count::FLOAT / st.total * 100), 2) as hallucination_total_rate_pct,
+
+    train_t.count as training_copy_total_count,
+    ROUND((train_t.count::FLOAT / st.total * 100), 2) as training_copy_total_rate_pct,
+
+    pop_t.count as population_match_total_count,
+    ROUND((pop_t.count::FLOAT / st.total * 100), 2) as population_match_total_rate_pct
 
 FROM synthetic_total st
-CROSS JOIN ddr_records ddr
-CROSS JOIN hallucination_records hall
-CROSS JOIN training_copy_records train
-CROSS JOIN population_match_records pop
-CROSS JOIN synthetic_unique su;
+CROSS JOIN synthetic_unique su
+CROSS JOIN ddr_unique ddr_u
+CROSS JOIN hallucination_unique hall_u
+CROSS JOIN training_copy_unique train_u
+CROSS JOIN population_match_unique pop_u
+CROSS JOIN ddr_total ddr_t
+CROSS JOIN hallucination_total hall_t
+CROSS JOIN training_copy_total train_t
+CROSS JOIN population_match_total pop_t;
 
 -- @query: ddr
 -- DDR (Desirable Diverse Records): Records that are factual AND novel

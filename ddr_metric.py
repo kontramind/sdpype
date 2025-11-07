@@ -207,7 +207,7 @@ def execute_ddr_queries(
 
 
 def display_metrics(metrics: Dict[str, Any]):
-    """Display metrics in formatted Rich tables."""
+    """Display metrics in formatted Rich tables with dual perspective."""
 
     console.print()
     console.print("📦 Synthetic Data Summary", style="bold blue")
@@ -216,9 +216,9 @@ def display_metrics(metrics: Dict[str, Any]):
     console.print(f"  Duplicate Records:        {metrics['duplicate_records']:,} ({metrics['duplicate_rate_pct']:.2f}%)")
     console.print()
 
-    # Main metrics table
+    # Dual perspective metrics table
     metrics_table = Table(
-        title="📊 DDR Metrics - Synthetic Data Quality",
+        title="📊 DDR Metrics - Synthetic Data Quality (Dual Perspective)",
         show_header=True,
         header_style="bold magenta",
         box=box.ROUNDED,
@@ -226,16 +226,20 @@ def display_metrics(metrics: Dict[str, Any]):
     )
 
     metrics_table.add_column("Metric", style="cyan", no_wrap=True)
-    metrics_table.add_column("Count", justify="right", style="yellow")
-    metrics_table.add_column("Rate", justify="right", style="green")
+    metrics_table.add_column("Unique Count", justify="right", style="yellow")
+    metrics_table.add_column("Unique Rate", justify="right", style="green")
+    metrics_table.add_column("Total Count", justify="right", style="yellow")
+    metrics_table.add_column("Total Rate", justify="right", style="green")
     metrics_table.add_column("Interpretation", style="white")
 
     # Total row
     metrics_table.add_row(
         "Total Synthetic Records",
+        f"{metrics['unique_synthetic_records']:,}",
+        "100.00%",
         f"{metrics['total_synthetic_records']:,}",
         "100.00%",
-        "All generated records"
+        "All records"
     )
 
     metrics_table.add_section()
@@ -243,9 +247,11 @@ def display_metrics(metrics: Dict[str, Any]):
     # DDR row
     metrics_table.add_row(
         "✓ DDR (Desirable Diverse)",
-        f"{metrics['ddr_count']:,}",
-        f"{metrics['ddr_rate_pct']:.2f}%",
-        "[bold green]Factual AND Novel (IDEAL)[/bold green]"
+        f"{metrics['ddr_unique_count']:,}",
+        f"{metrics['ddr_unique_rate_pct']:.2f}%",
+        f"{metrics['ddr_total_count']:,}",
+        f"{metrics['ddr_total_rate_pct']:.2f}%",
+        "[bold green]Factual AND Novel[/bold green]"
     )
 
     metrics_table.add_section()
@@ -253,9 +259,11 @@ def display_metrics(metrics: Dict[str, Any]):
     # Training copies
     metrics_table.add_row(
         "⚠ Training Copies",
-        f"{metrics['training_copy_count']:,}",
-        f"{metrics['training_copy_rate_pct']:.2f}%",
-        "[yellow]Privacy risk - memorized[/yellow]"
+        f"{metrics['training_copy_unique_count']:,}",
+        f"{metrics['training_copy_unique_rate_pct']:.2f}%",
+        f"{metrics['training_copy_total_count']:,}",
+        f"{metrics['training_copy_total_rate_pct']:.2f}%",
+        "[yellow]Privacy risk[/yellow]"
     )
 
     metrics_table.add_section()
@@ -263,9 +271,11 @@ def display_metrics(metrics: Dict[str, Any]):
     # Hallucinations
     metrics_table.add_row(
         "✗ Hallucinations",
-        f"{metrics['hallucination_count']:,}",
-        f"{metrics['hallucination_rate_pct']:.2f}%",
-        "[bold red]Fabricated - not in population[/bold red]"
+        f"{metrics['hallucination_unique_count']:,}",
+        f"{metrics['hallucination_unique_rate_pct']:.2f}%",
+        f"{metrics['hallucination_total_count']:,}",
+        f"{metrics['hallucination_total_rate_pct']:.2f}%",
+        "[bold red]Fabricated[/bold red]"
     )
 
     metrics_table.add_section()
@@ -273,27 +283,36 @@ def display_metrics(metrics: Dict[str, Any]):
     # Population matches
     metrics_table.add_row(
         "Population Matches",
-        f"{metrics['population_match_count']:,}",
-        f"{metrics['population_match_rate_pct']:.2f}%",
-        "Factual (includes copies)"
+        f"{metrics['population_match_unique_count']:,}",
+        f"{metrics['population_match_unique_rate_pct']:.2f}%",
+        f"{metrics['population_match_total_count']:,}",
+        f"{metrics['population_match_total_rate_pct']:.2f}%",
+        "Factual"
     )
 
     console.print(metrics_table)
     console.print()
+    console.print("Interpretation:", style="bold")
+    console.print("  • Unique Count/Rate: Based on distinct records only")
+    console.print("  • Total Count/Rate:  Including all duplicates as generated")
+    console.print()
 
-    # Quality assessment
-    ddr_rate = metrics['ddr_rate_pct']
-    if ddr_rate >= 70:
+    # Quality assessment (using unique rate as primary metric)
+    ddr_unique_rate = metrics['ddr_unique_rate_pct']
+    ddr_total_rate = metrics['ddr_total_rate_pct']
+
+    if ddr_unique_rate >= 70:
         quality = "[bold green]EXCELLENT[/bold green]"
-    elif ddr_rate >= 50:
+    elif ddr_unique_rate >= 50:
         quality = "[bold yellow]GOOD[/bold yellow]"
-    elif ddr_rate >= 30:
+    elif ddr_unique_rate >= 30:
         quality = "[yellow]MODERATE[/yellow]"
     else:
         quality = "[bold red]POOR[/bold red]"
 
     console.print(f"Overall Quality: {quality}")
-    console.print(f"  DDR Rate: {ddr_rate:.2f}%")
+    console.print(f"  DDR (Unique): {ddr_unique_rate:.2f}% - distinct records only")
+    console.print(f"  DDR (Total):  {ddr_total_rate:.2f}% - includes duplicates")
     console.print()
 
 
