@@ -100,20 +100,59 @@ def load_datasets(
     return population, training, synthetic
 
 
-def load_query(query_path: Path) -> str:
-    """Load SQL query from file."""
-    if not query_path.exists():
-        raise FileNotFoundError(f"Query file not found: {query_path}")
+def parse_query_file(query_file: Path) -> Dict[str, str]:
+    """
+    Parse SQL file containing multiple queries separated by -- @query: name markers.
 
-    with open(query_path, 'r') as f:
-        return f.read()
+    Args:
+        query_file: Path to SQL file
+
+    Returns:
+        Dictionary mapping query names to SQL text
+
+    Example SQL file format:
+        -- @query: summary
+        SELECT COUNT(*) FROM table;
+
+        -- @query: details
+        SELECT * FROM table;
+    """
+    if not query_file.exists():
+        raise FileNotFoundError(f"Query file not found: {query_file}")
+
+    with open(query_file, 'r') as f:
+        content = f.read()
+
+    queries = {}
+    current_query_name = None
+    current_query_lines = []
+
+    for line in content.split('\n'):
+        # Check if line is a query marker
+        if line.strip().startswith('-- @query:'):
+            # Save previous query if exists
+            if current_query_name:
+                queries[current_query_name] = '\n'.join(current_query_lines).strip()
+
+            # Start new query
+            current_query_name = line.split('-- @query:', 1)[1].strip()
+            current_query_lines = []
+        elif current_query_name:
+            # Accumulate query lines
+            current_query_lines.append(line)
+
+    # Save last query
+    if current_query_name:
+        queries[current_query_name] = '\n'.join(current_query_lines).strip()
+
+    return queries
 
 
 def execute_ddr_queries(
     population: pd.DataFrame,
     training: pd.DataFrame,
     synthetic: pd.DataFrame,
-    query_dir: Path
+    query_file: Path
 ) -> Dict[str, Any]:
     """
     Execute DDR metric queries using DuckDB.
@@ -122,12 +161,17 @@ def execute_ddr_queries(
         population: Population DataFrame
         training: Training DataFrame
         synthetic: Synthetic DataFrame
-        query_dir: Directory containing SQL query files
+        query_file: Path to SQL file containing queries
 
     Returns:
         Dictionary with all metrics and results
     """
     console.print("🔍 Executing DDR queries with DuckDB...", style="bold blue")
+
+    # Parse query file
+    console.print(f"  📄 Loading queries from: {query_file.name}")
+    queries = parse_query_file(query_file)
+    console.print(f"  ✓ Found {len(queries)} queries: {', '.join(queries.keys())}")
 
     # Create DuckDB connection
     con = duckdb.connect()
@@ -140,10 +184,12 @@ def execute_ddr_queries(
     console.print("  ✓ Registered DataFrames with DuckDB")
 
     # Execute summary query to get all metrics at once
-    summary_query_path = query_dir / "summary.sql"
-    console.print(f"  📊 Executing summary query: {summary_query_path.name}")
+    if 'summary' not in queries:
+        raise ValueError("Query file must contain a 'summary' query marked with -- @query: summary")
 
-    summary_query = load_query(summary_query_path)
+    console.print(f"  📊 Executing summary query")
+
+    summary_query = queries['summary']
     summary_result = con.execute(summary_query).fetchdf()
 
     # Convert to dict (single row)
@@ -327,12 +373,13 @@ def evaluate(
         file_okay=True,
         dir_okay=False
     ),
-    query_dir: Path = typer.Option(
-        "queries/ddr",
-        "--query-dir", "-q",
-        help="Directory containing SQL query files",
-        file_okay=False,
-        dir_okay=True
+    query_file: Path = typer.Option(
+        "queries/ddr.sql",
+        "--query-file", "-q",
+        help="Path to SQL file containing all queries",
+        exists=True,
+        file_okay=True,
+        dir_okay=False
     ),
     output_json: Optional[Path] = typer.Option(
         None,
@@ -351,8 +398,8 @@ def evaluate(
     Computes the proportion of synthetic records that are both factual (exist in
     population) AND novel (not copied from training data).
 
-    Uses DuckDB for efficient set operations. SQL queries are loaded from files
-    for flexibility and customization.
+    Uses DuckDB for efficient set operations. SQL queries are loaded from a single
+    SQL file containing multiple queries separated by -- @query: name markers.
     """
 
     console.print()
@@ -363,20 +410,13 @@ def evaluate(
     console.print()
 
     try:
-        # Verify query directory exists
-        if not query_dir.exists():
-            raise FileNotFoundError(
-                f"Query directory not found: {query_dir}\n"
-                f"Expected SQL files: summary.sql, ddr.sql, hallucinations.sql, etc."
-            )
-
         # Load datasets with metadata
         population, training, synthetic = load_datasets(
             population_csv, training_csv, synthetic_csv, metadata_json
         )
 
         # Execute DDR queries
-        metrics = execute_ddr_queries(population, training, synthetic, query_dir)
+        metrics = execute_ddr_queries(population, training, synthetic, query_file)
 
         # Display formula if requested
         if show_formula:
