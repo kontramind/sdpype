@@ -112,3 +112,22 @@ stages:
     metrics:
       - experiments/metrics/detection_evaluation_${experiment.name}_${config_hash}_${experiment.seed}.json
       - experiments/metrics/detection_report_${experiment.name}_${config_hash}_${experiment.seed}.txt
+
+  hallucination_evaluation:
+    cmd: python -m sdpype.hallucination_evaluation
+    deps:
+      - sdpype/hallucination_evaluation.py
+      - sdpype/evaluation/hallucination.py
+      - ${data.population_file}
+      - ${data.training_file}
+      - ${data.metadata_file}
+      - ${evaluation.hallucination.query_file}
+      - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}_decoded.csv
+    params:
+      - evaluation.hallucination
+      - experiment.seed
+      - experiment.name
+      - config_hash
+    metrics:
+      - experiments/metrics/hallucination_${experiment.name}_${config_hash}_${experiment.seed}.json
+      - experiments/metrics/hallucination_report_${experiment.name}_${config_hash}_${experiment.seed}.txt

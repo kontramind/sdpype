@@ -2,6 +2,13 @@
 -- Unified Validation Queries for DDR and Plausibility Metrics
 -- ============================================================================
 --
+-- DATASET: Canada COVID-19 Case Details
+-- This validation file is DATASET-SPECIFIC and contains hardcoded column names
+-- and validation rules for the Canada COVID-19 dataset.
+--
+-- For other datasets, create a separate validation SQL file with appropriate
+-- column names and validation rules (e.g., queries/validation_adult.sql).
+--
 -- This SQL file contains queries to compute:
 -- 1. DDR (Desirable Diverse Records) metrics - records that exist in population
 --    but not in training data
@@ -13,6 +20,12 @@
 --
 -- Template placeholders:
 -- - {{HASH_COLS}}: Replaced with comma-separated quoted column names at runtime
+--
+-- Validation Rules for COVID-19 Dataset:
+-- - Categorical membership: Age Group, Gender, Exposure Type, Case Status,
+--   Province Abbreviation, Region ID
+-- - Date ranges: Date Reported (within population bounds)
+-- - Combination constraints: Province Abbreviation + Region ID must be valid pair
 --
 -- ============================================================================
 
@@ -81,33 +94,56 @@ ddr_unique AS (
 ),
 
 -- ============================================================================
--- Hallucination Metrics: Records not in population
+-- Training Copy Metrics - Split into Valid vs Propagation
 -- ============================================================================
-hallucinated_total AS (
-    SELECT COUNT(*) as count
-    FROM synthetic_hashed s
-    WHERE s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
-),
 
-hallucinated_unique AS (
-    SELECT COUNT(DISTINCT s.row_hash) as count
-    FROM synthetic_hashed s
-    WHERE s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
-),
-
--- ============================================================================
--- Training Copy Metrics: Records that match training data
--- ============================================================================
-training_copy_total AS (
+-- Training Copy (Valid): Copied from training AND exists in population (real data)
+training_copy_valid_total AS (
     SELECT COUNT(*) as count
     FROM synthetic_hashed s
     WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+      AND s.row_hash IN (SELECT row_hash FROM population_hashes)
 ),
 
-training_copy_unique AS (
+training_copy_valid_unique AS (
     SELECT COUNT(DISTINCT s.row_hash) as count
     FROM synthetic_hashed s
     WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+      AND s.row_hash IN (SELECT row_hash FROM population_hashes)
+),
+
+-- Training Copy (Propagation): Copied from training but NOT in population (hallucination propagation!)
+training_copy_propagation_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+),
+
+training_copy_propagation_unique AS (
+    SELECT COUNT(DISTINCT s.row_hash) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+),
+
+-- ============================================================================
+-- Hallucination Metrics - New Hallucinations Only
+-- ============================================================================
+
+-- New Hallucinations: NOT in population AND NOT in training (freshly fabricated)
+new_hallucination_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM training_hashes)
+),
+
+new_hallucination_unique AS (
+    SELECT COUNT(DISTINCT s.row_hash) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM training_hashes)
 ),
 
 -- ============================================================================
@@ -225,6 +261,103 @@ implausible_unique AS (
     SELECT COUNT(DISTINCT row_hash) as count
     FROM synthetic_with_validity
     WHERE passes_all_rules = 0
+),
+
+-- ============================================================================
+-- 2×2 Matrix: Factual × Novel Quality Metrics
+-- ============================================================================
+
+-- Total Factual: Records in population (S ∩ P)
+total_factual AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_hashed s
+    WHERE s.row_hash IN (SELECT row_hash FROM population_hashes)
+),
+
+-- Novel Factual: Records in population but not in training (S ∩ P ∩ T̄) - same as DDR
+-- (already computed as ddr_total above)
+
+-- Total Plausible: Records passing validation (S ∩ V)
+-- (already computed as plausible_total above)
+
+-- Novel Plausible: Records passing validation and not in training (S ∩ V ∩ T̄)
+novel_plausible_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_with_validity s
+    WHERE s.passes_all_rules = 1
+      AND s.row_hash NOT IN (SELECT row_hash FROM training_hashes)
+),
+
+-- ============================================================================
+-- Cross-Tabulation: Category × Plausibility (Total counts only)
+-- ============================================================================
+
+-- DDR × Plausibility
+ddr_plausible_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_with_validity s
+    WHERE s.row_hash IN (SELECT row_hash FROM population_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM training_hashes)
+      AND s.passes_all_rules = 1
+),
+
+ddr_implausible_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_with_validity s
+    WHERE s.row_hash IN (SELECT row_hash FROM population_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM training_hashes)
+      AND s.passes_all_rules = 0
+),
+
+-- Training Copy (Valid) × Plausibility
+training_copy_valid_plausible_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_with_validity s
+    WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+      AND s.row_hash IN (SELECT row_hash FROM population_hashes)
+      AND s.passes_all_rules = 1
+),
+
+training_copy_valid_implausible_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_with_validity s
+    WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+      AND s.row_hash IN (SELECT row_hash FROM population_hashes)
+      AND s.passes_all_rules = 0
+),
+
+-- Training Copy (Propagation) × Plausibility
+training_copy_propagation_plausible_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_with_validity s
+    WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+      AND s.passes_all_rules = 1
+),
+
+training_copy_propagation_implausible_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_with_validity s
+    WHERE s.row_hash IN (SELECT row_hash FROM training_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+      AND s.passes_all_rules = 0
+),
+
+-- New Hallucination × Plausibility
+new_hallucination_plausible_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_with_validity s
+    WHERE s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM training_hashes)
+      AND s.passes_all_rules = 1
+),
+
+new_hallucination_implausible_total AS (
+    SELECT COUNT(*) as count
+    FROM synthetic_with_validity s
+    WHERE s.row_hash NOT IN (SELECT row_hash FROM population_hashes)
+      AND s.row_hash NOT IN (SELECT row_hash FROM training_hashes)
+      AND s.passes_all_rules = 0
 )
 
 -- ============================================================================
@@ -250,17 +383,23 @@ SELECT
     ddr_t.count as ddr_total_count,
     ROUND((ddr_t.count::FLOAT / ss.total * 100), 2) as ddr_total_rate_pct,
 
-    -- Hallucination metrics (not in population)
-    hall_u.count as hallucinated_unique_count,
-    ROUND((hall_u.count::FLOAT / ss.unique_count * 100), 2) as hallucinated_unique_rate_pct,
-    hall_t.count as hallucinated_total_count,
-    ROUND((hall_t.count::FLOAT / ss.total * 100), 2) as hallucinated_total_rate_pct,
+    -- Training Copy (Valid) metrics (copied from training AND in population)
+    tcv_u.count as training_copy_valid_unique_count,
+    ROUND((tcv_u.count::FLOAT / ss.unique_count * 100), 2) as training_copy_valid_unique_rate_pct,
+    tcv_t.count as training_copy_valid_total_count,
+    ROUND((tcv_t.count::FLOAT / ss.total * 100), 2) as training_copy_valid_total_rate_pct,
 
-    -- Training copy metrics (matches training data)
-    tc_u.count as training_copy_unique_count,
-    ROUND((tc_u.count::FLOAT / ss.unique_count * 100), 2) as training_copy_unique_rate_pct,
-    tc_t.count as training_copy_total_count,
-    ROUND((tc_t.count::FLOAT / ss.total * 100), 2) as training_copy_total_rate_pct,
+    -- Training Copy (Propagation) metrics (copied from training but NOT in population - hallucination propagation!)
+    tcp_u.count as training_copy_propagation_unique_count,
+    ROUND((tcp_u.count::FLOAT / ss.unique_count * 100), 2) as training_copy_propagation_unique_rate_pct,
+    tcp_t.count as training_copy_propagation_total_count,
+    ROUND((tcp_t.count::FLOAT / ss.total * 100), 2) as training_copy_propagation_total_rate_pct,
+
+    -- New Hallucination metrics (NOT in population AND NOT in training - freshly fabricated)
+    nh_u.count as new_hallucination_unique_count,
+    ROUND((nh_u.count::FLOAT / ss.unique_count * 100), 2) as new_hallucination_unique_rate_pct,
+    nh_t.count as new_hallucination_total_count,
+    ROUND((nh_t.count::FLOAT / ss.total * 100), 2) as new_hallucination_total_rate_pct,
 
     -- Plausibility metrics (passing all validation rules)
     plaus_u.count as plausible_unique_count,
@@ -272,18 +411,64 @@ SELECT
     impl_u.count as implausible_unique_count,
     ROUND((impl_u.count::FLOAT / ss.unique_count * 100), 2) as implausible_unique_rate_pct,
     impl_t.count as implausible_total_count,
-    ROUND((impl_t.count::FLOAT / ss.total * 100), 2) as implausible_total_rate_pct
+    ROUND((impl_t.count::FLOAT / ss.total * 100), 2) as implausible_total_rate_pct,
+
+    -- 2×2 Matrix: Factual × Novel Quality Metrics
+    total_factual.count as total_factual_count,
+    ROUND((total_factual.count::FLOAT / ss.total * 100), 2) as total_factual_rate_pct,
+    ddr_t.count as novel_factual_count,  -- reuse DDR for Novel Factual (S ∩ P ∩ T̄)
+    ROUND((ddr_t.count::FLOAT / ss.total * 100), 2) as novel_factual_rate_pct,
+    plaus_t.count as total_plausible_count,  -- reuse for Total Plausible (S ∩ V)
+    ROUND((plaus_t.count::FLOAT / ss.total * 100), 2) as total_plausible_rate_pct,
+    novel_plausible.count as novel_plausible_count,
+    ROUND((novel_plausible.count::FLOAT / ss.total * 100), 2) as novel_plausible_rate_pct,
+
+    -- Cross-Tabulation: DDR × Plausibility (Total perspective only)
+    ddr_plaus_t.count as ddr_plausible_total_count,
+    ROUND((ddr_plaus_t.count::FLOAT / ss.total * 100), 2) as ddr_plausible_total_rate_pct,
+    ddr_implaus_t.count as ddr_implausible_total_count,
+    ROUND((ddr_implaus_t.count::FLOAT / ss.total * 100), 2) as ddr_implausible_total_rate_pct,
+
+    -- Cross-Tabulation: Training Copy (Valid) × Plausibility
+    tcv_plaus_t.count as training_copy_valid_plausible_total_count,
+    ROUND((tcv_plaus_t.count::FLOAT / ss.total * 100), 2) as training_copy_valid_plausible_total_rate_pct,
+    tcv_implaus_t.count as training_copy_valid_implausible_total_count,
+    ROUND((tcv_implaus_t.count::FLOAT / ss.total * 100), 2) as training_copy_valid_implausible_total_rate_pct,
+
+    -- Cross-Tabulation: Training Copy (Propagation) × Plausibility
+    tcp_plaus_t.count as training_copy_propagation_plausible_total_count,
+    ROUND((tcp_plaus_t.count::FLOAT / ss.total * 100), 2) as training_copy_propagation_plausible_total_rate_pct,
+    tcp_implaus_t.count as training_copy_propagation_implausible_total_count,
+    ROUND((tcp_implaus_t.count::FLOAT / ss.total * 100), 2) as training_copy_propagation_implausible_total_rate_pct,
+
+    -- Cross-Tabulation: New Hallucination × Plausibility
+    nh_plaus_t.count as new_hallucination_plausible_total_count,
+    ROUND((nh_plaus_t.count::FLOAT / ss.total * 100), 2) as new_hallucination_plausible_total_rate_pct,
+    nh_implaus_t.count as new_hallucination_implausible_total_count,
+    ROUND((nh_implaus_t.count::FLOAT / ss.total * 100), 2) as new_hallucination_implausible_total_rate_pct
 
 FROM population_stats ps
 CROSS JOIN training_stats ts
 CROSS JOIN synthetic_stats ss
 CROSS JOIN ddr_unique ddr_u
 CROSS JOIN ddr_total ddr_t
-CROSS JOIN hallucinated_unique hall_u
-CROSS JOIN hallucinated_total hall_t
-CROSS JOIN training_copy_unique tc_u
-CROSS JOIN training_copy_total tc_t
+CROSS JOIN training_copy_valid_unique tcv_u
+CROSS JOIN training_copy_valid_total tcv_t
+CROSS JOIN training_copy_propagation_unique tcp_u
+CROSS JOIN training_copy_propagation_total tcp_t
+CROSS JOIN new_hallucination_unique nh_u
+CROSS JOIN new_hallucination_total nh_t
 CROSS JOIN plausible_unique plaus_u
 CROSS JOIN plausible_total plaus_t
 CROSS JOIN implausible_unique impl_u
-CROSS JOIN implausible_total impl_t;
+CROSS JOIN implausible_total impl_t
+CROSS JOIN total_factual
+CROSS JOIN novel_plausible_total novel_plausible
+CROSS JOIN ddr_plausible_total ddr_plaus_t
+CROSS JOIN ddr_implausible_total ddr_implaus_t
+CROSS JOIN training_copy_valid_plausible_total tcv_plaus_t
+CROSS JOIN training_copy_valid_implausible_total tcv_implaus_t
+CROSS JOIN training_copy_propagation_plausible_total tcp_plaus_t
+CROSS JOIN training_copy_propagation_implausible_total tcp_implaus_t
+CROSS JOIN new_hallucination_plausible_total nh_plaus_t
+CROSS JOIN new_hallucination_implausible_total nh_implaus_t;
