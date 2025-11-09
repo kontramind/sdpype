@@ -67,6 +67,7 @@ def main(cfg: DictConfig) -> None:
     metadata_path = cfg.data.metadata_file
     population_file = cfg.data.get("population_file")
     training_file = cfg.data.training_file
+    reference_file = cfg.data.reference_file
     synthetic_decoded_path = f"experiments/data/synthetic/synthetic_data_{base_name}_decoded.csv"
 
     # Validate population file is configured
@@ -99,6 +100,10 @@ def main(cfg: DictConfig) -> None:
     training_data = load_csv_with_metadata(Path(training_file), Path(metadata_path), low_memory=False)
     print(f"   Loaded {len(training_data):,} rows")
 
+    print(f"📊 Loading reference data: {reference_file}")
+    reference_data = load_csv_with_metadata(Path(reference_file), Path(metadata_path), low_memory=False)
+    print(f"   Loaded {len(reference_data):,} rows")
+
     print(f"📊 Loading synthetic data: {synthetic_decoded_path}")
     synthetic_data = load_csv_with_metadata(Path(synthetic_decoded_path), Path(metadata_path), low_memory=False)
     print(f"   Loaded {len(synthetic_data):,} rows")
@@ -112,6 +117,7 @@ def main(cfg: DictConfig) -> None:
     hallucination_results = evaluate_hallucination_metrics(
         population=population_data,
         training=training_data,
+        reference=reference_data,
         synthetic=synthetic_data,
         metadata=metadata,
         query_file=query_file_path,
@@ -235,6 +241,108 @@ Key Insights:
 
     console.print(guide_panel)
     console.print()
+
+    # Display complexity metrics
+    complexity_metrics = results.get("complexity_metrics", {})
+    if complexity_metrics:
+        complexity_table = Table(
+            title="📐 Dataset Complexity (Combinatorial Search Space)",
+            show_header=True,
+            header_style="bold magenta",
+            box=box.ROUNDED
+        )
+
+        complexity_table.add_column("Dataset", style="cyan")
+        complexity_table.add_column("Total Complexity\n(ln scale)", justify="right", style="yellow")
+        complexity_table.add_column("# Records", justify="right", style="white")
+        complexity_table.add_column("# Columns", justify="right", style="white")
+        complexity_table.add_column("Ratio vs\nSynthetic", justify="right", style="green")
+
+        # Get metrics for all datasets
+        pop_complexity = complexity_metrics.get("population", {})
+        train_complexity = complexity_metrics.get("training", {})
+        ref_complexity = complexity_metrics.get("reference", {})
+        synth_complexity = complexity_metrics.get("synthetic", {})
+        comparisons = complexity_metrics.get("comparisons", {})
+
+        # Population row
+        complexity_table.add_row(
+            "Population",
+            f"{pop_complexity.get('total_complexity', 0):.2f}",
+            f"{pop_complexity.get('num_records', 0):,}",
+            f"{pop_complexity.get('num_columns', 0)}",
+            f"{1.0 / comparisons.get('synthetic_vs_population_ratio', 1.0):.3f}x" if comparisons.get('synthetic_vs_population_ratio', 0) > 0 else "N/A"
+        )
+
+        # Training row
+        complexity_table.add_row(
+            "Training",
+            f"{train_complexity.get('total_complexity', 0):.2f}",
+            f"{train_complexity.get('num_records', 0):,}",
+            f"{train_complexity.get('num_columns', 0)}",
+            f"{1.0 / comparisons.get('synthetic_vs_training_ratio', 1.0):.3f}x" if comparisons.get('synthetic_vs_training_ratio', 0) > 0 else "N/A"
+        )
+
+        # Reference row
+        complexity_table.add_row(
+            "Reference",
+            f"{ref_complexity.get('total_complexity', 0):.2f}",
+            f"{ref_complexity.get('num_records', 0):,}",
+            f"{ref_complexity.get('num_columns', 0)}",
+            f"{1.0 / comparisons.get('synthetic_vs_reference_ratio', 1.0):.3f}x" if comparisons.get('synthetic_vs_reference_ratio', 0) > 0 else "N/A"
+        )
+
+        # Synthetic row (highlighted)
+        complexity_table.add_row(
+            "Synthetic",
+            f"{synth_complexity.get('total_complexity', 0):.2f}",
+            f"{synth_complexity.get('num_records', 0):,}",
+            f"{synth_complexity.get('num_columns', 0)}",
+            "1.000x",
+            style="bold"
+        )
+
+        console.print(complexity_table)
+        console.print()
+
+        # Top contributing columns for each dataset
+        top_n = 5
+        datasets = [
+            ("Population", pop_complexity, "green"),
+            ("Training", train_complexity, "yellow"),
+            ("Reference", ref_complexity, "blue"),
+            ("Synthetic", synth_complexity, "magenta")
+        ]
+
+        for dataset_name, dataset_complexity, color in datasets:
+            cols = dataset_complexity.get('column_contributions', [])[:top_n]
+            if cols:
+                contrib_table = Table(
+                    title=f"🔝 Top {top_n} Contributing Columns - {dataset_name}",
+                    show_header=True,
+                    header_style=f"bold {color}",
+                    box=box.SIMPLE
+                )
+
+                contrib_table.add_column("Rank", style="dim", justify="right", width=4)
+                contrib_table.add_column("Column", style="cyan", no_wrap=False)
+                contrib_table.add_column("Cardinality", justify="right", style="yellow")
+                contrib_table.add_column("ln(Card)", justify="right", style="green")
+                contrib_table.add_column("% of Total", justify="right", style="magenta")
+
+                total = dataset_complexity.get('total_complexity', 1.0)
+                for idx, col_info in enumerate(cols, 1):
+                    pct_contrib = (col_info['log_cardinality'] / total * 100) if total > 0 else 0
+                    contrib_table.add_row(
+                        str(idx),
+                        col_info['column'],
+                        f"{col_info['cardinality']:,}",
+                        f"{col_info['log_cardinality']:.2f}",
+                        f"{pct_contrib:.1f}%"
+                    )
+
+                console.print(contrib_table)
+                console.print()
 
     # Summary info
     console.print("=" * 80, style="blue")
