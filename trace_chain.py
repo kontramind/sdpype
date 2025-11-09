@@ -87,27 +87,28 @@ def parse_model_id(model_id: str) -> Dict[str, str]:
 def read_metrics(model_id: str, generation: int) -> Dict:
     """
     Read key metrics from generation's output files.
-    
+
     Adapted from recursive_train.py to work with any model_id.
-    
+
     Args:
         model_id: Full model identifier
         generation: Generation number to read metrics for
-        
+
     Returns:
-        Dict with metrics: α (Alpha Precision), PRDC (avg), Det (avg)
+        Dict with metrics: α (Alpha Precision), PRDC (avg), Det (avg), Hallucination metrics
     """
-    # Extract components using fixed positions
+    # Extract components: last 2 parts are always config_hash and seed
+    # Everything before that is the experiment_name (includes generation number)
     parts = model_id.split("_")
-    seed = parts[8]
-    config_hash = parts[7]
-    experiment_name = "_".join(parts[:5])  # library_model_ref_root_trn
-    
+    seed = parts[-1]
+    config_hash = parts[-2]
+    experiment_name = "_".join(parts[:-2])
+
     metrics = {}
-    
+
     # Statistical similarity metrics
     stat_file = Path(
-        f"experiments/metrics/statistical_similarity_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json"
+        f"experiments/metrics/statistical_similarity_{experiment_name}_{config_hash}_{seed}.json"
     )
     
     if stat_file.exists():
@@ -202,9 +203,9 @@ def read_metrics(model_id: str, generation: int) -> Dict:
 
     # Detection metrics
     det_file = Path(
-        f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json"
+        f"experiments/metrics/detection_evaluation_{experiment_name}_{config_hash}_{seed}.json"
     )
-    
+
     if det_file.exists():
         with det_file.open() as f:
             data = json.load(f)
@@ -219,7 +220,48 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                 
                 if det_scores:
                     metrics['detection_avg'] = sum(det_scores) / len(det_scores)
-    
+
+    # Hallucination metrics (DDR + Plausibility)
+    halluc_file = Path(
+        f"experiments/metrics/hallucination_{experiment_name}_{config_hash}_{seed}.json"
+    )
+
+    if halluc_file.exists():
+        with halluc_file.open() as f:
+            data = json.load(f)
+
+            # Factual (Total) - records in population
+            quality_matrix = data.get('quality_matrix_2x2', {})
+            if 'total_factual' in quality_matrix:
+                metrics['factual_total'] = quality_matrix['total_factual'].get('rate_pct', 0) / 100
+
+            # Novel Factual (DDR) - factual AND not memorized (THE IDEAL!)
+            if 'novel_factual' in quality_matrix:
+                metrics['ddr_novel_factual'] = quality_matrix['novel_factual'].get('rate_pct', 0) / 100
+
+            # Plausible (Total) - passes validation rules
+            if 'total_plausible' in quality_matrix:
+                metrics['plausible_total'] = quality_matrix['total_plausible'].get('rate_pct', 0) / 100
+
+            # Novel Plausible - plausible AND not memorized
+            if 'novel_plausible' in quality_matrix:
+                metrics['plausible_novel'] = quality_matrix['novel_plausible'].get('rate_pct', 0) / 100
+
+            # Also get the breakdown for potential stacked chart
+            ddr_metrics = data.get('ddr_metrics', {})
+            train_copy_valid = data.get('training_copy_valid_metrics', {})
+            train_copy_prop = data.get('training_copy_propagation_metrics', {})
+            new_halluc = data.get('new_hallucination_metrics', {})
+
+            if ddr_metrics.get('unique'):
+                metrics['category_ddr'] = ddr_metrics['unique'].get('rate_pct', 0) / 100
+            if train_copy_valid.get('unique'):
+                metrics['category_train_copy_valid'] = train_copy_valid['unique'].get('rate_pct', 0) / 100
+            if train_copy_prop.get('unique'):
+                metrics['category_train_copy_prop'] = train_copy_prop['unique'].get('rate_pct', 0) / 100
+            if new_halluc.get('unique'):
+                metrics['category_new_halluc'] = new_halluc['unique'].get('rate_pct', 0) / 100
+
     return metrics
 
 
@@ -515,9 +557,15 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
         'coverage': [r['metrics'].get('prdc_coverage', None) for r in results]
     }
 
-    # Create figure with 4 subplots (main, alpha components, PRDC components, JS components)
-    fig, (ax, ax_alpha, ax_prdc, ax_js) = plt.subplots(4, 1, figsize=(14, 16), 
-                                        gridspec_kw={'height_ratios': [2, 1, 1, 1]})
+    # Extract hallucination metrics for fifth subplot
+    ddr = [r['metrics'].get('ddr_novel_factual', None) for r in results]
+    factual = [r['metrics'].get('factual_total', None) for r in results]
+    plausible = [r['metrics'].get('plausible_total', None) for r in results]
+    plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
+
+    # Create figure with 5 subplots (main, alpha, PRDC, JS, hallucination)
+    fig, (ax, ax_alpha, ax_prdc, ax_js, ax_halluc) = plt.subplots(5, 1, figsize=(14, 20),
+                                        gridspec_kw={'height_ratios': [2, 1, 1, 1, 1.2]})
 
     # Plot each metric if available
     # TOP SUBPLOT: Main metrics
@@ -687,6 +735,38 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     ax_js.grid(True, alpha=0.3)
     ax_js.set_xlim(left=-0.5)
 
+    # FIFTH SUBPLOT: Hallucination Metrics (DDR + Plausibility)
+    ax_halluc.set_title('Hallucination Metrics (DDR + Plausibility)', fontsize=12, fontweight='bold', pad=10)
+
+    # Plot hallucination metrics (all should be high - higher is better)
+    if any(x is not None for x in ddr):
+        ax_halluc.plot(generations, ddr,
+                       marker='*', label='DDR (Novel Factual)', linewidth=3, color='#2ca02c', markersize=10)
+
+    if any(x is not None for x in factual):
+        ax_halluc.plot(generations, factual,
+                       marker='o', label='Factual (Total)', linewidth=2, color='#1f77b4')
+
+    if any(x is not None for x in plausible):
+        ax_halluc.plot(generations, plausible,
+                       marker='s', label='Plausible (Total)', linewidth=2, color='#ff7f0e')
+
+    if any(x is not None for x in plausible_novel):
+        ax_halluc.plot(generations, plausible_novel,
+                       marker='^', label='Novel Plausible', linewidth=2, color='#9467bd')
+
+    ax_halluc.set_xlabel('Generation', fontsize=12)
+    ax_halluc.set_ylabel('Rate (higher is better)', fontsize=12)
+    ax_halluc.legend(loc='best', fontsize=9)
+    ax_halluc.grid(True, alpha=0.3)
+    ax_halluc.set_xlim(left=-0.5)
+    ax_halluc.set_ylim(0, 1.05)
+
+    # Add interpretation annotations
+    ax_halluc.axhline(y=0.5, color='gray', linestyle='--', alpha=0.3, linewidth=1)
+    ax_halluc.text(0.02, 0.95, 'Higher = Better Quality', transform=ax_halluc.transAxes,
+                   fontsize=9, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
+
     plt.tight_layout()
     
     if output_file:
@@ -794,6 +874,12 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         'density': [r['metrics'].get('prdc_density', None) for r in results],
         'coverage': [r['metrics'].get('prdc_coverage', None) for r in results]
     }
+
+    # Extract hallucination metrics for fifth plot
+    ddr = [r['metrics'].get('ddr_novel_factual', None) for r in results]
+    factual = [r['metrics'].get('factual_total', None) for r in results]
+    plausible = [r['metrics'].get('plausible_total', None) for r in results]
+    plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
 
     # Color scheme
     colors = {
@@ -1293,8 +1379,119 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         width=1400,
         margin=dict(r=250, l=80, t=80, b=60)
     )
+
     # ========================================
-    # Save or show all four plots
+    # PLOT 5: Hallucination Metrics (DDR + Plausibility)
+    # ========================================
+    fig5 = go.Figure()
+
+    if any(x is not None for x in ddr):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=ddr,
+                mode='lines+markers',
+                name='DDR (Novel Factual)',
+                line=dict(color='#2ca02c', width=3),
+                marker=dict(size=10, symbol='star'),
+                hovertemplate='Gen %{x}<br>DDR: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in factual):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=factual,
+                mode='lines+markers',
+                name='Factual (Total)',
+                line=dict(color='#1f77b4', width=2),
+                marker=dict(size=8, symbol='circle'),
+                hovertemplate='Gen %{x}<br>Factual: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in plausible):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=plausible,
+                mode='lines+markers',
+                name='Plausible (Total)',
+                line=dict(color='#ff7f0e', width=2),
+                marker=dict(size=8, symbol='square'),
+                hovertemplate='Gen %{x}<br>Plausible: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in plausible_novel):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=plausible_novel,
+                mode='lines+markers',
+                name='Novel Plausible',
+                line=dict(color='#9467bd', width=2),
+                marker=dict(size=8, symbol='triangle-up'),
+                hovertemplate='Gen %{x}<br>Novel Plausible: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    fig5.update_xaxes(
+        title_text="Generation",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    fig5.update_yaxes(
+        title_text="Rate (higher is better)",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        range=[0, 1.05]
+    )
+
+    # Add reference line at 0.5
+    fig5.add_hline(y=0.5, line_dash="dash", line_color="gray", opacity=0.3)
+
+    # Layout for Plot 5
+    fig5.update_layout(
+        title={
+            'text': 'Hallucination Metrics (DDR + Plausibility)',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'family': 'Arial, sans-serif'}
+        },
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="rgba(0, 0, 0, 0.3)",
+            borderwidth=1
+        ),
+        plot_bgcolor='white',
+        height=450,
+        width=1400,
+        margin=dict(r=250, l=80, t=80, b=60),
+        annotations=[
+            dict(
+                text="Higher values = Better quality<br>DDR = Factual AND Novel (ideal metric)",
+                xref="paper", yref="paper",
+                x=0.02, y=0.98,
+                showarrow=False,
+                bgcolor="rgba(255, 248, 220, 0.8)",
+                bordercolor="rgba(0, 0, 0, 0.3)",
+                borderwidth=1,
+                font=dict(size=10),
+                xanchor='left',
+                yanchor='top'
+            )
+        ]
+    )
+
+    # ========================================
+    # Save or show all five plots
     # ========================================
     if output_file:
         # Default to .html extension
@@ -1357,8 +1554,21 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                 }
             ))
 
+            f.write('<br><hr style="margin: 40px auto; width: 80%; border: 1px solid #ddd;"><br>\n')
+
+            # Write fifth plot
+            f.write(fig5.to_html(
+                full_html=False,
+                include_plotlyjs=False,
+                config={
+                    'displayModeBar': True,
+                    'displaylogo': False,
+                    'modeBarButtonsToRemove': ['select2d', 'lasso2d']
+                }
+            ))
+
             f.write('</body></html>')
-        
+
         console.print(f"[green]Interactive plots saved to: {output_file}[/green]")
         console.print(f"[dim]Open in browser to interact with the plots[/dim]")
     else:
@@ -1367,6 +1577,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         fig2.show()
         fig3.show()
         fig4.show()
+        fig5.show()
 
 @app.command()
 def main(
