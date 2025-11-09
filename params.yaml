@@ -105,7 +105,7 @@ evaluation:
 
 # Hallucination evaluation (DDR + Plausibility)
   hallucination:
-    query_file: experiments/validation_queries.sql  # Path to SQL validation queries
+    query_file: queries/validation.sql  # Path to SQL validation queries
 
   # Detection-based evaluation using classifier approaches
   detection_evaluation:
