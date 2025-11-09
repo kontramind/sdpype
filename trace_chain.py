@@ -312,30 +312,31 @@ def trace_chain(model_id: str, max_generations: int = 100) -> List[Dict]:
     
     # Search for each generation
     for gen in range(max_generations):
-        # Glob broadly for generation + seed, then filter by root_hash
-        # This is more reliable because training_hash changes each generation
+        # Glob broadly for generation + seed
+        # Note: root_hash and training_hash change each generation in recursive training
         pattern = f"experiments/metrics/statistical_similarity_*_gen_{gen}_*_{seed}.json"
         metric_files = list(Path().glob(pattern))
-        
+
         if not metric_files:
             # No more generations found
             break
-        
-        # Filter by all five invariants: library, model_type, ref_hash, root_hash, seed
+
+        # Filter by the true chain invariants: library, model_type, ref_hash, seed
+        # Note: root_hash changes each generation, so we don't filter by it
         matching_model_id = None
         for metric_file in metric_files:
             filename = metric_file.stem
             candidate_model_id = filename.replace("statistical_similarity_", "")
-            
-            # Parse and check if all invariants match
+
+            # Parse and check if chain invariants match
             try:
                 parsed_candidate = parse_model_id(candidate_model_id)
 
-                # All five invariants must match for same chain
+                # Chain invariants: library, model_type, ref_hash, seed
+                # (root_hash and training_hash change each generation)
                 if (parsed_candidate['library'] == library and
                     parsed_candidate['model_type'] == model_type and
                     parsed_candidate['ref_hash'] == ref_hash and
-                    parsed_candidate['root_hash'] == root_hash and
                     parsed_candidate['seed'] == seed):
                     matching_model_id = candidate_model_id
                     break
