@@ -121,23 +121,23 @@ def get_synthetic_data_path(model_id: str) -> Path:
 def read_metrics(model_id: str, generation: int) -> dict:
     """Read key metrics from generation's output"""
 
-    # Extract components using fixed positions
+    # Extract components: last 2 parts are always config_hash and seed
+    # Everything before that is the experiment_name (includes generation number)
     parts = model_id.split("_")
-    seed = parts[8]
-    config_hash = parts[7]
-    experiment_name = "_".join(parts[:5])  # library_model_ref_root_trn
+    seed = parts[-1]
+    config_hash = parts[-2]
+    experiment_name = "_".join(parts[:-2])
 
-    stat_file = Path(f"experiments/metrics/statistical_similarity_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
-    det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
+    stat_file = Path(f"experiments/metrics/statistical_similarity_{experiment_name}_{config_hash}_{seed}.json")
+    det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_{config_hash}_{seed}.json")
 
     console.print(f"[dim]Looking for metrics:[/dim]")
     console.print(f"[dim]  Stat: {stat_file} (exists: {stat_file.exists()})[/dim]")
     console.print(f"[dim]  Det: {det_file} (exists: {det_file.exists()})[/dim]")
    
     metrics = {}
-    
+
     # Statistical similarity metrics
-    stat_file = Path(f"experiments/metrics/statistical_similarity_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
     if stat_file.exists():
         with stat_file.open() as f:
             data = json.load(f)
@@ -198,7 +198,6 @@ def read_metrics(model_id: str, generation: int) -> dict:
                     metrics['JSD_NM'] = jsd_nm_metric.get('distance_score', 1.0)
 
     # Detection metrics
-    det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
     if det_file.exists():
         with det_file.open() as f:
             data = json.load(f)
