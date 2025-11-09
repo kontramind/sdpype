@@ -27,46 +27,57 @@ console = Console()
 def parse_model_id(model_id: str) -> Dict[str, str]:
     """
     Parse model_id into components for chain tracing.
-    
-    Format: library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed
+
+    Format: library_modeltype_refhash_roothash_trnhash_gen_N_[variant]_cfghash_seed
     Example: sdv_gaussiancopula_0cf8e0f5_852ba944_852ba944_gen_0_9eadbd5d_51
-    
+    Example: synthcity_arf_504eda11_504eda11_504eda11_gen_0_variant2_d8f76fa1_2211
+
     Args:
         model_id: Full model identifier string
-        
+
     Returns:
-        Dict with parsed components: root_hash, seed, generation, experiment_name
-        
+        Dict with parsed components: library, model_type, ref_hash, root_hash,
+                                      training_hash, generation, config_hash, seed, experiment_name
+
     Raises:
         ValueError: If model_id format is invalid
     """
     parts = model_id.split("_")
-    
-    # Validate length: library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed = 9 parts minimum
+
+    # Validate minimum length
     if len(parts) < 9:
         raise ValueError(
             f"Invalid model_id format (expected at least 9 components): {model_id}\n"
             f"Expected format: library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed"
         )
-    
+
     try:
-        # Fixed positions - no detection needed!
+        # Find "gen" marker position (supports variable-length experiment names)
+        try:
+            gen_idx = parts.index("gen")
+        except ValueError:
+            raise ValueError(f"'gen' marker not found in model_id: {model_id}")
+
+        # Extract fixed position components before "gen"
         library = parts[0]
         model_type = parts[1]
         ref_hash = parts[2]
         root_hash = parts[3]
         training_hash = parts[4]
-        gen_marker = parts[5]
-        generation_num = int(parts[6])
-        config_hash = parts[7]
-        seed = parts[8]
-        
-        # Validate "gen" marker
-        if gen_marker != "gen":
-            raise ValueError(f"Expected 'gen' marker at position 5, got: {gen_marker}")
-        
-        # Experiment name is everything except: _gen_N_cfghash_seed
-        experiment_name = "_".join(parts[:5])
+
+        # Extract generation number (right after "gen")
+        if gen_idx + 1 >= len(parts):
+            raise ValueError(f"Generation number missing after 'gen' marker: {model_id}")
+        generation_num = int(parts[gen_idx + 1])
+
+        # Use relative positions from end for config_hash and seed
+        # This handles variable-length experiment names (e.g., with "variant2" suffix)
+        seed = parts[-1]
+        config_hash = parts[-2]
+
+        # Experiment name is everything except the last two parts (config_hash and seed)
+        # e.g., synthcity_arf_504eda11_504eda11_504eda11_gen_0_variant2
+        experiment_name = "_".join(parts[:-2])
 
         return {
             "library": library,
