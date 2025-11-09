@@ -12,8 +12,9 @@ All metrics computed with dual perspectives (unique + total counts).
 
 import duckdb
 import pandas as pd
+import numpy as np
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 from datetime import datetime
 
 from sdv.metadata import SingleTableMetadata
@@ -110,12 +111,69 @@ def execute_validation_queries(
 
 
 # ============================================================================
+# Dataset Complexity Computation
+# ============================================================================
+
+def compute_dataset_complexity(
+    df: pd.DataFrame,
+    metadata: SingleTableMetadata,
+    dataset_name: str
+) -> Dict[str, Any]:
+    """
+    Compute combinatorial complexity of a dataset.
+
+    Formula: c = sum(log(cardinality_i)) for all columns
+    This captures the combinatorial search space - total possible unique records.
+
+    Args:
+        df: DataFrame to analyze
+        metadata: SDV metadata for column type information
+        dataset_name: Name for logging/identification
+
+    Returns:
+        Dictionary with total complexity and per-column breakdown sorted by contribution
+    """
+
+    column_contributions = []
+
+    for col in df.columns:
+        cardinality = df[col].nunique()
+
+        # Handle edge cases
+        if cardinality <= 0:
+            log_card = 0.0
+        else:
+            log_card = np.log(cardinality)
+
+        column_contributions.append({
+            'column': col,
+            'cardinality': int(cardinality),
+            'log_cardinality': float(log_card)
+        })
+
+    # Sort by contribution (descending)
+    column_contributions.sort(key=lambda x: x['log_cardinality'], reverse=True)
+
+    # Compute total complexity
+    total_complexity = sum(item['log_cardinality'] for item in column_contributions)
+
+    return {
+        'dataset_name': dataset_name,
+        'total_complexity': float(total_complexity),
+        'num_columns': len(df.columns),
+        'num_records': len(df),
+        'column_contributions': column_contributions
+    }
+
+
+# ============================================================================
 # Main Evaluation Function
 # ============================================================================
 
 def evaluate_hallucination_metrics(
     population: pd.DataFrame,
     training: pd.DataFrame,
+    reference: pd.DataFrame,
     synthetic: pd.DataFrame,
     metadata: SingleTableMetadata,
     query_file: Path,
@@ -127,6 +185,7 @@ def evaluate_hallucination_metrics(
     Args:
         population: Population dataset (decoded)
         training: Training dataset (decoded)
+        reference: Reference dataset (decoded)
         synthetic: Synthetic dataset (decoded)
         metadata: SDV metadata
         query_file: Path to SQL validation queries
@@ -139,6 +198,7 @@ def evaluate_hallucination_metrics(
     print(f"Evaluating hallucination metrics for experiment: {experiment_name}")
     print(f"Population shape: {population.shape}")
     print(f"Training shape: {training.shape}")
+    print(f"Reference shape: {reference.shape}")
     print(f"Synthetic shape: {synthetic.shape}")
 
     # Validate query file exists
@@ -298,6 +358,27 @@ def evaluate_hallucination_metrics(
                     "rate_pct": float(raw_results['new_hallucination_implausible_total_rate_pct'])
                 }
             }
+        }
+    }
+
+    # Compute complexity for all datasets
+    print("Computing dataset complexity metrics...")
+    complexity_population = compute_dataset_complexity(population, metadata, "Population")
+    complexity_training = compute_dataset_complexity(training, metadata, "Training")
+    complexity_reference = compute_dataset_complexity(reference, metadata, "Reference")
+    complexity_synthetic = compute_dataset_complexity(synthetic, metadata, "Synthetic")
+
+    # Add complexity results
+    results["complexity_metrics"] = {
+        "population": complexity_population,
+        "training": complexity_training,
+        "reference": complexity_reference,
+        "synthetic": complexity_synthetic,
+        "comparisons": {
+            "synthetic_vs_population_ratio": complexity_synthetic["total_complexity"] / complexity_population["total_complexity"] if complexity_population["total_complexity"] > 0 else 0.0,
+            "synthetic_vs_training_ratio": complexity_synthetic["total_complexity"] / complexity_training["total_complexity"] if complexity_training["total_complexity"] > 0 else 0.0,
+            "synthetic_vs_reference_ratio": complexity_synthetic["total_complexity"] / complexity_reference["total_complexity"] if complexity_reference["total_complexity"] > 0 else 0.0,
+            "training_vs_population_ratio": complexity_training["total_complexity"] / complexity_population["total_complexity"] if complexity_population["total_complexity"] > 0 else 0.0,
         }
     }
 
