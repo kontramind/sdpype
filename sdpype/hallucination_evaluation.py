@@ -305,36 +305,44 @@ Key Insights:
         console.print(complexity_table)
         console.print()
 
-        # Top contributing columns
+        # Top contributing columns for each dataset
         top_n = 5
-        synth_cols = synth_complexity.get('column_contributions', [])[:top_n]
-        if synth_cols:
-            contrib_table = Table(
-                title=f"🔝 Top {top_n} Contributing Columns (Synthetic Dataset)",
-                show_header=True,
-                header_style="bold cyan",
-                box=box.SIMPLE
-            )
+        datasets = [
+            ("Population", pop_complexity, "green"),
+            ("Training", train_complexity, "yellow"),
+            ("Reference", ref_complexity, "blue"),
+            ("Synthetic", synth_complexity, "magenta")
+        ]
 
-            contrib_table.add_column("Rank", style="dim", justify="right")
-            contrib_table.add_column("Column", style="cyan")
-            contrib_table.add_column("Cardinality", justify="right", style="yellow")
-            contrib_table.add_column("ln(Card)", justify="right", style="green")
-            contrib_table.add_column("% of Total", justify="right", style="magenta")
-
-            total = synth_complexity.get('total_complexity', 1.0)
-            for idx, col_info in enumerate(synth_cols, 1):
-                pct_contrib = (col_info['log_cardinality'] / total * 100) if total > 0 else 0
-                contrib_table.add_row(
-                    str(idx),
-                    col_info['column'],
-                    f"{col_info['cardinality']:,}",
-                    f"{col_info['log_cardinality']:.2f}",
-                    f"{pct_contrib:.1f}%"
+        for dataset_name, dataset_complexity, color in datasets:
+            cols = dataset_complexity.get('column_contributions', [])[:top_n]
+            if cols:
+                contrib_table = Table(
+                    title=f"🔝 Top {top_n} Contributing Columns - {dataset_name}",
+                    show_header=True,
+                    header_style=f"bold {color}",
+                    box=box.SIMPLE
                 )
 
-            console.print(contrib_table)
-            console.print()
+                contrib_table.add_column("Rank", style="dim", justify="right", width=4)
+                contrib_table.add_column("Column", style="cyan", no_wrap=False)
+                contrib_table.add_column("Cardinality", justify="right", style="yellow")
+                contrib_table.add_column("ln(Card)", justify="right", style="green")
+                contrib_table.add_column("% of Total", justify="right", style="magenta")
+
+                total = dataset_complexity.get('total_complexity', 1.0)
+                for idx, col_info in enumerate(cols, 1):
+                    pct_contrib = (col_info['log_cardinality'] / total * 100) if total > 0 else 0
+                    contrib_table.add_row(
+                        str(idx),
+                        col_info['column'],
+                        f"{col_info['cardinality']:,}",
+                        f"{col_info['log_cardinality']:.2f}",
+                        f"{pct_contrib:.1f}%"
+                    )
+
+                console.print(contrib_table)
+                console.print()
 
     # Summary info
     console.print("=" * 80, style="blue")
