@@ -40,10 +40,9 @@ def main(cfg: DictConfig) -> None:
     halluc_config = cfg.get("evaluation", {}).get("hallucination", {})
 
     if not halluc_config:
-        raise ValueError(
-            "Hallucination evaluation configuration not found in params.yaml.\n"
-            "Please add 'evaluation.hallucination' section with 'query_file' parameter."
-        )
+        console.print("⏭️  Hallucination evaluation not configured - skipping", style="yellow")
+        console.print("   To enable, add 'evaluation.hallucination' section to params.yaml", style="dim")
+        return  # Gracefully skip if not configured
 
     print("🔍 Starting hallucination evaluation (DDR + Plausibility)...")
     print(f"Experiment seed: {cfg.experiment.seed}")
@@ -54,10 +53,9 @@ def main(cfg: DictConfig) -> None:
     # Validate required configuration
     query_file = halluc_config.get("query_file")
     if not query_file:
-        raise ValueError(
-            "Query file not specified in params.yaml.\n"
-            "Please set 'evaluation.hallucination.query_file' to your SQL validation file."
-        )
+        console.print("⏭️  Hallucination query_file not configured - skipping", style="yellow")
+        console.print("   To enable, set 'evaluation.hallucination.query_file' in params.yaml", style="dim")
+        return  # Gracefully skip if not configured
 
     query_file_path = Path(query_file)
     if not query_file_path.exists():
@@ -72,10 +70,9 @@ def main(cfg: DictConfig) -> None:
 
     # Validate population file is configured
     if not population_file:
-        raise ValueError(
-            "Population file not specified in params.yaml.\n"
-            "Please set 'data.population_file' to your population dataset."
-        )
+        console.print("⏭️  Population file not configured - skipping hallucination evaluation", style="yellow")
+        console.print("   To enable, set 'data.population_file' in params.yaml", style="dim")
+        return  # Gracefully skip if not configured
 
     # Validate all required files exist
     if not Path(metadata_path).exists():

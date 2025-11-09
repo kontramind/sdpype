@@ -26,6 +26,7 @@ data:
   training_file: experiments/data/processed/canada_covid19_case_details_sample_5k.csv
   reference_file: experiments/data/processed/canada_covid19_case_details_sample_5k.csv
   metadata_file: experiments/data/processed/canada_covid19_case_details_sample_5k_encoded_metadata.json
+  population_file:  # Optional: Set to enable hallucination evaluation (DDR metrics)
 
 # =============================================================================
 # ENCODING CONFIGURATION
@@ -102,7 +103,12 @@ evaluation:
       parameters:
         target_columns:
 
-# Detection-based evaluation using classifier approaches
+# Hallucination evaluation (DDR + Plausibility)
+  # Requires: data.population_file and evaluation.hallucination.query_file
+  hallucination:
+    query_file:  # Optional: Path to SQL validation queries file
+
+  # Detection-based evaluation using classifier approaches
   detection_evaluation:
     # Common parameters for all detection methods (synthcity DetectionEvaluator params)
     common_params:
