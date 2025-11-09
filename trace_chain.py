@@ -377,24 +377,41 @@ def display_chain_table(results: List[Dict]):
     
     table = Table(title="Generation Chain Metrics", show_header=True, header_style="bold blue")
     table.add_column("Gen", justify="right", style="cyan")
-    table.add_column("Alpha Precision", justify="right")
-    table.add_column("PRDC Avg", justify="right")
-    table.add_column("TV Complement", justify="right")
-    table.add_column("KS Complement", justify="right")
-    table.add_column("Wasserstein Dist", justify="right")
+    # Hallucination metrics (prioritized)
+    table.add_column("DDR\n(Novel Factual)", justify="right", style="green")
+    table.add_column("Factual\n(Total)", justify="right")
+    table.add_column("Plausible\n(Total)", justify="right")
+    table.add_column("Novel\nPlausible", justify="right")
+    # Detection
+    table.add_column("Detection\nAvg", justify="right")
+    # Statistical similarity metrics
+    table.add_column("Alpha\nPrecision", justify="right")
+    table.add_column("PRDC\nAvg", justify="right")
+    table.add_column("TV\nComplement", justify="right")
+    table.add_column("KS\nComplement", justify="right")
+    table.add_column("Wasserstein\nDist", justify="right")
     table.add_column("MMD", justify="right")
-    table.add_column("JS Sim (Synthcity)", justify="right")
-    table.add_column("JS Sim (SYNDAT)", justify="right")
-    table.add_column("JS Sim (NannyML)", justify="right")
-    table.add_column("Detection Avg", justify="right")
+    table.add_column("JS Sim\n(Synthcity)", justify="right")
+    table.add_column("JS Sim\n(SYNDAT)", justify="right")
+    table.add_column("JS Sim\n(NannyML)", justify="right")
+    # Model info
     table.add_column("Model Size", justify="right", style="dim")
     table.add_column("Status", justify="center")
     
     for r in results:
         gen = r['generation']
         metrics = r['metrics']
-        
-        # Format metrics with fallbacks
+
+        # Format hallucination metrics (prioritized)
+        ddr = f"{metrics.get('ddr_novel_factual', 0):.3f}" if 'ddr_novel_factual' in metrics else "—"
+        factual = f"{metrics.get('factual_total', 0):.3f}" if 'factual_total' in metrics else "—"
+        plausible = f"{metrics.get('plausible_total', 0):.3f}" if 'plausible_total' in metrics else "—"
+        novel_plaus = f"{metrics.get('plausible_novel', 0):.3f}" if 'plausible_novel' in metrics else "—"
+
+        # Detection metrics
+        det = f"{metrics.get('detection_avg', 0):.3f}" if 'detection_avg' in metrics else "—"
+
+        # Statistical similarity metrics
         alpha = f"{metrics.get('alpha_precision', 0):.3f}" if 'alpha_precision' in metrics else "—"
         prdc = f"{metrics.get('prdc_avg', 0):.3f}" if 'prdc_avg' in metrics else "—"
         tv_comp = f"{metrics.get('tv_complement', 0):.3f}" if 'tv_complement' in metrics else "—"
@@ -404,17 +421,21 @@ def display_chain_table(results: List[Dict]):
         jsd_sc = f"{metrics.get('jsd_synthcity', 0):.3f}" if 'jsd_synthcity' in metrics else "—"
         jsd_sd = f"{metrics.get('jsd_syndat', 0):.3f}" if 'jsd_syndat' in metrics else "—"
         jsd_nm = f"{metrics.get('jsd_nannyml', 0):.3f}" if 'jsd_nannyml' in metrics else "—"
-        det = f"{metrics.get('detection_avg', 0):.3f}" if 'detection_avg' in metrics else "—"
-        
+
         # Model size
         size = f"{r['model_size_mb']:.1f} MB" if r['model_exists'] else "—"
-        
+
         # Status indicator
         status = "✓" if r['model_exists'] else "⚠"
         status_style = "green" if r['model_exists'] else "yellow"
-        
+
         table.add_row(
             str(gen),
+            ddr,
+            factual,
+            plausible,
+            novel_plaus,
+            det,
             alpha,
             prdc,
             tv_comp,
@@ -424,7 +445,6 @@ def display_chain_table(results: List[Dict]):
             jsd_sc,
             jsd_sd,
             jsd_nm,
-            det,
             size,
             f"[{status_style}]{status}[/{status_style}]"
         )
