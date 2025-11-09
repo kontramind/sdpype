@@ -115,7 +115,7 @@ def get_latest_model_id(generation: int) -> str:
 
 def get_synthetic_data_path(model_id: str) -> Path:
     """Construct synthetic data path from model ID"""
-    return Path(f"experiments/data/synthetic/synthetic_data_{model_id}.csv")
+    return Path(f"experiments/data/synthetic/synthetic_data_{model_id}_decoded.csv")
 
 
 def read_metrics(model_id: str, generation: int) -> dict:
