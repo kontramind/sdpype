@@ -213,8 +213,8 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                         metrics['ks_complement'] = ks_score
 
             # SDV NewRowSynthesis - measures overall novelty (includes factual + hallucinated)
-            if 'NewRowSynthesis' in metrics_data:
-                nrs_metric = metrics_data['NewRowSynthesis']
+            if 'new_row_synthesis' in metrics_data:
+                nrs_metric = metrics_data['new_row_synthesis']
                 if nrs_metric.get('status') == 'success':
                     # Store as rate (0-1 range like other metrics)
                     nrs_score = nrs_metric.get('score')
@@ -455,9 +455,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,model_size_mb\n"
-    
-    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,model_size_mb"]
+        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,model_size_mb\n"
+
+    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,model_size_mb"]
     
     for r in results:
         gen = r['generation']
@@ -478,9 +478,10 @@ def export_csv(results: List[Dict]) -> str:
         jsd_sd = metrics.get('jsd_syndat', '')
         jsd_nm = metrics.get('jsd_nannyml', '')
         det = metrics.get('detection_avg', '')
+        nrs = metrics.get('new_row_synthesis', '')
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{nrs},{size}")
 
     return "\n".join(lines)
 
@@ -583,6 +584,7 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     factual = [r['metrics'].get('factual_total', None) for r in results]
     plausible = [r['metrics'].get('plausible_total', None) for r in results]
     plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
+    new_row_synthesis = [r['metrics'].get('new_row_synthesis', None) for r in results]
 
     # Create figure with 5 subplots (main, alpha, PRDC, JS, hallucination)
     fig, (ax, ax_alpha, ax_prdc, ax_js, ax_halluc) = plt.subplots(5, 1, figsize=(14, 20),
@@ -776,6 +778,10 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
         ax_halluc.plot(generations, plausible_novel,
                        marker='^', label='Novel Plausible', linewidth=2, color='#9467bd')
 
+    if any(x is not None for x in new_row_synthesis):
+        ax_halluc.plot(generations, new_row_synthesis,
+                       marker='D', label='NewRowSynthesis (SDV)', linewidth=2, color='#8c564b', linestyle='--')
+
     ax_halluc.set_xlabel('Generation', fontsize=12)
     ax_halluc.set_ylabel('Rate (higher is better)', fontsize=12)
     ax_halluc.legend(loc='best', fontsize=9)
@@ -901,6 +907,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     factual = [r['metrics'].get('factual_total', None) for r in results]
     plausible = [r['metrics'].get('plausible_total', None) for r in results]
     plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
+    new_row_synthesis = [r['metrics'].get('new_row_synthesis', None) for r in results]
 
     # Color scheme
     colors = {
@@ -1451,6 +1458,18 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                 line=dict(color='#9467bd', width=2),
                 marker=dict(size=8, symbol='triangle-up'),
                 hovertemplate='Gen %{x}<br>Novel Plausible: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in new_row_synthesis):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=new_row_synthesis,
+                mode='lines+markers',
+                name='NewRowSynthesis (SDV)',
+                line=dict(color='#8c564b', width=2, dash='dash'),
+                marker=dict(size=8, symbol='diamond'),
+                hovertemplate='Gen %{x}<br>NewRowSynthesis: %{y:.4f}<extra></extra>'
             )
         )
 
