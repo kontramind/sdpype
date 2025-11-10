@@ -212,6 +212,15 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                     if ks_score is not None:
                         metrics['ks_complement'] = ks_score
 
+            # SDV NewRowSynthesis - measures overall novelty (includes factual + hallucinated)
+            if 'NewRowSynthesis' in metrics_data:
+                nrs_metric = metrics_data['NewRowSynthesis']
+                if nrs_metric.get('status') == 'success':
+                    # Store as rate (0-1 range like other metrics)
+                    nrs_score = nrs_metric.get('score')
+                    if nrs_score is not None:
+                        metrics['new_row_synthesis'] = nrs_score
+
     # Detection metrics
     det_file = Path(
         f"experiments/metrics/detection_evaluation_{experiment_name}_{config_hash}_{seed}.json"
@@ -383,6 +392,7 @@ def display_chain_table(results: List[Dict]):
     table.add_column("Factual\n(Total)", justify="right")
     table.add_column("Plausible\n(Total)", justify="right")
     table.add_column("Novel\nPlausible", justify="right")
+    table.add_column("NewRow\nSynthesis", justify="right", style="blue")
     # Detection
     table.add_column("Detection\nAvg", justify="right")
     # Statistical similarity metrics
@@ -408,6 +418,7 @@ def display_chain_table(results: List[Dict]):
         factual = f"{metrics.get('factual_total', 0):.3f}" if 'factual_total' in metrics else "—"
         plausible = f"{metrics.get('plausible_total', 0):.3f}" if 'plausible_total' in metrics else "—"
         novel_plaus = f"{metrics.get('plausible_novel', 0):.3f}" if 'plausible_novel' in metrics else "—"
+        new_row_synth = f"{metrics.get('new_row_synthesis', 0):.3f}" if 'new_row_synthesis' in metrics else "—"
 
         # Detection metrics
         det = f"{metrics.get('detection_avg', 0):.3f}" if 'detection_avg' in metrics else "—"
@@ -436,6 +447,7 @@ def display_chain_table(results: List[Dict]):
             factual,
             plausible,
             novel_plaus,
+            new_row_synth,
             det,
             alpha,
             prdc,
@@ -594,6 +606,7 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     factual = [r['metrics'].get('factual_total', None) for r in results]
     plausible = [r['metrics'].get('plausible_total', None) for r in results]
     plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
+    new_row_synthesis = [r['metrics'].get('new_row_synthesis', None) for r in results]
 
     # Create figure with 5 subplots (main, alpha, PRDC, JS, hallucination)
     fig, (ax, ax_alpha, ax_prdc, ax_js, ax_halluc) = plt.subplots(5, 1, figsize=(14, 20),
@@ -767,8 +780,14 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     ax_js.grid(True, alpha=0.3)
     ax_js.set_xlim(left=-0.5)
 
-    # FIFTH SUBPLOT: Hallucination Metrics (DDR + Plausibility)
-    ax_halluc.set_title('Hallucination Metrics (DDR + Plausibility)', fontsize=12, fontweight='bold', pad=10)
+    # FIFTH SUBPLOT: Hallucination Metrics (DDR + Plausibility + NewRowSynthesis)
+    ax_halluc.set_title('Hallucination Metrics (DDR + Plausibility + NewRowSynthesis)', fontsize=12, fontweight='bold', pad=10)
+
+    # Plot NewRowSynthesis first as baseline (dashed line to distinguish)
+    if any(x is not None for x in new_row_synthesis):
+        ax_halluc.plot(generations, new_row_synthesis,
+                       marker='D', label='NewRowSynthesis (Total Novelty)', linewidth=2,
+                       color='#17becf', linestyle='--', markersize=7, alpha=0.8)
 
     # Plot hallucination metrics (all should be high - higher is better)
     if any(x is not None for x in ddr):
@@ -796,7 +815,8 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
 
     # Add interpretation annotations
     ax_halluc.axhline(y=0.5, color='gray', linestyle='--', alpha=0.3, linewidth=1)
-    ax_halluc.text(0.02, 0.95, 'Higher = Better Quality', transform=ax_halluc.transAxes,
+    ax_halluc.text(0.02, 0.95, 'Higher = Better Quality\nGap (NewRowSynthesis - DDR) = Wasted Novelty',
+                   transform=ax_halluc.transAxes,
                    fontsize=9, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
 
     plt.tight_layout()
@@ -912,6 +932,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     factual = [r['metrics'].get('factual_total', None) for r in results]
     plausible = [r['metrics'].get('plausible_total', None) for r in results]
     plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
+    new_row_synthesis = [r['metrics'].get('new_row_synthesis', None) for r in results]
 
     # Color scheme
     colors = {
@@ -1413,9 +1434,22 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     )
 
     # ========================================
-    # PLOT 5: Hallucination Metrics (DDR + Plausibility)
+    # PLOT 5: Hallucination Metrics (DDR + Plausibility + NewRowSynthesis)
     # ========================================
     fig5 = go.Figure()
+
+    # Add NewRowSynthesis first as baseline (dashed line)
+    if any(x is not None for x in new_row_synthesis):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=new_row_synthesis,
+                mode='lines+markers',
+                name='NewRowSynthesis (Total Novelty)',
+                line=dict(color='#17becf', width=2, dash='dash'),
+                marker=dict(size=7, symbol='diamond'),
+                hovertemplate='Gen %{x}<br>NewRowSynthesis: %{y:.4f}<extra></extra>'
+            )
+        )
 
     if any(x is not None for x in ddr):
         fig5.add_trace(
@@ -1486,7 +1520,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     # Layout for Plot 5
     fig5.update_layout(
         title={
-            'text': 'Hallucination Metrics (DDR + Plausibility)',
+            'text': 'Hallucination Metrics (DDR + Plausibility + NewRowSynthesis)',
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18, 'family': 'Arial, sans-serif'}
@@ -1508,7 +1542,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         margin=dict(r=250, l=80, t=80, b=60),
         annotations=[
             dict(
-                text="Higher values = Better quality<br>DDR = Factual AND Novel (ideal metric)",
+                text="Higher values = Better quality<br>DDR = Factual AND Novel (ideal metric)<br>Gap (NewRowSynthesis - DDR) = Wasted Novelty",
                 xref="paper", yref="paper",
                 x=0.02, y=0.98,
                 showarrow=False,
