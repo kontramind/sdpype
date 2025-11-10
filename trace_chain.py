@@ -213,8 +213,8 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                         metrics['ks_complement'] = ks_score
 
             # SDV NewRowSynthesis - measures overall novelty (includes factual + hallucinated)
-            if 'NewRowSynthesis' in metrics_data:
-                nrs_metric = metrics_data['NewRowSynthesis']
+            if 'new_row_synthesis' in metrics_data:
+                nrs_metric = metrics_data['new_row_synthesis']
                 if nrs_metric.get('status') == 'success':
                     # Store as rate (0-1 range like other metrics)
                     nrs_score = nrs_metric.get('score')
