@@ -115,29 +115,31 @@ def get_latest_model_id(generation: int) -> str:
 
 def get_synthetic_data_path(model_id: str) -> Path:
     """Construct synthetic data path from model ID"""
-    return Path(f"experiments/data/synthetic/synthetic_data_{model_id}.csv")
+    return Path(f"experiments/data/synthetic/synthetic_data_{model_id}_decoded.csv")
 
 
 def read_metrics(model_id: str, generation: int) -> dict:
     """Read key metrics from generation's output"""
 
-    # Extract components using fixed positions
+    # Extract components: last 2 parts are always config_hash and seed
+    # Everything before that is the experiment_name (includes generation number)
     parts = model_id.split("_")
-    seed = parts[8]
-    config_hash = parts[7]
-    experiment_name = "_".join(parts[:5])  # library_model_ref_root_trn
+    seed = parts[-1]
+    config_hash = parts[-2]
+    experiment_name = "_".join(parts[:-2])
 
-    stat_file = Path(f"experiments/metrics/statistical_similarity_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
-    det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
+    stat_file = Path(f"experiments/metrics/statistical_similarity_{experiment_name}_{config_hash}_{seed}.json")
+    det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_{config_hash}_{seed}.json")
+    halluc_file = Path(f"experiments/metrics/hallucination_{experiment_name}_{config_hash}_{seed}.json")
 
     console.print(f"[dim]Looking for metrics:[/dim]")
     console.print(f"[dim]  Stat: {stat_file} (exists: {stat_file.exists()})[/dim]")
     console.print(f"[dim]  Det: {det_file} (exists: {det_file.exists()})[/dim]")
+    console.print(f"[dim]  Halluc: {halluc_file} (exists: {halluc_file.exists()})[/dim]")
    
     metrics = {}
-    
+
     # Statistical similarity metrics
-    stat_file = Path(f"experiments/metrics/statistical_similarity_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
     if stat_file.exists():
         with stat_file.open() as f:
             data = json.load(f)
@@ -198,7 +200,6 @@ def read_metrics(model_id: str, generation: int) -> dict:
                     metrics['JSD_NM'] = jsd_nm_metric.get('distance_score', 1.0)
 
     # Detection metrics
-    det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json")
     if det_file.exists():
         with det_file.open() as f:
             data = json.load(f)
@@ -214,7 +215,29 @@ def read_metrics(model_id: str, generation: int) -> dict:
 
                 if det_scores:
                     metrics['Det'] = sum(det_scores) / len(det_scores)
-    
+
+    # Hallucination metrics (DDR + Plausibility)
+    if halluc_file.exists():
+        with halluc_file.open() as f:
+            data = json.load(f)
+
+            # Factual (Total) - records in population
+            quality_matrix = data.get('quality_matrix_2x2', {})
+            if 'total_factual' in quality_matrix:
+                metrics['Factual'] = quality_matrix['total_factual'].get('rate_pct', 0) / 100
+
+            # Novel Factual (DDR) - factual AND not memorized (THE IDEAL!)
+            if 'novel_factual' in quality_matrix:
+                metrics['DDR'] = quality_matrix['novel_factual'].get('rate_pct', 0) / 100
+
+            # Plausible (Total) - passes validation rules
+            if 'total_plausible' in quality_matrix:
+                metrics['Plausible'] = quality_matrix['total_plausible'].get('rate_pct', 0) / 100
+
+            # Novel Plausible - plausible AND not memorized
+            if 'novel_plausible' in quality_matrix:
+                metrics['NovelPlaus'] = quality_matrix['novel_plausible'].get('rate_pct', 0) / 100
+
     return metrics
 
 
@@ -645,14 +668,11 @@ def run(
         
         # Display progress line
         metrics_str = " ".join([
-            f"α={metrics.get('α', 0):.3f}" if 'α' in metrics else "",
-            f"PRDC={metrics.get('PRDC', 0):.3f}" if 'PRDC' in metrics else "",
-            f"WD={metrics.get('WD', 0):.6f}" if 'WD' in metrics else "",
-            f"MMD={metrics.get('MMD', 0):.6f}" if 'MMD' in metrics else "",
-            f"JSD_SC={metrics.get('JSD_SC', 0):.6f}" if 'JSD_SC' in metrics else "",
-            f"JSD_SD={metrics.get('JSD_SD', 0):.6f}" if 'JSD_SD' in metrics else "",
-            f"JSD_NM={metrics.get('JSD_NM', 0):.6f}" if 'JSD_NM' in metrics else "",
+            f"DDR={metrics.get('DDR', 0):.3f}" if 'DDR' in metrics else "",
+            f"Factual={metrics.get('Factual', 0):.3f}" if 'Factual' in metrics else "",
+            f"Plausible={metrics.get('Plausible', 0):.3f}" if 'Plausible' in metrics else "",
             f"Det={metrics.get('Det', 0):.3f}" if 'Det' in metrics else "",
+            f"α={metrics.get('α', 0):.3f}" if 'α' in metrics else "",
         ]).strip()
         
         console.print(f"Gen {gen}: [green]{'█' * 20}[/green] 100% | {elapsed:.0f}s | {metrics_str}")
@@ -693,28 +713,28 @@ def run(
     if results:
         table = Table(title="Generation Metrics Summary")
         table.add_column("Gen", justify="right", style="cyan")
-        table.add_column("Alpha Precision", justify="right")
-        table.add_column("PRDC Avg", justify="right")
-        table.add_column("Wasserstein Dist", justify="right")
+        table.add_column("DDR\n(Novel Factual)", justify="right", style="green")
+        table.add_column("Factual\n(Total)", justify="right")
+        table.add_column("Plausible\n(Total)", justify="right")
+        table.add_column("Novel\nPlausible", justify="right")
+        table.add_column("Detection\nAUC", justify="right")
+        table.add_column("Alpha\nPrecision", justify="right")
+        table.add_column("Wasserstein\nDist", justify="right")
         table.add_column("MMD", justify="right")
-        table.add_column("JSD (Synthcity)", justify="right")
-        table.add_column("JSD (SYNDAT)", justify="right")
-        table.add_column("JSD (NannyML)", justify="right")
-        table.add_column("Detection Avg", justify="right")
         table.add_column("Time", justify="right", style="dim")
-        
+
         for r in results:
             metrics = r['metrics']
             table.add_row(
                 str(r['generation']),
+                f"{metrics.get('DDR', 0):.3f}" if 'DDR' in metrics else "—",
+                f"{metrics.get('Factual', 0):.3f}" if 'Factual' in metrics else "—",
+                f"{metrics.get('Plausible', 0):.3f}" if 'Plausible' in metrics else "—",
+                f"{metrics.get('NovelPlaus', 0):.3f}" if 'NovelPlaus' in metrics else "—",
+                f"{metrics.get('Det', 0):.3f}" if 'Det' in metrics else "—",
                 f"{metrics.get('α', 0):.3f}" if 'α' in metrics else "—",
-                f"{metrics.get('PRDC', 0):.3f}" if 'PRDC' in metrics else "—",
                 f"{metrics.get('WD', 0):.6f}" if 'WD' in metrics else "—",
                 f"{metrics.get('MMD', 0):.6f}" if 'MMD' in metrics else "—",
-                f"{metrics.get('JSD_SC', 0):.6f}" if 'JSD_SC' in metrics else "—",
-                f"{metrics.get('JSD_SD', 0):.6f}" if 'JSD_SD' in metrics else "—",
-                f"{metrics.get('JSD_NM', 0):.3f}" if 'JSD_NM' in metrics else "—",
-                f"{metrics.get('Det', 0):.3f}" if 'Det' in metrics else "—",
                 f"{r['elapsed']:.0f}s" if r['elapsed'] > 0 else "—"
             )
         

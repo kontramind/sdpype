@@ -27,46 +27,57 @@ console = Console()
 def parse_model_id(model_id: str) -> Dict[str, str]:
     """
     Parse model_id into components for chain tracing.
-    
-    Format: library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed
+
+    Format: library_modeltype_refhash_roothash_trnhash_gen_N_[variant]_cfghash_seed
     Example: sdv_gaussiancopula_0cf8e0f5_852ba944_852ba944_gen_0_9eadbd5d_51
-    
+    Example: synthcity_arf_504eda11_504eda11_504eda11_gen_0_variant2_d8f76fa1_2211
+
     Args:
         model_id: Full model identifier string
-        
+
     Returns:
-        Dict with parsed components: root_hash, seed, generation, experiment_name
-        
+        Dict with parsed components: library, model_type, ref_hash, root_hash,
+                                      training_hash, generation, config_hash, seed, experiment_name
+
     Raises:
         ValueError: If model_id format is invalid
     """
     parts = model_id.split("_")
-    
-    # Validate length: library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed = 9 parts minimum
+
+    # Validate minimum length
     if len(parts) < 9:
         raise ValueError(
             f"Invalid model_id format (expected at least 9 components): {model_id}\n"
             f"Expected format: library_modeltype_refhash_roothash_trnhash_gen_N_cfghash_seed"
         )
-    
+
     try:
-        # Fixed positions - no detection needed!
+        # Find "gen" marker position (supports variable-length experiment names)
+        try:
+            gen_idx = parts.index("gen")
+        except ValueError:
+            raise ValueError(f"'gen' marker not found in model_id: {model_id}")
+
+        # Extract fixed position components before "gen"
         library = parts[0]
         model_type = parts[1]
         ref_hash = parts[2]
         root_hash = parts[3]
         training_hash = parts[4]
-        gen_marker = parts[5]
-        generation_num = int(parts[6])
-        config_hash = parts[7]
-        seed = parts[8]
-        
-        # Validate "gen" marker
-        if gen_marker != "gen":
-            raise ValueError(f"Expected 'gen' marker at position 5, got: {gen_marker}")
-        
-        # Experiment name is everything except: _gen_N_cfghash_seed
-        experiment_name = "_".join(parts[:5])
+
+        # Extract generation number (right after "gen")
+        if gen_idx + 1 >= len(parts):
+            raise ValueError(f"Generation number missing after 'gen' marker: {model_id}")
+        generation_num = int(parts[gen_idx + 1])
+
+        # Use relative positions from end for config_hash and seed
+        # This handles variable-length experiment names (e.g., with "variant2" suffix)
+        seed = parts[-1]
+        config_hash = parts[-2]
+
+        # Experiment name is everything except the last two parts (config_hash and seed)
+        # e.g., synthcity_arf_504eda11_504eda11_504eda11_gen_0_variant2
+        experiment_name = "_".join(parts[:-2])
 
         return {
             "library": library,
@@ -87,27 +98,28 @@ def parse_model_id(model_id: str) -> Dict[str, str]:
 def read_metrics(model_id: str, generation: int) -> Dict:
     """
     Read key metrics from generation's output files.
-    
+
     Adapted from recursive_train.py to work with any model_id.
-    
+
     Args:
         model_id: Full model identifier
         generation: Generation number to read metrics for
-        
+
     Returns:
-        Dict with metrics: α (Alpha Precision), PRDC (avg), Det (avg)
+        Dict with metrics: α (Alpha Precision), PRDC (avg), Det (avg), Hallucination metrics
     """
-    # Extract components using fixed positions
+    # Extract components: last 2 parts are always config_hash and seed
+    # Everything before that is the experiment_name (includes generation number)
     parts = model_id.split("_")
-    seed = parts[8]
-    config_hash = parts[7]
-    experiment_name = "_".join(parts[:5])  # library_model_ref_root_trn
-    
+    seed = parts[-1]
+    config_hash = parts[-2]
+    experiment_name = "_".join(parts[:-2])
+
     metrics = {}
-    
+
     # Statistical similarity metrics
     stat_file = Path(
-        f"experiments/metrics/statistical_similarity_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json"
+        f"experiments/metrics/statistical_similarity_{experiment_name}_{config_hash}_{seed}.json"
     )
     
     if stat_file.exists():
@@ -200,11 +212,20 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                     if ks_score is not None:
                         metrics['ks_complement'] = ks_score
 
+            # SDV NewRowSynthesis - measures overall novelty (includes factual + hallucinated)
+            if 'NewRowSynthesis' in metrics_data:
+                nrs_metric = metrics_data['NewRowSynthesis']
+                if nrs_metric.get('status') == 'success':
+                    # Store as rate (0-1 range like other metrics)
+                    nrs_score = nrs_metric.get('score')
+                    if nrs_score is not None:
+                        metrics['new_row_synthesis'] = nrs_score
+
     # Detection metrics
     det_file = Path(
-        f"experiments/metrics/detection_evaluation_{experiment_name}_gen_{generation}_{config_hash}_{seed}.json"
+        f"experiments/metrics/detection_evaluation_{experiment_name}_{config_hash}_{seed}.json"
     )
-    
+
     if det_file.exists():
         with det_file.open() as f:
             data = json.load(f)
@@ -219,7 +240,48 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                 
                 if det_scores:
                     metrics['detection_avg'] = sum(det_scores) / len(det_scores)
-    
+
+    # Hallucination metrics (DDR + Plausibility)
+    halluc_file = Path(
+        f"experiments/metrics/hallucination_{experiment_name}_{config_hash}_{seed}.json"
+    )
+
+    if halluc_file.exists():
+        with halluc_file.open() as f:
+            data = json.load(f)
+
+            # Factual (Total) - records in population
+            quality_matrix = data.get('quality_matrix_2x2', {})
+            if 'total_factual' in quality_matrix:
+                metrics['factual_total'] = quality_matrix['total_factual'].get('rate_pct', 0) / 100
+
+            # Novel Factual (DDR) - factual AND not memorized (THE IDEAL!)
+            if 'novel_factual' in quality_matrix:
+                metrics['ddr_novel_factual'] = quality_matrix['novel_factual'].get('rate_pct', 0) / 100
+
+            # Plausible (Total) - passes validation rules
+            if 'total_plausible' in quality_matrix:
+                metrics['plausible_total'] = quality_matrix['total_plausible'].get('rate_pct', 0) / 100
+
+            # Novel Plausible - plausible AND not memorized
+            if 'novel_plausible' in quality_matrix:
+                metrics['plausible_novel'] = quality_matrix['novel_plausible'].get('rate_pct', 0) / 100
+
+            # Also get the breakdown for potential stacked chart
+            ddr_metrics = data.get('ddr_metrics', {})
+            train_copy_valid = data.get('training_copy_valid_metrics', {})
+            train_copy_prop = data.get('training_copy_propagation_metrics', {})
+            new_halluc = data.get('new_hallucination_metrics', {})
+
+            if ddr_metrics.get('unique'):
+                metrics['category_ddr'] = ddr_metrics['unique'].get('rate_pct', 0) / 100
+            if train_copy_valid.get('unique'):
+                metrics['category_train_copy_valid'] = train_copy_valid['unique'].get('rate_pct', 0) / 100
+            if train_copy_prop.get('unique'):
+                metrics['category_train_copy_prop'] = train_copy_prop['unique'].get('rate_pct', 0) / 100
+            if new_halluc.get('unique'):
+                metrics['category_new_halluc'] = new_halluc['unique'].get('rate_pct', 0) / 100
+
     return metrics
 
 
@@ -259,30 +321,31 @@ def trace_chain(model_id: str, max_generations: int = 100) -> List[Dict]:
     
     # Search for each generation
     for gen in range(max_generations):
-        # Glob broadly for generation + seed, then filter by root_hash
-        # This is more reliable because training_hash changes each generation
+        # Glob broadly for generation + seed
+        # Note: root_hash and training_hash change each generation in recursive training
         pattern = f"experiments/metrics/statistical_similarity_*_gen_{gen}_*_{seed}.json"
         metric_files = list(Path().glob(pattern))
-        
+
         if not metric_files:
             # No more generations found
             break
-        
-        # Filter by all five invariants: library, model_type, ref_hash, root_hash, seed
+
+        # Filter by the true chain invariants: library, model_type, ref_hash, seed
+        # Note: root_hash changes each generation, so we don't filter by it
         matching_model_id = None
         for metric_file in metric_files:
             filename = metric_file.stem
             candidate_model_id = filename.replace("statistical_similarity_", "")
-            
-            # Parse and check if all invariants match
+
+            # Parse and check if chain invariants match
             try:
                 parsed_candidate = parse_model_id(candidate_model_id)
 
-                # All five invariants must match for same chain
+                # Chain invariants: library, model_type, ref_hash, seed
+                # (root_hash and training_hash change each generation)
                 if (parsed_candidate['library'] == library and
                     parsed_candidate['model_type'] == model_type and
                     parsed_candidate['ref_hash'] == ref_hash and
-                    parsed_candidate['root_hash'] == root_hash and
                     parsed_candidate['seed'] == seed):
                     matching_model_id = candidate_model_id
                     break
@@ -515,9 +578,15 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
         'coverage': [r['metrics'].get('prdc_coverage', None) for r in results]
     }
 
-    # Create figure with 4 subplots (main, alpha components, PRDC components, JS components)
-    fig, (ax, ax_alpha, ax_prdc, ax_js) = plt.subplots(4, 1, figsize=(14, 16), 
-                                        gridspec_kw={'height_ratios': [2, 1, 1, 1]})
+    # Extract hallucination metrics for fifth subplot
+    ddr = [r['metrics'].get('ddr_novel_factual', None) for r in results]
+    factual = [r['metrics'].get('factual_total', None) for r in results]
+    plausible = [r['metrics'].get('plausible_total', None) for r in results]
+    plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
+
+    # Create figure with 5 subplots (main, alpha, PRDC, JS, hallucination)
+    fig, (ax, ax_alpha, ax_prdc, ax_js, ax_halluc) = plt.subplots(5, 1, figsize=(14, 20),
+                                        gridspec_kw={'height_ratios': [2, 1, 1, 1, 1.2]})
 
     # Plot each metric if available
     # TOP SUBPLOT: Main metrics
@@ -687,6 +756,38 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     ax_js.grid(True, alpha=0.3)
     ax_js.set_xlim(left=-0.5)
 
+    # FIFTH SUBPLOT: Hallucination Metrics (DDR + Plausibility)
+    ax_halluc.set_title('Hallucination Metrics (DDR + Plausibility)', fontsize=12, fontweight='bold', pad=10)
+
+    # Plot hallucination metrics (all should be high - higher is better)
+    if any(x is not None for x in ddr):
+        ax_halluc.plot(generations, ddr,
+                       marker='*', label='DDR (Novel Factual)', linewidth=3, color='#2ca02c', markersize=10)
+
+    if any(x is not None for x in factual):
+        ax_halluc.plot(generations, factual,
+                       marker='o', label='Factual (Total)', linewidth=2, color='#1f77b4')
+
+    if any(x is not None for x in plausible):
+        ax_halluc.plot(generations, plausible,
+                       marker='s', label='Plausible (Total)', linewidth=2, color='#ff7f0e')
+
+    if any(x is not None for x in plausible_novel):
+        ax_halluc.plot(generations, plausible_novel,
+                       marker='^', label='Novel Plausible', linewidth=2, color='#9467bd')
+
+    ax_halluc.set_xlabel('Generation', fontsize=12)
+    ax_halluc.set_ylabel('Rate (higher is better)', fontsize=12)
+    ax_halluc.legend(loc='best', fontsize=9)
+    ax_halluc.grid(True, alpha=0.3)
+    ax_halluc.set_xlim(left=-0.5)
+    ax_halluc.set_ylim(0, 1.05)
+
+    # Add interpretation annotations
+    ax_halluc.axhline(y=0.5, color='gray', linestyle='--', alpha=0.3, linewidth=1)
+    ax_halluc.text(0.02, 0.95, 'Higher = Better Quality', transform=ax_halluc.transAxes,
+                   fontsize=9, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
+
     plt.tight_layout()
     
     if output_file:
@@ -794,6 +895,12 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         'density': [r['metrics'].get('prdc_density', None) for r in results],
         'coverage': [r['metrics'].get('prdc_coverage', None) for r in results]
     }
+
+    # Extract hallucination metrics for fifth plot
+    ddr = [r['metrics'].get('ddr_novel_factual', None) for r in results]
+    factual = [r['metrics'].get('factual_total', None) for r in results]
+    plausible = [r['metrics'].get('plausible_total', None) for r in results]
+    plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
 
     # Color scheme
     colors = {
@@ -1293,8 +1400,119 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         width=1400,
         margin=dict(r=250, l=80, t=80, b=60)
     )
+
     # ========================================
-    # Save or show all four plots
+    # PLOT 5: Hallucination Metrics (DDR + Plausibility)
+    # ========================================
+    fig5 = go.Figure()
+
+    if any(x is not None for x in ddr):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=ddr,
+                mode='lines+markers',
+                name='DDR (Novel Factual)',
+                line=dict(color='#2ca02c', width=3),
+                marker=dict(size=10, symbol='star'),
+                hovertemplate='Gen %{x}<br>DDR: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in factual):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=factual,
+                mode='lines+markers',
+                name='Factual (Total)',
+                line=dict(color='#1f77b4', width=2),
+                marker=dict(size=8, symbol='circle'),
+                hovertemplate='Gen %{x}<br>Factual: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in plausible):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=plausible,
+                mode='lines+markers',
+                name='Plausible (Total)',
+                line=dict(color='#ff7f0e', width=2),
+                marker=dict(size=8, symbol='square'),
+                hovertemplate='Gen %{x}<br>Plausible: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in plausible_novel):
+        fig5.add_trace(
+            go.Scatter(
+                x=generations, y=plausible_novel,
+                mode='lines+markers',
+                name='Novel Plausible',
+                line=dict(color='#9467bd', width=2),
+                marker=dict(size=8, symbol='triangle-up'),
+                hovertemplate='Gen %{x}<br>Novel Plausible: %{y:.4f}<extra></extra>'
+            )
+        )
+
+    fig5.update_xaxes(
+        title_text="Generation",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    fig5.update_yaxes(
+        title_text="Rate (higher is better)",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        range=[0, 1.05]
+    )
+
+    # Add reference line at 0.5
+    fig5.add_hline(y=0.5, line_dash="dash", line_color="gray", opacity=0.3)
+
+    # Layout for Plot 5
+    fig5.update_layout(
+        title={
+            'text': 'Hallucination Metrics (DDR + Plausibility)',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'family': 'Arial, sans-serif'}
+        },
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="rgba(0, 0, 0, 0.3)",
+            borderwidth=1
+        ),
+        plot_bgcolor='white',
+        height=450,
+        width=1400,
+        margin=dict(r=250, l=80, t=80, b=60),
+        annotations=[
+            dict(
+                text="Higher values = Better quality<br>DDR = Factual AND Novel (ideal metric)",
+                xref="paper", yref="paper",
+                x=0.02, y=0.98,
+                showarrow=False,
+                bgcolor="rgba(255, 248, 220, 0.8)",
+                bordercolor="rgba(0, 0, 0, 0.3)",
+                borderwidth=1,
+                font=dict(size=10),
+                xanchor='left',
+                yanchor='top'
+            )
+        ]
+    )
+
+    # ========================================
+    # Save or show all five plots
     # ========================================
     if output_file:
         # Default to .html extension
@@ -1357,8 +1575,21 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                 }
             ))
 
+            f.write('<br><hr style="margin: 40px auto; width: 80%; border: 1px solid #ddd;"><br>\n')
+
+            # Write fifth plot
+            f.write(fig5.to_html(
+                full_html=False,
+                include_plotlyjs=False,
+                config={
+                    'displayModeBar': True,
+                    'displaylogo': False,
+                    'modeBarButtonsToRemove': ['select2d', 'lasso2d']
+                }
+            ))
+
             f.write('</body></html>')
-        
+
         console.print(f"[green]Interactive plots saved to: {output_file}[/green]")
         console.print(f"[dim]Open in browser to interact with the plots[/dim]")
     else:
@@ -1367,6 +1598,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         fig2.show()
         fig3.show()
         fig4.show()
+        fig5.show()
 
 @app.command()
 def main(
