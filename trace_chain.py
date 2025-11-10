@@ -282,6 +282,26 @@ def read_metrics(model_id: str, generation: int) -> Dict:
             if new_halluc.get('unique'):
                 metrics['category_new_halluc'] = new_halluc['unique'].get('rate_pct', 0) / 100
 
+            # Dataset complexity metrics
+            complexity_metrics = data.get('complexity_metrics', {})
+            if complexity_metrics:
+                # Extract total complexity for each dataset (ln scale)
+                pop_complexity = complexity_metrics.get('population', {})
+                train_complexity = complexity_metrics.get('training', {})
+                ref_complexity = complexity_metrics.get('reference', {})
+                synth_complexity = complexity_metrics.get('synthetic', {})
+
+                metrics['complexity_population'] = pop_complexity.get('total_complexity', 0)
+                metrics['complexity_training'] = train_complexity.get('total_complexity', 0)
+                metrics['complexity_reference'] = ref_complexity.get('total_complexity', 0)
+                metrics['complexity_synthetic'] = synth_complexity.get('total_complexity', 0)
+
+                # Also store comparison ratios
+                comparisons = complexity_metrics.get('comparisons', {})
+                metrics['complexity_ratio_vs_population'] = comparisons.get('synthetic_vs_population_ratio', 0)
+                metrics['complexity_ratio_vs_training'] = comparisons.get('synthetic_vs_training_ratio', 0)
+                metrics['complexity_ratio_vs_reference'] = comparisons.get('synthetic_vs_reference_ratio', 0)
+
     return metrics
 
 
@@ -455,9 +475,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,model_size_mb\n"
+        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,complexity_population,complexity_training,complexity_reference,complexity_synthetic,model_size_mb\n"
 
-    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,complexity_population,complexity_training,complexity_reference,complexity_synthetic,model_size_mb"]
     
     for r in results:
         gen = r['generation']
@@ -479,9 +499,13 @@ def export_csv(results: List[Dict]) -> str:
         jsd_nm = metrics.get('jsd_nannyml', '')
         det = metrics.get('detection_avg', '')
         nrs = metrics.get('new_row_synthesis', '')
+        comp_pop = metrics.get('complexity_population', '')
+        comp_train = metrics.get('complexity_training', '')
+        comp_ref = metrics.get('complexity_reference', '')
+        comp_synth = metrics.get('complexity_synthetic', '')
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{nrs},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{nrs},{comp_pop},{comp_train},{comp_ref},{comp_synth},{size}")
 
     return "\n".join(lines)
 
@@ -586,9 +610,15 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
     new_row_synthesis = [r['metrics'].get('new_row_synthesis', None) for r in results]
 
-    # Create figure with 5 subplots (main, alpha, PRDC, JS, hallucination)
-    fig, (ax, ax_alpha, ax_prdc, ax_js, ax_halluc) = plt.subplots(5, 1, figsize=(14, 20),
-                                        gridspec_kw={'height_ratios': [2, 1, 1, 1, 1.2]})
+    # Extract complexity metrics for sixth subplot
+    complexity_population = [r['metrics'].get('complexity_population', None) for r in results]
+    complexity_training = [r['metrics'].get('complexity_training', None) for r in results]
+    complexity_reference = [r['metrics'].get('complexity_reference', None) for r in results]
+    complexity_synthetic = [r['metrics'].get('complexity_synthetic', None) for r in results]
+
+    # Create figure with 6 subplots (main, alpha, PRDC, JS, hallucination, complexity)
+    fig, (ax, ax_alpha, ax_prdc, ax_js, ax_halluc, ax_complex) = plt.subplots(6, 1, figsize=(14, 24),
+                                        gridspec_kw={'height_ratios': [2, 1, 1, 1, 1.2, 1.2]})
 
     # Plot each metric if available
     # TOP SUBPLOT: Main metrics
@@ -794,6 +824,36 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     ax_halluc.text(0.02, 0.95, 'Higher = Better Quality', transform=ax_halluc.transAxes,
                    fontsize=9, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
 
+    # SIXTH SUBPLOT: Dataset Complexity (ln scale)
+    ax_complex.set_title('Dataset Complexity (Combinatorial Search Space)', fontsize=12, fontweight='bold', pad=10)
+
+    # Plot complexity for each dataset
+    if any(x is not None for x in complexity_population):
+        ax_complex.plot(generations, complexity_population,
+                        marker='o', label='Population', linewidth=2, color='#2ca02c', alpha=0.7)
+
+    if any(x is not None for x in complexity_training):
+        ax_complex.plot(generations, complexity_training,
+                        marker='s', label='Training', linewidth=2, color='#d62728', alpha=0.7)
+
+    if any(x is not None for x in complexity_reference):
+        ax_complex.plot(generations, complexity_reference,
+                        marker='^', label='Reference', linewidth=2, color='#1f77b4', alpha=0.7, linestyle='--')
+
+    if any(x is not None for x in complexity_synthetic):
+        ax_complex.plot(generations, complexity_synthetic,
+                        marker='D', label='Synthetic', linewidth=3, color='#ff7f0e', markersize=8)
+
+    ax_complex.set_xlabel('Generation', fontsize=12)
+    ax_complex.set_ylabel('Total Complexity (ln scale)', fontsize=12)
+    ax_complex.legend(loc='best', fontsize=9)
+    ax_complex.grid(True, alpha=0.3)
+    ax_complex.set_xlim(left=-0.5)
+
+    # Add interpretation annotation
+    ax_complex.text(0.02, 0.95, 'Higher = More complex combinatorial space', transform=ax_complex.transAxes,
+                    fontsize=9, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.3))
+
     plt.tight_layout()
     
     if output_file:
@@ -908,6 +968,12 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     plausible = [r['metrics'].get('plausible_total', None) for r in results]
     plausible_novel = [r['metrics'].get('plausible_novel', None) for r in results]
     new_row_synthesis = [r['metrics'].get('new_row_synthesis', None) for r in results]
+
+    # Extract complexity metrics for sixth plot
+    complexity_population = [r['metrics'].get('complexity_population', None) for r in results]
+    complexity_training = [r['metrics'].get('complexity_training', None) for r in results]
+    complexity_reference = [r['metrics'].get('complexity_reference', None) for r in results]
+    complexity_synthetic = [r['metrics'].get('complexity_synthetic', None) for r in results]
 
     # Color scheme
     colors = {
@@ -1531,14 +1597,120 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     )
 
     # ========================================
-    # Save or show all five plots
+    # PLOT 6: Dataset Complexity (Combinatorial Search Space)
+    # ========================================
+    fig6 = go.Figure()
+
+    if any(x is not None for x in complexity_population):
+        fig6.add_trace(
+            go.Scatter(
+                x=generations, y=complexity_population,
+                mode='lines+markers',
+                name='Population',
+                line=dict(color='#2ca02c', width=2),
+                marker=dict(size=8, symbol='circle'),
+                hovertemplate='Gen %{x}<br>Population: %{y:.2f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in complexity_training):
+        fig6.add_trace(
+            go.Scatter(
+                x=generations, y=complexity_training,
+                mode='lines+markers',
+                name='Training',
+                line=dict(color='#d62728', width=2),
+                marker=dict(size=8, symbol='square'),
+                hovertemplate='Gen %{x}<br>Training: %{y:.2f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in complexity_reference):
+        fig6.add_trace(
+            go.Scatter(
+                x=generations, y=complexity_reference,
+                mode='lines+markers',
+                name='Reference',
+                line=dict(color='#1f77b4', width=2, dash='dash'),
+                marker=dict(size=8, symbol='triangle-up'),
+                hovertemplate='Gen %{x}<br>Reference: %{y:.2f}<extra></extra>'
+            )
+        )
+
+    if any(x is not None for x in complexity_synthetic):
+        fig6.add_trace(
+            go.Scatter(
+                x=generations, y=complexity_synthetic,
+                mode='lines+markers',
+                name='Synthetic',
+                line=dict(color='#ff7f0e', width=3),
+                marker=dict(size=9, symbol='diamond'),
+                hovertemplate='Gen %{x}<br>Synthetic: %{y:.2f}<extra></extra>'
+            )
+        )
+
+    fig6.update_xaxes(
+        title_text="Generation",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    fig6.update_yaxes(
+        title_text="Total Complexity (ln scale)",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    # Layout for Plot 6
+    fig6.update_layout(
+        title={
+            'text': 'Dataset Complexity (Combinatorial Search Space)',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'family': 'Arial, sans-serif'}
+        },
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="rgba(0, 0, 0, 0.3)",
+            borderwidth=1
+        ),
+        plot_bgcolor='white',
+        height=450,
+        width=1400,
+        margin=dict(r=250, l=80, t=80, b=60),
+        annotations=[
+            dict(
+                text="Higher values = More complex combinatorial space<br>Tracks evolution of dataset diversity across generations",
+                xref="paper", yref="paper",
+                x=0.02, y=0.98,
+                showarrow=False,
+                bgcolor="rgba(173, 216, 230, 0.8)",
+                bordercolor="rgba(0, 0, 0, 0.3)",
+                borderwidth=1,
+                font=dict(size=10),
+                xanchor='left',
+                yanchor='top'
+            )
+        ]
+    )
+
+    # ========================================
+    # Save or show all six plots
     # ========================================
     if output_file:
         # Default to .html extension
         if not output_file.endswith('.html'):
             output_file = output_file.rsplit('.', 1)[0] + '.html'
         
-        # Combine all three figures into a single HTML file
+        # Combine all six figures into a single HTML file
         with open(output_file, 'w') as f:
             f.write('<html><head><meta charset="utf-8" /></head><body>\n')
             f.write('<h1 style="text-align: center; font-family: Arial, sans-serif;">Chain Metrics Analysis</h1>\n')
@@ -1607,6 +1779,19 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                 }
             ))
 
+            f.write('<br><hr style="margin: 40px auto; width: 80%; border: 1px solid #ddd;"><br>\n')
+
+            # Write sixth plot
+            f.write(fig6.to_html(
+                full_html=False,
+                include_plotlyjs=False,
+                config={
+                    'displayModeBar': True,
+                    'displaylogo': False,
+                    'modeBarButtonsToRemove': ['select2d', 'lasso2d']
+                }
+            ))
+
             f.write('</body></html>')
 
         console.print(f"[green]Interactive plots saved to: {output_file}[/green]")
@@ -1618,6 +1803,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         fig3.show()
         fig4.show()
         fig5.show()
+        fig6.show()
 
 @app.command()
 def main(
