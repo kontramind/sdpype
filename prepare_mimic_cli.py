@@ -11,6 +11,7 @@ import pandas as pd
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
+from typing import List
 
 console = Console()
 app = typer.Typer(
@@ -53,6 +54,76 @@ def columns(
 
     except Exception as e:
         console.print(f"[red]Error loading CSV file: {str(e)}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def unique(
+    csv_path: Path = typer.Argument(..., help="Path to CSV file"),
+    column_names: List[str] = typer.Argument(..., help="Column name(s) to show unique values for"),
+    show_counts: bool = typer.Option(False, "--counts", "-c", help="Show value counts for each unique value"),
+):
+    """
+    Display unique values for specified column(s).
+
+    Shows all unique values in the specified columns along with the count
+    of unique values. Use --counts to also see frequency of each value.
+    """
+    if not csv_path.exists():
+        console.print(f"[red]Error: CSV file not found: {csv_path}[/red]")
+        raise typer.Exit(1)
+
+    if not csv_path.suffix.lower() == '.csv':
+        console.print(f"[yellow]Warning: File does not have .csv extension[/yellow]")
+
+    try:
+        console.print(f"[blue]Loading CSV file: {csv_path}[/blue]")
+        df = pd.read_csv(csv_path)
+
+        console.print(f"[green]Successfully loaded CSV file[/green]")
+        console.print(f"[cyan]Dataset shape: {df.shape[0]:,} rows × {df.shape[1]} columns[/cyan]\n")
+
+        # Process each column
+        for col_name in column_names:
+            if col_name not in df.columns:
+                console.print(f"[red]Error: Column '{col_name}' not found in dataset[/red]")
+                console.print(f"[yellow]Available columns: {', '.join(df.columns.tolist())}[/yellow]\n")
+                continue
+
+            unique_values = df[col_name].unique()
+            num_unique = len(unique_values)
+            num_missing = df[col_name].isna().sum()
+
+            console.print(f"[bold cyan]Column: {col_name}[/bold cyan]")
+            console.print(f"[cyan]Unique values: {num_unique:,}[/cyan]")
+            console.print(f"[cyan]Missing values: {num_missing:,}[/cyan]\n")
+
+            if show_counts:
+                # Show value counts
+                value_counts = df[col_name].value_counts(dropna=False)
+
+                table = Table(show_header=True, header_style="bold magenta")
+                table.add_column("Value", style="cyan")
+                table.add_column("Count", justify="right", style="green")
+                table.add_column("Percentage", justify="right", style="blue")
+
+                for value, count in value_counts.items():
+                    percentage = (count / len(df)) * 100
+                    value_str = str(value) if pd.notna(value) else "[red]<NA>[/red]"
+                    table.add_row(value_str, f"{count:,}", f"{percentage:.2f}%")
+
+                console.print(table)
+                console.print()
+            else:
+                # Just list unique values
+                console.print("[bold]Unique values:[/bold]")
+                for idx, value in enumerate(sorted(unique_values, key=lambda x: (pd.isna(x), x)), 1):
+                    value_str = str(value) if pd.notna(value) else "[red]<NA>[/red]"
+                    console.print(f"  {idx:3d}. {value_str}")
+                console.print()
+
+    except Exception as e:
+        console.print(f"[red]Error processing CSV file: {str(e)}[/red]")
         raise typer.Exit(1)
 
 
