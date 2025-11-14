@@ -357,6 +357,34 @@ def transform_cholesterol_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_heart_value_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform HEART_VALUE: convert to numeric, drop rows with non-numeric text values."""
+    if 'HEART_VALUE' in df.columns:
+        original_count = len(df)
+
+        # Identify rows with non-numeric string values (not NaN)
+        not_null = df['HEART_VALUE'].notna()
+        numeric_values = pd.to_numeric(df['HEART_VALUE'], errors='coerce')
+        # Rows that were not-null but became null after conversion are invalid text
+        invalid_rows = not_null & numeric_values.isna()
+
+        # Drop rows with invalid text values
+        df = df[~invalid_rows].copy()
+
+        # Convert to numeric (original NaN stays as NaN)
+        df['HEART_VALUE'] = pd.to_numeric(df['HEART_VALUE'], errors='coerce')
+
+        dropped = original_count - len(df)
+        if dropped > 0:
+            console.print(f"  ✓ Transformed HEART_VALUE: converted to numeric, dropped {dropped} rows with non-numeric text values")
+        else:
+            console.print(f"  ✓ Transformed HEART_VALUE: converted to numeric (no invalid values found)")
+    else:
+        console.print(f"  - HEART_VALUE column not found")
+
+    return df
+
+
 @app.command()
 def transform(
     csv_path: Path = typer.Argument(..., help="Path to CSV file"),
@@ -378,6 +406,7 @@ def transform(
     - Transforms Creatinine: converts to numeric, drops rows with non-numeric text (preserves NaN)
     - Transforms BLOOD_UREA_NITRO: converts to numeric, drops rows with non-numeric text (preserves NaN)
     - Transforms CHOLESTEROL: converts to numeric, drops rows with non-numeric text (preserves NaN)
+    - Transforms HEART_VALUE: converts to numeric, drops rows with non-numeric text (preserves NaN)
 
     More transformations will be added in future versions.
     """
@@ -415,6 +444,7 @@ def transform(
         df = transform_creatinine_column(df)
         df = transform_blood_urea_nitro_column(df)
         df = transform_cholesterol_column(df)
+        df = transform_heart_value_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
