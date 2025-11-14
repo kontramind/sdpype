@@ -208,6 +208,20 @@ def transform_expire_flag_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_readmission_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform READMISSION column: rename to READMITTED, convert to boolean."""
+    if 'READMISSION' in df.columns:
+        # Rename to READMITTED
+        df = df.rename(columns={'READMISSION': 'READMITTED'})
+        # Convert to boolean (0 -> False, 1 -> True)
+        df['READMITTED'] = df['READMITTED'].astype(bool)
+        console.print(f"  ✓ Transformed READMISSION: renamed to READMITTED, converted to boolean")
+    else:
+        console.print(f"  - READMISSION column not found")
+
+    return df
+
+
 @app.command()
 def transform(
     csv_path: Path = typer.Argument(..., help="Path to CSV file"),
@@ -223,6 +237,7 @@ def transform(
     - Transforms ADMISSION_TYPE: converts to string type
     - Transforms MARITAL_STATUS: fills NaN with 'Missing', converts to string type
     - Transforms EXPIRE_FLAG: renames to DECEASED, converts to boolean
+    - Transforms READMISSION: renames to READMITTED, converts to boolean
 
     More transformations will be added in future versions.
     """
@@ -254,6 +269,7 @@ def transform(
         df = transform_admission_type_column(df)
         df = transform_marital_status_column(df)
         df = transform_expire_flag_column(df)
+        df = transform_readmission_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
