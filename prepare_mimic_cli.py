@@ -90,22 +90,18 @@ def unique(
                 console.print(f"[yellow]Available columns: {', '.join(df.columns.tolist())}[/yellow]\n")
                 continue
 
-            unique_values = df[col_name].unique()
-            num_unique = len(unique_values)
+            num_unique = df[col_name].nunique(dropna=False)
             num_missing = df[col_name].isna().sum()
-            num_non_null = df[col_name].count()
-            total_rows = len(df)
 
             console.print(f"[bold cyan]Column: {col_name}[/bold cyan]")
-            console.print(f"[cyan]Total rows: {total_rows:,}[/cyan]")
-            console.print(f"[cyan]Rows with values (non-null): {num_non_null:,}[/cyan]")
-            console.print(f"[cyan]Missing values: {num_missing:,}[/cyan]")
-            console.print(f"[cyan]Unique values: {num_unique:,}[/cyan]\n")
+            console.print(f"[cyan]Unique values: {num_unique:,}[/cyan]")
+            console.print(f"[cyan]Missing values: {num_missing:,}[/cyan]\n")
+
+            # Show value counts by default
+            value_counts = df[col_name].value_counts(dropna=False)
 
             if show_counts:
-                # Show value counts
-                value_counts = df[col_name].value_counts(dropna=False)
-
+                # Show with percentage in table format
                 table = Table(show_header=True, header_style="bold magenta")
                 table.add_column("Value", style="cyan")
                 table.add_column("Count", justify="right", style="green")
@@ -119,11 +115,11 @@ def unique(
                 console.print(table)
                 console.print()
             else:
-                # Just list unique values
-                console.print("[bold]Unique values:[/bold]")
-                for idx, value in enumerate(sorted(unique_values, key=lambda x: (pd.isna(x), x)), 1):
+                # Simple list format with counts
+                console.print("[bold]Unique values (value: count):[/bold]")
+                for value, count in value_counts.items():
                     value_str = str(value) if pd.notna(value) else "[red]<NA>[/red]"
-                    console.print(f"  {idx:3d}. {value_str}")
+                    console.print(f"  {value_str}: {count:,}")
                 console.print()
 
     except Exception as e:
