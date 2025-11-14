@@ -203,6 +203,20 @@ def transform_marital_status_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_gender_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform GENDER column: fill NaN with 'Unknown', convert to string."""
+    if 'GENDER' in df.columns:
+        # Fill NaN with 'Unknown'
+        df['GENDER'] = df['GENDER'].fillna('Unknown')
+        # Convert to string
+        df['GENDER'] = df['GENDER'].astype(str)
+        console.print(f"  ✓ Transformed GENDER: filled NaN with 'Unknown', converted to string type")
+    else:
+        console.print(f"  - GENDER column not found")
+
+    return df
+
+
 def transform_expire_flag_column(df: pd.DataFrame) -> pd.DataFrame:
     """Transform EXPIRE_FLAG column: rename to DECEASED, convert to boolean."""
     if 'EXPIRE_FLAG' in df.columns:
@@ -357,6 +371,7 @@ def transform(
     - Transforms INSURANCE: converts to string type
     - Transforms ADMISSION_TYPE: converts to string type
     - Transforms MARITAL_STATUS: fills NaN with 'Missing', converts to string type
+    - Transforms GENDER: fills NaN with 'Unknown', converts to string type
     - Transforms EXPIRE_FLAG: renames to DECEASED, converts to boolean
     - Transforms READMISSION: renames to READMITTED, converts to boolean
     - Transforms POTASSIUM: converts to numeric, drops rows with non-numeric text (preserves NaN)
@@ -393,6 +408,7 @@ def transform(
         df = transform_insurance_column(df)
         df = transform_admission_type_column(df)
         df = transform_marital_status_column(df)
+        df = transform_gender_column(df)
         df = transform_expire_flag_column(df)
         df = transform_readmission_column(df)
         df = transform_potassium_column(df)
