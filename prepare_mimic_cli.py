@@ -217,6 +217,20 @@ def transform_gender_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_language_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform LANGUAGE column: fill NaN with 'Missing', convert to string."""
+    if 'LANGUAGE' in df.columns:
+        # Fill NaN with 'Missing'
+        df['LANGUAGE'] = df['LANGUAGE'].fillna('Missing')
+        # Convert to string
+        df['LANGUAGE'] = df['LANGUAGE'].astype(str)
+        console.print(f"  ✓ Transformed LANGUAGE: filled NaN with 'Missing', converted to string type")
+    else:
+        console.print(f"  - LANGUAGE column not found")
+
+    return df
+
+
 def transform_expire_flag_column(df: pd.DataFrame) -> pd.DataFrame:
     """Transform EXPIRE_FLAG column: rename to DECEASED, convert to boolean."""
     if 'EXPIRE_FLAG' in df.columns:
@@ -484,6 +498,7 @@ def transform(
     - Transforms ADMISSION_TYPE: converts to string type
     - Transforms MARITAL_STATUS: fills NaN with 'Missing', converts to string type
     - Transforms GENDER: fills NaN with 'Unknown', converts to string type
+    - Transforms LANGUAGE: fills NaN with 'Missing', converts to string type
     - Transforms EXPIRE_FLAG: renames to DECEASED, converts to boolean
     - Transforms READMISSION: renames to READMITTED, converts to boolean
     - Transforms POTASSIUM: converts to numeric, drops rows with non-numeric text (preserves NaN)
@@ -535,6 +550,7 @@ def transform(
         df = transform_systolic_value_column(df)
         df = transform_diastolic_value_column(df)
         df = transform_nt_probnp_column(df)
+        df = transform_language_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
