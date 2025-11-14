@@ -234,7 +234,7 @@ def transform_potassium_column(df: pd.DataFrame) -> pd.DataFrame:
         invalid_rows = not_null & numeric_values.isna()
 
         # Drop rows with invalid text values
-        df = df[~invalid_rows]
+        df = df[~invalid_rows].copy()
 
         # Convert to numeric (original NaN stays as NaN)
         df['POTASSIUM'] = pd.to_numeric(df['POTASSIUM'], errors='coerce')
@@ -283,7 +283,7 @@ def transform(
 
     try:
         console.print(f"[blue]Loading CSV file: {csv_path}[/blue]")
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, low_memory=False)
 
         console.print(f"[green]Successfully loaded CSV file[/green]")
         original_rows, original_cols = df.shape
