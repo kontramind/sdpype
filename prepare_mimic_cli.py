@@ -97,8 +97,8 @@ def unique(
             console.print(f"[cyan]Unique values: {num_unique:,}[/cyan]")
             console.print(f"[cyan]Missing values: {num_missing:,}[/cyan]\n")
 
-            # Show value counts by default
-            value_counts = df[col_name].value_counts(dropna=False)
+            # Show value counts by default, sorted by value
+            value_counts = df[col_name].value_counts(dropna=False).sort_index()
 
             if show_counts:
                 # Show with percentage in table format
