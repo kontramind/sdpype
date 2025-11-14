@@ -93,10 +93,14 @@ def unique(
             unique_values = df[col_name].unique()
             num_unique = len(unique_values)
             num_missing = df[col_name].isna().sum()
+            num_non_null = df[col_name].count()
+            total_rows = len(df)
 
             console.print(f"[bold cyan]Column: {col_name}[/bold cyan]")
-            console.print(f"[cyan]Unique values: {num_unique:,}[/cyan]")
-            console.print(f"[cyan]Missing values: {num_missing:,}[/cyan]\n")
+            console.print(f"[cyan]Total rows: {total_rows:,}[/cyan]")
+            console.print(f"[cyan]Rows with values (non-null): {num_non_null:,}[/cyan]")
+            console.print(f"[cyan]Missing values: {num_missing:,}[/cyan]")
+            console.print(f"[cyan]Unique values: {num_unique:,}[/cyan]\n")
 
             if show_counts:
                 # Show value counts
