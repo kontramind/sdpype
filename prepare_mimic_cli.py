@@ -11,7 +11,7 @@ import pandas as pd
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
-from typing import List
+from typing import List, Optional
 
 console = Console()
 app = typer.Typer(
@@ -124,6 +124,75 @@ def unique(
 
     except Exception as e:
         console.print(f"[red]Error processing CSV file: {str(e)}[/red]")
+        raise typer.Exit(1)
+
+
+# Transformation functions
+def drop_id_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop MIMIC ID columns if they exist."""
+    id_columns = ['ROW_ID', 'SUBJECT_ID', 'HADM_ID']
+    columns_to_drop = [col for col in id_columns if col in df.columns]
+
+    if columns_to_drop:
+        df = df.drop(columns=columns_to_drop)
+        console.print(f"  ✓ Dropped ID columns: {', '.join(columns_to_drop)} ({len(columns_to_drop)} columns removed)")
+    else:
+        console.print(f"  - No ID columns found to drop")
+
+    return df
+
+
+@app.command()
+def transform(
+    csv_path: Path = typer.Argument(..., help="Path to CSV file"),
+    output: Optional[Path] = typer.Argument(None, help="Output file path (default: <input>_transformed.csv)"),
+):
+    """
+    Apply transformations to a dataset and save to a new file.
+
+    Currently applies the following transformations:
+    - Drops MIMIC ID columns (ROW_ID, SUBJECT_ID, HADM_ID)
+
+    More transformations will be added in future versions.
+    """
+    if not csv_path.exists():
+        console.print(f"[red]Error: CSV file not found: {csv_path}[/red]")
+        raise typer.Exit(1)
+
+    if not csv_path.suffix.lower() == '.csv':
+        console.print(f"[yellow]Warning: File does not have .csv extension[/yellow]")
+
+    # Set default output path if not provided
+    if output is None:
+        output = csv_path.parent / f"{csv_path.stem}_transformed.csv"
+
+    try:
+        console.print(f"[blue]Loading CSV file: {csv_path}[/blue]")
+        df = pd.read_csv(csv_path)
+
+        console.print(f"[green]Successfully loaded CSV file[/green]")
+        original_rows, original_cols = df.shape
+        console.print(f"[cyan]Original dataset: {original_rows:,} rows × {original_cols} columns[/cyan]\n")
+
+        console.print("[bold cyan]Applying transformations:[/bold cyan]")
+
+        # Apply transformations (add more here as needed)
+        df = drop_id_columns(df)
+
+        # Future transformations will be added here
+        # df = filter_rows(df)
+        # df = convert_categorical_to_boolean(df)
+
+        console.print()
+        final_rows, final_cols = df.shape
+        console.print(f"[cyan]Final dataset: {final_rows:,} rows × {final_cols} columns[/cyan]")
+
+        # Save transformed data
+        df.to_csv(output, index=False)
+        console.print(f"[green]✓ Saved transformed data to: {output}[/green]\n")
+
+    except Exception as e:
+        console.print(f"[red]Error transforming CSV file: {str(e)}[/red]")
         raise typer.Exit(1)
 
 
