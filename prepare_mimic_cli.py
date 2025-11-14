@@ -78,7 +78,7 @@ def unique(
 
     try:
         console.print(f"[blue]Loading CSV file: {csv_path}[/blue]")
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, low_memory=False)
 
         console.print(f"[green]Successfully loaded CSV file[/green]")
         console.print(f"[cyan]Dataset shape: {df.shape[0]:,} rows × {df.shape[1]} columns[/cyan]\n")
@@ -98,7 +98,16 @@ def unique(
             console.print(f"[cyan]Missing values: {num_missing:,}[/cyan]\n")
 
             # Show value counts by default, sorted by value
-            value_counts = df[col_name].value_counts(dropna=False).sort_index()
+            # Handle mixed-type columns by converting to string for sorting
+            try:
+                value_counts = df[col_name].value_counts(dropna=False).sort_index()
+            except TypeError:
+                # Mixed types (e.g., floats and strings) - convert to string for sorting
+                temp_series = df[col_name].astype(str)
+                value_counts = temp_series.value_counts(dropna=False).sort_index()
+                # Map back to original values for display
+                original_value_map = dict(zip(df[col_name].astype(str), df[col_name]))
+                console.print(f"[yellow]  (Note: Mixed types detected, sorting as strings)[/yellow]\n")
 
             if show_counts:
                 # Show with percentage in table format
