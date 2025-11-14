@@ -194,6 +194,20 @@ def transform_marital_status_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_expire_flag_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform EXPIRE_FLAG column: rename to DECEASED, convert to boolean."""
+    if 'EXPIRE_FLAG' in df.columns:
+        # Rename to DECEASED
+        df = df.rename(columns={'EXPIRE_FLAG': 'DECEASED'})
+        # Convert to boolean (0 -> False, 1 -> True)
+        df['DECEASED'] = df['DECEASED'].astype(bool)
+        console.print(f"  ✓ Transformed EXPIRE_FLAG: renamed to DECEASED, converted to boolean")
+    else:
+        console.print(f"  - EXPIRE_FLAG column not found")
+
+    return df
+
+
 @app.command()
 def transform(
     csv_path: Path = typer.Argument(..., help="Path to CSV file"),
@@ -208,6 +222,7 @@ def transform(
     - Transforms INSURANCE: converts to string type
     - Transforms ADMISSION_TYPE: converts to string type
     - Transforms MARITAL_STATUS: fills NaN with 'Missing', converts to string type
+    - Transforms EXPIRE_FLAG: renames to DECEASED, converts to boolean
 
     More transformations will be added in future versions.
     """
@@ -238,10 +253,10 @@ def transform(
         df = transform_insurance_column(df)
         df = transform_admission_type_column(df)
         df = transform_marital_status_column(df)
+        df = transform_expire_flag_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
-        # df = convert_categorical_to_boolean(df)
 
         console.print()
         final_rows, final_cols = df.shape
