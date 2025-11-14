@@ -413,6 +413,34 @@ def transform_systolic_value_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_diastolic_value_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform DIASTOLIC_VALUE: convert to numeric, drop rows with non-numeric text values."""
+    if 'DIASTOLIC_VALUE' in df.columns:
+        original_count = len(df)
+
+        # Identify rows with non-numeric string values (not NaN)
+        not_null = df['DIASTOLIC_VALUE'].notna()
+        numeric_values = pd.to_numeric(df['DIASTOLIC_VALUE'], errors='coerce')
+        # Rows that were not-null but became null after conversion are invalid text
+        invalid_rows = not_null & numeric_values.isna()
+
+        # Drop rows with invalid text values
+        df = df[~invalid_rows].copy()
+
+        # Convert to numeric (original NaN stays as NaN)
+        df['DIASTOLIC_VALUE'] = pd.to_numeric(df['DIASTOLIC_VALUE'], errors='coerce')
+
+        dropped = original_count - len(df)
+        if dropped > 0:
+            console.print(f"  ✓ Transformed DIASTOLIC_VALUE: converted to numeric, dropped {dropped} rows with non-numeric text values")
+        else:
+            console.print(f"  ✓ Transformed DIASTOLIC_VALUE: converted to numeric (no invalid values found)")
+    else:
+        console.print(f"  - DIASTOLIC_VALUE column not found")
+
+    return df
+
+
 @app.command()
 def transform(
     csv_path: Path = typer.Argument(..., help="Path to CSV file"),
@@ -436,6 +464,7 @@ def transform(
     - Transforms CHOLESTEROL: converts to numeric, drops rows with non-numeric text (preserves NaN)
     - Transforms HEART_VALUE: converts to numeric, drops rows with non-numeric text (preserves NaN)
     - Transforms SYSTOLIC_VALUE: converts to numeric, drops rows with non-numeric text (preserves NaN)
+    - Transforms DIASTOLIC_VALUE: converts to numeric, drops rows with non-numeric text (preserves NaN)
 
     More transformations will be added in future versions.
     """
@@ -475,6 +504,7 @@ def transform(
         df = transform_cholesterol_column(df)
         df = transform_heart_value_column(df)
         df = transform_systolic_value_column(df)
+        df = transform_diastolic_value_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
