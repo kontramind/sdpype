@@ -169,6 +169,17 @@ def transform_insurance_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_admission_type_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform ADMISSION_TYPE column: convert to string type."""
+    if 'ADMISSION_TYPE' in df.columns:
+        df['ADMISSION_TYPE'] = df['ADMISSION_TYPE'].astype(str)
+        console.print(f"  ✓ Transformed ADMISSION_TYPE: converted to string type")
+    else:
+        console.print(f"  - ADMISSION_TYPE column not found")
+
+    return df
+
+
 @app.command()
 def transform(
     csv_path: Path = typer.Argument(..., help="Path to CSV file"),
@@ -181,6 +192,7 @@ def transform(
     - Drops MIMIC ID columns (ROW_ID, SUBJECT_ID, HADM_ID)
     - Transforms AGE: fills NaN with 89, caps at 89, converts to integers
     - Transforms INSURANCE: converts to string type
+    - Transforms ADMISSION_TYPE: converts to string type
 
     More transformations will be added in future versions.
     """
@@ -209,6 +221,7 @@ def transform(
         df = drop_id_columns(df)
         df = transform_age_column(df)
         df = transform_insurance_column(df)
+        df = transform_admission_type_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
