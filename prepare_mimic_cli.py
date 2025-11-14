@@ -180,6 +180,20 @@ def transform_admission_type_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_marital_status_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform MARITAL_STATUS column: fill NaN with 'Missing', convert to string."""
+    if 'MARITAL_STATUS' in df.columns:
+        # Fill NaN with 'Missing'
+        df['MARITAL_STATUS'] = df['MARITAL_STATUS'].fillna('Missing')
+        # Convert to string
+        df['MARITAL_STATUS'] = df['MARITAL_STATUS'].astype(str)
+        console.print(f"  ✓ Transformed MARITAL_STATUS: filled NaN with 'Missing', converted to string type")
+    else:
+        console.print(f"  - MARITAL_STATUS column not found")
+
+    return df
+
+
 @app.command()
 def transform(
     csv_path: Path = typer.Argument(..., help="Path to CSV file"),
@@ -193,6 +207,7 @@ def transform(
     - Transforms AGE: fills NaN with 89, caps at 89, converts to integers
     - Transforms INSURANCE: converts to string type
     - Transforms ADMISSION_TYPE: converts to string type
+    - Transforms MARITAL_STATUS: fills NaN with 'Missing', converts to string type
 
     More transformations will be added in future versions.
     """
@@ -222,6 +237,7 @@ def transform(
         df = transform_age_column(df)
         df = transform_insurance_column(df)
         df = transform_admission_type_column(df)
+        df = transform_marital_status_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
