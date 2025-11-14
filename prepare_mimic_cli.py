@@ -250,6 +250,34 @@ def transform_potassium_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_creatinine_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform Creatinine: convert to numeric, drop rows with non-numeric text values."""
+    if 'Creatinine' in df.columns:
+        original_count = len(df)
+
+        # Identify rows with non-numeric string values (not NaN)
+        not_null = df['Creatinine'].notna()
+        numeric_values = pd.to_numeric(df['Creatinine'], errors='coerce')
+        # Rows that were not-null but became null after conversion are invalid text
+        invalid_rows = not_null & numeric_values.isna()
+
+        # Drop rows with invalid text values
+        df = df[~invalid_rows].copy()
+
+        # Convert to numeric (original NaN stays as NaN)
+        df['Creatinine'] = pd.to_numeric(df['Creatinine'], errors='coerce')
+
+        dropped = original_count - len(df)
+        if dropped > 0:
+            console.print(f"  ✓ Transformed Creatinine: converted to numeric, dropped {dropped} rows with non-numeric text values")
+        else:
+            console.print(f"  ✓ Transformed Creatinine: converted to numeric (no invalid values found)")
+    else:
+        console.print(f"  - Creatinine column not found")
+
+    return df
+
+
 @app.command()
 def transform(
     csv_path: Path = typer.Argument(..., help="Path to CSV file"),
@@ -267,6 +295,7 @@ def transform(
     - Transforms EXPIRE_FLAG: renames to DECEASED, converts to boolean
     - Transforms READMISSION: renames to READMITTED, converts to boolean
     - Transforms POTASSIUM: converts to numeric, drops rows with non-numeric text (preserves NaN)
+    - Transforms Creatinine: converts to numeric, drops rows with non-numeric text (preserves NaN)
 
     More transformations will be added in future versions.
     """
@@ -300,6 +329,7 @@ def transform(
         df = transform_expire_flag_column(df)
         df = transform_readmission_column(df)
         df = transform_potassium_column(df)
+        df = transform_creatinine_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
