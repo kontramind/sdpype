@@ -259,6 +259,22 @@ def transform_ethnicity_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_diagnosis_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform DIAGNOSIS column: fill NaN with 'Missing', convert to string, strip whitespace."""
+    if 'DIAGNOSIS' in df.columns:
+        # Fill NaN with 'Missing'
+        df['DIAGNOSIS'] = df['DIAGNOSIS'].fillna('Missing')
+        # Convert to string
+        df['DIAGNOSIS'] = df['DIAGNOSIS'].astype(str)
+        # Strip leading and trailing whitespace
+        df['DIAGNOSIS'] = df['DIAGNOSIS'].str.strip()
+        console.print(f"  ✓ Transformed DIAGNOSIS: filled NaN with 'Missing', converted to string type, stripped whitespace")
+    else:
+        console.print(f"  - DIAGNOSIS column not found")
+
+    return df
+
+
 def transform_expire_flag_column(df: pd.DataFrame) -> pd.DataFrame:
     """Transform EXPIRE_FLAG column: rename to DECEASED, convert to boolean."""
     if 'EXPIRE_FLAG' in df.columns:
@@ -529,6 +545,7 @@ def transform(
     - Transforms LANGUAGE: fills NaN with 'Missing', converts to string type
     - Transforms RELIGION: fills NaN with 'Missing', converts to string type
     - Transforms ETHNICITY: fills NaN with 'Missing', converts to string type
+    - Transforms DIAGNOSIS: fills NaN with 'Missing', converts to string type, strips whitespace
     - Transforms EXPIRE_FLAG: renames to DECEASED, converts to boolean
     - Transforms READMISSION: renames to READMITTED, converts to boolean
     - Transforms POTASSIUM: converts to numeric, drops rows with non-numeric text (preserves NaN)
@@ -583,6 +600,7 @@ def transform(
         df = transform_language_column(df)
         df = transform_religion_column(df)
         df = transform_ethnicity_column(df)
+        df = transform_diagnosis_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
