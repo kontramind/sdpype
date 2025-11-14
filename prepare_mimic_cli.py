@@ -231,6 +231,20 @@ def transform_language_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def transform_religion_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform RELIGION column: fill NaN with 'Missing', convert to string."""
+    if 'RELIGION' in df.columns:
+        # Fill NaN with 'Missing'
+        df['RELIGION'] = df['RELIGION'].fillna('Missing')
+        # Convert to string
+        df['RELIGION'] = df['RELIGION'].astype(str)
+        console.print(f"  ✓ Transformed RELIGION: filled NaN with 'Missing', converted to string type")
+    else:
+        console.print(f"  - RELIGION column not found")
+
+    return df
+
+
 def transform_expire_flag_column(df: pd.DataFrame) -> pd.DataFrame:
     """Transform EXPIRE_FLAG column: rename to DECEASED, convert to boolean."""
     if 'EXPIRE_FLAG' in df.columns:
@@ -499,6 +513,7 @@ def transform(
     - Transforms MARITAL_STATUS: fills NaN with 'Missing', converts to string type
     - Transforms GENDER: fills NaN with 'Unknown', converts to string type
     - Transforms LANGUAGE: fills NaN with 'Missing', converts to string type
+    - Transforms RELIGION: fills NaN with 'Missing', converts to string type
     - Transforms EXPIRE_FLAG: renames to DECEASED, converts to boolean
     - Transforms READMISSION: renames to READMITTED, converts to boolean
     - Transforms POTASSIUM: converts to numeric, drops rows with non-numeric text (preserves NaN)
@@ -551,6 +566,7 @@ def transform(
         df = transform_diastolic_value_column(df)
         df = transform_nt_probnp_column(df)
         df = transform_language_column(df)
+        df = transform_religion_column(df)
 
         # Future transformations will be added here
         # df = filter_rows(df)
