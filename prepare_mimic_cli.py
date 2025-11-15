@@ -152,15 +152,27 @@ def drop_id_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def transform_age_column(df: pd.DataFrame) -> pd.DataFrame:
-    """Transform AGE column: fill NaN with 89, cap at 89, round to int."""
+    """Transform AGE: convert to numeric, drop rows with non-numeric text values."""
     if 'AGE' in df.columns:
-        # Fill NaN with 89 (standard approach for MIMIC)
-        df['AGE'] = df['AGE'].fillna(89)
-        # Cap at 89
-        df['AGE'] = df['AGE'].apply(lambda x: min(x, 89))
-        # Round and convert to int
-        df['AGE'] = df['AGE'].round().astype(int)
-        console.print(f"  ✓ Transformed AGE: filled NaN with 89, capped at 89, converted to integers")
+        original_count = len(df)
+
+        # Identify rows with non-numeric string values (not NaN)
+        not_null = df['AGE'].notna()
+        numeric_values = pd.to_numeric(df['AGE'], errors='coerce')
+        # Rows that were not-null but became null after conversion are invalid text
+        invalid_rows = not_null & numeric_values.isna()
+
+        # Drop rows with invalid text values
+        df = df[~invalid_rows].copy()
+
+        # Convert to numeric (original NaN stays as NaN)
+        df['AGE'] = pd.to_numeric(df['AGE'], errors='coerce')
+
+        dropped = original_count - len(df)
+        if dropped > 0:
+            console.print(f"  ✓ Transformed AGE: converted to numeric, dropped {dropped} rows with non-numeric text (preserved NaN)")
+        else:
+            console.print(f"  ✓ Transformed AGE: converted to numeric type")
     else:
         console.print(f"  - AGE column not found")
 
@@ -537,7 +549,7 @@ def transform(
 
     Currently applies the following transformations:
     - Drops MIMIC ID columns (ROW_ID, SUBJECT_ID, HADM_ID)
-    - Transforms AGE: fills NaN with 89, caps at 89, converts to integers
+    - Transforms AGE: converts to numeric, drops rows with non-numeric text (preserves NaN)
     - Transforms INSURANCE: converts to string type
     - Transforms ADMISSION_TYPE: converts to string type
     - Transforms MARITAL_STATUS: fills NaN with 'Missing', converts to string type
