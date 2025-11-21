@@ -21,6 +21,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.html
 
 # Virtual environments  
 .env
@@ -52,3 +53,6 @@ checkpoints/
 # Testing
 .pytest_cache/
 .coverage
+
+# Database
+mimiciii/

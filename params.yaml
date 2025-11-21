@@ -4,9 +4,9 @@
 # EXPERIMENT CONFIGURATION
 # =============================================================================
 experiment:
-  seed: 42
+  seed: 7
   generation: 0
-  name: "{sdg.library}_{sdg.model_type}_{data.reference_hash}_{data.root_hash}_{data.training_hash}_gen_{experiment.generation}"
+  name: "{sdg.library}_{sdg.model_type}_{data.reference_hash}_{data.root_hash}_{data.training_hash}_gen_{experiment.generation}_variant2"
   description: "Testing"
   researcher: test_user
   tags:
@@ -15,17 +15,18 @@ experiment:
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: sdv
-  model_type: tvae
+  library: synthcity
+  model_type: arf
   parameters: {}
 
 # =============================================================================
 # DATA CONFIGURATION
 # =============================================================================
 data:
-  training_file: experiments/data/processed/canada_covid19_case_details_sample_5k.csv
-  reference_file: experiments/data/processed/canada_covid19_case_details_sample_5k.csv
-  metadata_file: experiments/data/processed/canada_covid19_case_details_sample_5k_encoded_metadata.json
+  training_file: experiments/data/processed/canada_covid19_case_details_sample_variant2_10k_seed_4242.csv
+  reference_file: experiments/data/processed/canada_covid19_case_details_sample_variant2_10k_seed_4242.csv
+  population_file: experiments/data/processed/canada_covid19_case_details_population_variant2.csv
+  metadata_file: experiments/data/processed/canada_covid19_case_details_variant2_encoded_metadata.json
 
 # =============================================================================
 # ENCODING CONFIGURATION
@@ -33,7 +34,7 @@ data:
 encoding:
   # Path to RDT encoding configuration YAML file
   # This file specifies transformers for each column
-  config_file: experiments/configs/encoding/canada_covid19_case_details.yaml
+  config_file: experiments/configs/encoding/canada_covid19_case_details_variant2.yaml
 
   # Whether to enable encoding stage (set to false to skip encoding)
   enabled: true
@@ -102,7 +103,7 @@ evaluation:
       parameters:
         target_columns:
 
-# Detection-based evaluation using classifier approaches
+  # Detection-based evaluation using classifier approaches
   detection_evaluation:
     # Common parameters for all detection methods (synthcity DetectionEvaluator params)
     common_params:
@@ -125,3 +126,7 @@ evaluation:
     - name: "detection_linear"
       parameters: {}
             # Override common params if needed
+
+# Hallucination evaluation (DDR + Plausibility)
+  hallucination:
+    query_file: queries/validation.sql
