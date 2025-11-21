@@ -66,17 +66,17 @@ population_binned AS (
         ETHNICITY_GROUPED,
         ADMISSION_TYPE,
         IS_READMISSION_30D,
-        -- Numerical columns (binned)
-        COALESCE(WIDTH_BUCKET(AGE, r.age_min, r.age_max + 0.001, 20), 0) as AGE_BIN,
-        COALESCE(WIDTH_BUCKET(HR_FIRST, r.hr_min, r.hr_max + 0.001, 20), 0) as HR_BIN,
-        COALESCE(WIDTH_BUCKET(SYSBP_FIRST, r.sysbp_min, r.sysbp_max + 0.001, 20), 0) as SYSBP_BIN,
-        COALESCE(WIDTH_BUCKET(DIASBP_FIRST, r.diasbp_min, r.diasbp_max + 0.001, 20), 0) as DIASBP_BIN,
-        COALESCE(WIDTH_BUCKET(RESPRATE_FIRST, r.resprate_min, r.resprate_max + 0.001, 20), 0) as RESPRATE_BIN,
-        COALESCE(WIDTH_BUCKET(NTPROBNP_FIRST, r.ntprobnp_min, r.ntprobnp_max + 0.001, 20), 0) as NTPROBNP_BIN,
-        COALESCE(WIDTH_BUCKET(CREATININE_FIRST, r.creatinine_min, r.creatinine_max + 0.001, 20), 0) as CREATININE_BIN,
-        COALESCE(WIDTH_BUCKET(BUN_FIRST, r.bun_min, r.bun_max + 0.001, 20), 0) as BUN_BIN,
-        COALESCE(WIDTH_BUCKET(POTASSIUM_FIRST, r.potassium_min, r.potassium_max + 0.001, 20), 0) as POTASSIUM_BIN,
-        COALESCE(WIDTH_BUCKET(TOTAL_CHOLESTEROL_FIRST, r.cholesterol_min, r.cholesterol_max + 0.001, 20), 0) as CHOLESTEROL_BIN
+        -- Numerical columns (binned): NULL=0, else 1-20
+        CASE WHEN AGE IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((AGE - r.age_min) / NULLIF(r.age_max - r.age_min, 0) * 20) + 1, 1), 20)::INT END as AGE_BIN,
+        CASE WHEN HR_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((HR_FIRST - r.hr_min) / NULLIF(r.hr_max - r.hr_min, 0) * 20) + 1, 1), 20)::INT END as HR_BIN,
+        CASE WHEN SYSBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((SYSBP_FIRST - r.sysbp_min) / NULLIF(r.sysbp_max - r.sysbp_min, 0) * 20) + 1, 1), 20)::INT END as SYSBP_BIN,
+        CASE WHEN DIASBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((DIASBP_FIRST - r.diasbp_min) / NULLIF(r.diasbp_max - r.diasbp_min, 0) * 20) + 1, 1), 20)::INT END as DIASBP_BIN,
+        CASE WHEN RESPRATE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((RESPRATE_FIRST - r.resprate_min) / NULLIF(r.resprate_max - r.resprate_min, 0) * 20) + 1, 1), 20)::INT END as RESPRATE_BIN,
+        CASE WHEN NTPROBNP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((NTPROBNP_FIRST - r.ntprobnp_min) / NULLIF(r.ntprobnp_max - r.ntprobnp_min, 0) * 20) + 1, 1), 20)::INT END as NTPROBNP_BIN,
+        CASE WHEN CREATININE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((CREATININE_FIRST - r.creatinine_min) / NULLIF(r.creatinine_max - r.creatinine_min, 0) * 20) + 1, 1), 20)::INT END as CREATININE_BIN,
+        CASE WHEN BUN_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((BUN_FIRST - r.bun_min) / NULLIF(r.bun_max - r.bun_min, 0) * 20) + 1, 1), 20)::INT END as BUN_BIN,
+        CASE WHEN POTASSIUM_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((POTASSIUM_FIRST - r.potassium_min) / NULLIF(r.potassium_max - r.potassium_min, 0) * 20) + 1, 1), 20)::INT END as POTASSIUM_BIN,
+        CASE WHEN TOTAL_CHOLESTEROL_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((TOTAL_CHOLESTEROL_FIRST - r.cholesterol_min) / NULLIF(r.cholesterol_max - r.cholesterol_min, 0) * 20) + 1, 1), 20)::INT END as CHOLESTEROL_BIN
     FROM population, num_ranges r
 ),
 
@@ -87,17 +87,17 @@ training_binned AS (
         ETHNICITY_GROUPED,
         ADMISSION_TYPE,
         IS_READMISSION_30D,
-        -- Numerical columns (binned)
-        COALESCE(WIDTH_BUCKET(AGE, r.age_min, r.age_max + 0.001, 20), 0) as AGE_BIN,
-        COALESCE(WIDTH_BUCKET(HR_FIRST, r.hr_min, r.hr_max + 0.001, 20), 0) as HR_BIN,
-        COALESCE(WIDTH_BUCKET(SYSBP_FIRST, r.sysbp_min, r.sysbp_max + 0.001, 20), 0) as SYSBP_BIN,
-        COALESCE(WIDTH_BUCKET(DIASBP_FIRST, r.diasbp_min, r.diasbp_max + 0.001, 20), 0) as DIASBP_BIN,
-        COALESCE(WIDTH_BUCKET(RESPRATE_FIRST, r.resprate_min, r.resprate_max + 0.001, 20), 0) as RESPRATE_BIN,
-        COALESCE(WIDTH_BUCKET(NTPROBNP_FIRST, r.ntprobnp_min, r.ntprobnp_max + 0.001, 20), 0) as NTPROBNP_BIN,
-        COALESCE(WIDTH_BUCKET(CREATININE_FIRST, r.creatinine_min, r.creatinine_max + 0.001, 20), 0) as CREATININE_BIN,
-        COALESCE(WIDTH_BUCKET(BUN_FIRST, r.bun_min, r.bun_max + 0.001, 20), 0) as BUN_BIN,
-        COALESCE(WIDTH_BUCKET(POTASSIUM_FIRST, r.potassium_min, r.potassium_max + 0.001, 20), 0) as POTASSIUM_BIN,
-        COALESCE(WIDTH_BUCKET(TOTAL_CHOLESTEROL_FIRST, r.cholesterol_min, r.cholesterol_max + 0.001, 20), 0) as CHOLESTEROL_BIN
+        -- Numerical columns (binned): NULL=0, else 1-20
+        CASE WHEN AGE IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((AGE - r.age_min) / NULLIF(r.age_max - r.age_min, 0) * 20) + 1, 1), 20)::INT END as AGE_BIN,
+        CASE WHEN HR_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((HR_FIRST - r.hr_min) / NULLIF(r.hr_max - r.hr_min, 0) * 20) + 1, 1), 20)::INT END as HR_BIN,
+        CASE WHEN SYSBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((SYSBP_FIRST - r.sysbp_min) / NULLIF(r.sysbp_max - r.sysbp_min, 0) * 20) + 1, 1), 20)::INT END as SYSBP_BIN,
+        CASE WHEN DIASBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((DIASBP_FIRST - r.diasbp_min) / NULLIF(r.diasbp_max - r.diasbp_min, 0) * 20) + 1, 1), 20)::INT END as DIASBP_BIN,
+        CASE WHEN RESPRATE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((RESPRATE_FIRST - r.resprate_min) / NULLIF(r.resprate_max - r.resprate_min, 0) * 20) + 1, 1), 20)::INT END as RESPRATE_BIN,
+        CASE WHEN NTPROBNP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((NTPROBNP_FIRST - r.ntprobnp_min) / NULLIF(r.ntprobnp_max - r.ntprobnp_min, 0) * 20) + 1, 1), 20)::INT END as NTPROBNP_BIN,
+        CASE WHEN CREATININE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((CREATININE_FIRST - r.creatinine_min) / NULLIF(r.creatinine_max - r.creatinine_min, 0) * 20) + 1, 1), 20)::INT END as CREATININE_BIN,
+        CASE WHEN BUN_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((BUN_FIRST - r.bun_min) / NULLIF(r.bun_max - r.bun_min, 0) * 20) + 1, 1), 20)::INT END as BUN_BIN,
+        CASE WHEN POTASSIUM_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((POTASSIUM_FIRST - r.potassium_min) / NULLIF(r.potassium_max - r.potassium_min, 0) * 20) + 1, 1), 20)::INT END as POTASSIUM_BIN,
+        CASE WHEN TOTAL_CHOLESTEROL_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((TOTAL_CHOLESTEROL_FIRST - r.cholesterol_min) / NULLIF(r.cholesterol_max - r.cholesterol_min, 0) * 20) + 1, 1), 20)::INT END as CHOLESTEROL_BIN
     FROM training, num_ranges r
 ),
 
@@ -109,17 +109,17 @@ synthetic_binned AS (
         s.ETHNICITY_GROUPED as ETHNICITY_CAT,
         s.ADMISSION_TYPE as ADMISSION_CAT,
         s.IS_READMISSION_30D as READMISSION_CAT,
-        -- Numerical columns (binned)
-        COALESCE(WIDTH_BUCKET(s.AGE, r.age_min, r.age_max + 0.001, 20), 0) as AGE_BIN,
-        COALESCE(WIDTH_BUCKET(s.HR_FIRST, r.hr_min, r.hr_max + 0.001, 20), 0) as HR_BIN,
-        COALESCE(WIDTH_BUCKET(s.SYSBP_FIRST, r.sysbp_min, r.sysbp_max + 0.001, 20), 0) as SYSBP_BIN,
-        COALESCE(WIDTH_BUCKET(s.DIASBP_FIRST, r.diasbp_min, r.diasbp_max + 0.001, 20), 0) as DIASBP_BIN,
-        COALESCE(WIDTH_BUCKET(s.RESPRATE_FIRST, r.resprate_min, r.resprate_max + 0.001, 20), 0) as RESPRATE_BIN,
-        COALESCE(WIDTH_BUCKET(s.NTPROBNP_FIRST, r.ntprobnp_min, r.ntprobnp_max + 0.001, 20), 0) as NTPROBNP_BIN,
-        COALESCE(WIDTH_BUCKET(s.CREATININE_FIRST, r.creatinine_min, r.creatinine_max + 0.001, 20), 0) as CREATININE_BIN,
-        COALESCE(WIDTH_BUCKET(s.BUN_FIRST, r.bun_min, r.bun_max + 0.001, 20), 0) as BUN_BIN,
-        COALESCE(WIDTH_BUCKET(s.POTASSIUM_FIRST, r.potassium_min, r.potassium_max + 0.001, 20), 0) as POTASSIUM_BIN,
-        COALESCE(WIDTH_BUCKET(s.TOTAL_CHOLESTEROL_FIRST, r.cholesterol_min, r.cholesterol_max + 0.001, 20), 0) as CHOLESTEROL_BIN
+        -- Numerical columns (binned): NULL=0, else 1-20
+        CASE WHEN s.AGE IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.AGE - r.age_min) / NULLIF(r.age_max - r.age_min, 0) * 20) + 1, 1), 20)::INT END as AGE_BIN,
+        CASE WHEN s.HR_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.HR_FIRST - r.hr_min) / NULLIF(r.hr_max - r.hr_min, 0) * 20) + 1, 1), 20)::INT END as HR_BIN,
+        CASE WHEN s.SYSBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.SYSBP_FIRST - r.sysbp_min) / NULLIF(r.sysbp_max - r.sysbp_min, 0) * 20) + 1, 1), 20)::INT END as SYSBP_BIN,
+        CASE WHEN s.DIASBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.DIASBP_FIRST - r.diasbp_min) / NULLIF(r.diasbp_max - r.diasbp_min, 0) * 20) + 1, 1), 20)::INT END as DIASBP_BIN,
+        CASE WHEN s.RESPRATE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.RESPRATE_FIRST - r.resprate_min) / NULLIF(r.resprate_max - r.resprate_min, 0) * 20) + 1, 1), 20)::INT END as RESPRATE_BIN,
+        CASE WHEN s.NTPROBNP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.NTPROBNP_FIRST - r.ntprobnp_min) / NULLIF(r.ntprobnp_max - r.ntprobnp_min, 0) * 20) + 1, 1), 20)::INT END as NTPROBNP_BIN,
+        CASE WHEN s.CREATININE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.CREATININE_FIRST - r.creatinine_min) / NULLIF(r.creatinine_max - r.creatinine_min, 0) * 20) + 1, 1), 20)::INT END as CREATININE_BIN,
+        CASE WHEN s.BUN_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.BUN_FIRST - r.bun_min) / NULLIF(r.bun_max - r.bun_min, 0) * 20) + 1, 1), 20)::INT END as BUN_BIN,
+        CASE WHEN s.POTASSIUM_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.POTASSIUM_FIRST - r.potassium_min) / NULLIF(r.potassium_max - r.potassium_min, 0) * 20) + 1, 1), 20)::INT END as POTASSIUM_BIN,
+        CASE WHEN s.TOTAL_CHOLESTEROL_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.TOTAL_CHOLESTEROL_FIRST - r.cholesterol_min) / NULLIF(r.cholesterol_max - r.cholesterol_min, 0) * 20) + 1, 1), 20)::INT END as CHOLESTEROL_BIN
     FROM synthetic s, num_ranges r
 ),
 
