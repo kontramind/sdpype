@@ -156,14 +156,18 @@ def transform_datetime_column(df: pd.DataFrame, col_name: str, allow_nulls: bool
 
 def generate_encoding_config() -> dict:
     """Generate RDT encoding configuration for MIMIC-III ICU stay dataset."""
-    categorical_columns = ['GENDER', 'ETHNICITY_GROUPED', 'ADMISSION_TYPE']
+    categorical_columns = [
+        # 'GENDER',
+        'ETHNICITY_GROUPED',
+        'ADMISSION_TYPE',
+    ]
     boolean_columns = [
-        'LEADS_TO_READMISSION_30D',
+        # 'LEADS_TO_READMISSION_30D',
         'IS_READMISSION_30D',
-        'HOSPITAL_EXPIRE_FLAG',
-        'ICU_MORTALITY_FLAG',
-        'HAS_ADMISSION_RECORD',
-        'HAS_ICUSTAY_DETAIL',
+        # 'HOSPITAL_EXPIRE_FLAG',
+        # 'ICU_MORTALITY_FLAG',
+        # 'HAS_ADMISSION_RECORD',
+        # 'HAS_ICUSTAY_DETAIL',
     ]
     numeric_columns = [
         'AGE',
@@ -171,17 +175,18 @@ def generate_encoding_config() -> dict:
         'SYSBP_FIRST',
         'DIASBP_FIRST',
         'RESPRATE_FIRST',
-        'HEIGHT_FIRST',
-        'WEIGHT_FIRST',
-        'BMI',
+        # 'HEIGHT_FIRST',
+        # 'WEIGHT_FIRST',
+        # 'BMI',
         'NTPROBNP_FIRST',
         'CREATININE_FIRST',
         'BUN_FIRST',
         'POTASSIUM_FIRST',
         'TOTAL_CHOLESTEROL_FIRST',
-        'LOS_ICU',
+        # 'LOS_ICU',
     ]
-    datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
+    # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
+    datetime_columns = []
 
     # Build sdtypes (boolean columns treated as categorical)
     sdtypes = {}
@@ -216,14 +221,18 @@ def generate_encoding_config() -> dict:
 
 def generate_metadata() -> dict:
     """Generate SDV metadata for MIMIC-III ICU stay dataset."""
-    categorical_columns = ['GENDER', 'ETHNICITY_GROUPED', 'ADMISSION_TYPE']
+    categorical_columns = [
+        # 'GENDER',
+        'ETHNICITY_GROUPED',
+        'ADMISSION_TYPE',
+    ]
     boolean_columns = [
-        'LEADS_TO_READMISSION_30D',
+        # 'LEADS_TO_READMISSION_30D',
         'IS_READMISSION_30D',
-        'HOSPITAL_EXPIRE_FLAG',
-        'ICU_MORTALITY_FLAG',
-        'HAS_ADMISSION_RECORD',
-        'HAS_ICUSTAY_DETAIL',
+        # 'HOSPITAL_EXPIRE_FLAG',
+        # 'ICU_MORTALITY_FLAG',
+        # 'HAS_ADMISSION_RECORD',
+        # 'HAS_ICUSTAY_DETAIL',
     ]
     numeric_columns = [
         'AGE',
@@ -231,17 +240,18 @@ def generate_metadata() -> dict:
         'SYSBP_FIRST',
         'DIASBP_FIRST',
         'RESPRATE_FIRST',
-        'HEIGHT_FIRST',
-        'WEIGHT_FIRST',
-        'BMI',
+        # 'HEIGHT_FIRST',
+        # 'WEIGHT_FIRST',
+        # 'BMI',
         'NTPROBNP_FIRST',
         'CREATININE_FIRST',
         'BUN_FIRST',
         'POTASSIUM_FIRST',
         'TOTAL_CHOLESTEROL_FIRST',
-        'LOS_ICU',
+        # 'LOS_ICU',
     ]
-    datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
+    # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
+    datetime_columns = []
 
     # Boolean columns treated as categorical
     columns = {}
@@ -323,18 +333,18 @@ def transform(
 
         # Categorical/string columns
         df = transform_age(df)
-        df = transform_gender(df)
+        # df = transform_gender(df)
         df = transform_ethnicity_grouped(df)
         df = transform_admission_type(df)
 
-        # Boolean columns (allow NULLs)
+        # Boolean columns (as categorical strings: '0'/'1'/'Missing')
         boolean_columns = [
-            'LEADS_TO_READMISSION_30D',
+            # 'LEADS_TO_READMISSION_30D',
             'IS_READMISSION_30D',
-            'HOSPITAL_EXPIRE_FLAG',
-            'ICU_MORTALITY_FLAG',
-            'HAS_ADMISSION_RECORD',
-            'HAS_ICUSTAY_DETAIL',
+            # 'HOSPITAL_EXPIRE_FLAG',
+            # 'ICU_MORTALITY_FLAG',
+            # 'HAS_ADMISSION_RECORD',
+            # 'HAS_ICUSTAY_DETAIL',
         ]
         for col in boolean_columns:
             df = transform_boolean_column(df, col)
@@ -345,23 +355,42 @@ def transform(
             'SYSBP_FIRST',
             'DIASBP_FIRST',
             'RESPRATE_FIRST',
-            'HEIGHT_FIRST',
-            'WEIGHT_FIRST',
-            'BMI',
+            # 'HEIGHT_FIRST',
+            # 'WEIGHT_FIRST',
+            # 'BMI',
             'NTPROBNP_FIRST',
             'CREATININE_FIRST',
             'BUN_FIRST',
             'POTASSIUM_FIRST',
             'TOTAL_CHOLESTEROL_FIRST',
-            'LOS_ICU',
+            # 'LOS_ICU',
         ]
         for col in numeric_columns:
             df = transform_numeric_column(df, col)
 
         # Datetime columns
-        df = transform_datetime_column(df, 'DOD', allow_nulls=True)
-        df = transform_datetime_column(df, 'ICU_INTIME', allow_nulls=False)
-        df = transform_datetime_column(df, 'ICU_OUTTIME', allow_nulls=True)
+        # df = transform_datetime_column(df, 'DOD', allow_nulls=True)
+        # df = transform_datetime_column(df, 'ICU_INTIME', allow_nulls=False)
+        # df = transform_datetime_column(df, 'ICU_OUTTIME', allow_nulls=True)
+
+        # Keep only selected columns
+        columns_to_keep = [
+            'IS_READMISSION_30D',
+            'AGE',
+            'ETHNICITY_GROUPED',
+            'ADMISSION_TYPE',
+            'HR_FIRST',
+            'SYSBP_FIRST',
+            'DIASBP_FIRST',
+            'RESPRATE_FIRST',
+            'NTPROBNP_FIRST',
+            'CREATININE_FIRST',
+            'BUN_FIRST',
+            'POTASSIUM_FIRST',
+            'TOTAL_CHOLESTEROL_FIRST',
+        ]
+        df = df[[col for col in columns_to_keep if col in df.columns]]
+        console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
 
         console.print()
         final_rows, final_cols = df.shape
