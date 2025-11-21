@@ -157,7 +157,7 @@ def transform_datetime_column(df: pd.DataFrame, col_name: str, allow_nulls: bool
 def generate_encoding_config() -> dict:
     """Generate RDT encoding configuration for MIMIC-III ICU stay dataset."""
     categorical_columns = [
-        # 'GENDER',
+        'GENDER',
         'ETHNICITY_GROUPED',
         'ADMISSION_TYPE',
     ]
@@ -222,7 +222,7 @@ def generate_encoding_config() -> dict:
 def generate_metadata() -> dict:
     """Generate SDV metadata for MIMIC-III ICU stay dataset."""
     categorical_columns = [
-        # 'GENDER',
+        'GENDER',
         'ETHNICITY_GROUPED',
         'ADMISSION_TYPE',
     ]
@@ -333,7 +333,7 @@ def transform(
 
         # Categorical/string columns
         df = transform_age(df)
-        # df = transform_gender(df)
+        df = transform_gender(df)
         df = transform_ethnicity_grouped(df)
         df = transform_admission_type(df)
 
@@ -377,6 +377,7 @@ def transform(
         columns_to_keep = [
             'IS_READMISSION_30D',
             'AGE',
+            'GENDER',
             'ETHNICITY_GROUPED',
             'ADMISSION_TYPE',
             'HR_FIRST',
