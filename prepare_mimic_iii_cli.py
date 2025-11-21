@@ -118,15 +118,12 @@ def transform_admission_type(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def transform_boolean_column(df: pd.DataFrame, col_name: str) -> pd.DataFrame:
-    """Transform a boolean column: 0->False, 1->True, NULL->NULL."""
+    """Transform a boolean column: 0->'0', 1->'1', NULL->'Missing' as categorical string."""
     if col_name in df.columns:
-        # Convert to nullable boolean (keeps NaN as NaN)
         df[col_name] = df[col_name].apply(
-            lambda x: None if pd.isna(x) else bool(int(x))
+            lambda x: 'Missing' if pd.isna(x) else str(int(x))
         )
-        # Convert to nullable boolean dtype
-        df[col_name] = df[col_name].astype('boolean')
-        console.print(f"  [green]>[/green] {col_name}: boolean, allow NULLs")
+        console.print(f"  [green]>[/green] {col_name}: categorical string ('0'/'1'/'Missing')")
     else:
         console.print(f"  - {col_name} column not found")
     return df
@@ -186,12 +183,12 @@ def generate_encoding_config() -> dict:
     ]
     datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
 
-    # Build sdtypes
+    # Build sdtypes (boolean columns treated as categorical)
     sdtypes = {}
     for col in categorical_columns:
         sdtypes[col] = 'categorical'
     for col in boolean_columns:
-        sdtypes[col] = 'boolean'
+        sdtypes[col] = 'categorical'
     for col in numeric_columns:
         sdtypes[col] = 'numerical'
     for col in datetime_columns:
@@ -202,7 +199,7 @@ def generate_encoding_config() -> dict:
     for col in categorical_columns:
         transformers[col] = {'type': 'UniformEncoder', 'params': {}}
     for col in boolean_columns:
-        transformers[col] = {'type': 'BinaryEncoder', 'params': {}}
+        transformers[col] = {'type': 'UniformEncoder', 'params': {}}
     for col in numeric_columns:
         transformers[col] = {'type': 'FloatFormatter', 'params': {}}
     for col in datetime_columns:
@@ -246,11 +243,12 @@ def generate_metadata() -> dict:
     ]
     datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
 
+    # Boolean columns treated as categorical
     columns = {}
     for col in categorical_columns:
         columns[col] = {'sdtype': 'categorical'}
     for col in boolean_columns:
-        columns[col] = {'sdtype': 'boolean'}
+        columns[col] = {'sdtype': 'categorical'}
     for col in numeric_columns:
         columns[col] = {'sdtype': 'numerical'}
     for col in datetime_columns:
