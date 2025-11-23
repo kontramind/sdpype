@@ -170,7 +170,7 @@ def generate_encoding_config() -> dict:
         # 'HAS_ICUSTAY_DETAIL',
     ]
     numeric_columns = [
-        # 'AGE',
+        'AGE',
         'HR_FIRST',
         'SYSBP_FIRST',
         'DIASBP_FIRST',
@@ -207,7 +207,7 @@ def generate_encoding_config() -> dict:
         transformers[col] = {'type': 'UniformEncoder', 'params': {}}
     for col in numeric_columns:
         # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
-        if col in ['HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']:
+        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']:
             transformers[col] = {
                 'type': 'FloatFormatter',
                 'params': {
@@ -247,7 +247,7 @@ def generate_metadata() -> dict:
         # 'HAS_ICUSTAY_DETAIL',
     ]
     numeric_columns = [
-        # 'AGE',
+        'AGE',
         'HR_FIRST',
         'SYSBP_FIRST',
         'DIASBP_FIRST',
@@ -273,7 +273,7 @@ def generate_metadata() -> dict:
         columns[col] = {'sdtype': 'categorical'}
     for col in numeric_columns:
         # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
-        if col in ['HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']:
+        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']:
             columns[col] = {
                 'sdtype': 'numerical',
                 'computer_representation': 'Int16'
@@ -395,7 +395,7 @@ def transform(
         # Keep only selected columns
         columns_to_keep = [
             'IS_READMISSION_30D',
-            # 'AGE',
+            'AGE',
             'GENDER',
             'ETHNICITY_GROUPED',
             'ADMISSION_TYPE',
@@ -413,7 +413,7 @@ def transform(
         console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
 
         # Convert numeric columns to Int16 (nullable integer type)
-        int16_columns = ['HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']
+        int16_columns = ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']
         for col in int16_columns:
             if col in df.columns:
                 df[col] = df[col].round().astype('Int16')
