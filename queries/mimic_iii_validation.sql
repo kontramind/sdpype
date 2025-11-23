@@ -30,15 +30,15 @@
 -- ============================================================================
 -- Reusable Binning Macro
 -- ============================================================================
--- Creates equal-width bins for numerical columns
--- - NULL values → bin 0
--- - Valid values → bins 1 to num_bins
+-- Creates equal-width bins for numerical columns, returned as strings
+-- - NULL values → "Missing"
+-- - Valid values → "1" to "num_bins" (as strings)
 -- - Handles edge cases: division by zero, values outside range
 CREATE MACRO bin_numeric(val, min_val, max_val, num_bins) AS
-    CASE WHEN val IS NULL THEN 0
-         ELSE LEAST(GREATEST(
+    CASE WHEN val IS NULL THEN 'Missing'
+         ELSE CAST(LEAST(GREATEST(
              FLOOR((val - min_val) / NULLIF(max_val - min_val, 0) * num_bins) + 1,
-             1), num_bins)::INT
+             1), num_bins) AS VARCHAR)
     END;
 
 -- @query: summary
@@ -63,7 +63,8 @@ num_ranges AS (
 ),
 
 -- ============================================================================
--- Binned Datasets for Factuality Checks (20 bins, NULL = bin 0)
+-- Binned Datasets for Factuality Checks (20 bins as strings)
+-- Numerical columns → bin strings: "Missing", "1", "2", ..., "20"
 -- ============================================================================
 population_binned AS (
     SELECT
@@ -72,7 +73,7 @@ population_binned AS (
         ETHNICITY_GROUPED,
         ADMISSION_TYPE,
         IS_READMISSION_30D,
-        -- Numerical columns (binned): NULL=0, else 1-20
+        -- Numerical columns (binned as strings): "Missing", "1"-"20"
         bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
@@ -86,7 +87,7 @@ training_binned AS (
         ETHNICITY_GROUPED,
         ADMISSION_TYPE,
         IS_READMISSION_30D,
-        -- Numerical columns (binned): NULL=0, else 1-20
+        -- Numerical columns (binned as strings): "Missing", "1"-"20"
         bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
@@ -101,7 +102,7 @@ synthetic_binned AS (
         s.ETHNICITY_GROUPED as ETHNICITY_CAT,
         s.ADMISSION_TYPE as ADMISSION_CAT,
         s.IS_READMISSION_30D as READMISSION_CAT,
-        -- Numerical columns (binned): NULL=0, else 1-20
+        -- Numerical columns (binned as strings): "Missing", "1"-"20"
         bin_numeric(s.HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(s.SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(s.DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
