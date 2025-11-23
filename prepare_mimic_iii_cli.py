@@ -206,7 +206,19 @@ def generate_encoding_config() -> dict:
     for col in boolean_columns:
         transformers[col] = {'type': 'UniformEncoder', 'params': {}}
     for col in numeric_columns:
-        transformers[col] = {'type': 'FloatFormatter', 'params': {}}
+        # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
+        if col in ['HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']:
+            transformers[col] = {
+                'type': 'FloatFormatter',
+                'params': {
+                    'computer_representation': 'Int16',
+                    'missing_value_generation': None,
+                    'enforce_min_max_values': True,
+                    'learn_rounding_scheme': True
+                }
+            }
+        else:
+            transformers[col] = {'type': 'FloatFormatter', 'params': {}}
     for col in datetime_columns:
         transformers[col] = {
             'type': 'UnixTimestampEncoder',
@@ -260,7 +272,14 @@ def generate_metadata() -> dict:
     for col in boolean_columns:
         columns[col] = {'sdtype': 'categorical'}
     for col in numeric_columns:
-        columns[col] = {'sdtype': 'numerical'}
+        # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
+        if col in ['HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']:
+            columns[col] = {
+                'sdtype': 'numerical',
+                'computer_representation': 'Int16'
+            }
+        else:
+            columns[col] = {'sdtype': 'numerical'}
     for col in datetime_columns:
         columns[col] = {
             'sdtype': 'datetime',
