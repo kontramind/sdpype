@@ -373,15 +373,15 @@ def transform(
             'HR_FIRST',
             'SYSBP_FIRST',
             'DIASBP_FIRST',
-            'RESPRATE_FIRST',
+            # 'RESPRATE_FIRST',
             # 'HEIGHT_FIRST',
             # 'WEIGHT_FIRST',
             # 'BMI',
-            'NTPROBNP_FIRST',
-            'CREATININE_FIRST',
-            'BUN_FIRST',
-            'POTASSIUM_FIRST',
-            'TOTAL_CHOLESTEROL_FIRST',
+            # 'NTPROBNP_FIRST',
+            # 'CREATININE_FIRST',
+            # 'BUN_FIRST',
+            # 'POTASSIUM_FIRST',
+            # 'TOTAL_CHOLESTEROL_FIRST',
             # 'LOS_ICU',
         ]
         for col in numeric_columns:
@@ -411,6 +411,13 @@ def transform(
         ]
         df = df[[col for col in columns_to_keep if col in df.columns]]
         console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
+
+        # Convert numeric columns to Int16 (nullable integer type)
+        int16_columns = ['HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']
+        for col in int16_columns:
+            if col in df.columns:
+                df[col] = df[col].round().astype('Int16')
+                console.print(f"  [green]>[/green] Converted {col} to Int16")
 
         console.print()
         final_rows, final_cols = df.shape
