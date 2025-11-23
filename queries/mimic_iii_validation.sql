@@ -22,7 +22,7 @@
 --
 -- Plausibility Rules:
 -- - Categorical membership: GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D
--- - Numerical ranges: HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
+-- - Numerical ranges: AGE, HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
 --   (within population min/max)
 --
 -- ============================================================================
@@ -57,6 +57,7 @@ WITH
 -- ============================================================================
 num_ranges AS (
     SELECT
+        MIN(AGE) as age_min, MAX(AGE) as age_max,
         MIN(HR_FIRST) as hr_min, MAX(HR_FIRST) as hr_max,
         MIN(SYSBP_FIRST) as sysbp_min, MAX(SYSBP_FIRST) as sysbp_max,
         MIN(DIASBP_FIRST) as diasbp_min, MAX(DIASBP_FIRST) as diasbp_max
@@ -75,6 +76,7 @@ population_binned AS (
         ADMISSION_TYPE,
         IS_READMISSION_30D,
         -- Numerical columns (binned as strings): "Missing", "1"-"20"
+        bin_numeric(AGE, r.age_min, r.age_max, 20) as AGE_BIN,
         bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
@@ -89,6 +91,7 @@ training_binned AS (
         ADMISSION_TYPE,
         IS_READMISSION_30D,
         -- Numerical columns (binned as strings): "Missing", "1"-"20"
+        bin_numeric(AGE, r.age_min, r.age_max, 20) as AGE_BIN,
         bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
@@ -104,6 +107,7 @@ synthetic_binned AS (
         s.ADMISSION_TYPE as ADMISSION_CAT,
         s.IS_READMISSION_30D as READMISSION_CAT,
         -- Numerical columns (binned as strings): "Missing", "1"-"20"
+        bin_numeric(s.AGE, r.age_min, r.age_max, 20) as AGE_BIN,
         bin_numeric(s.HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(s.SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(s.DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
@@ -117,21 +121,21 @@ synthetic_hashed AS (
     SELECT
         *,
         hash(GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT,
-             HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
     FROM synthetic_binned
 ),
 
 population_hashes AS (
     SELECT DISTINCT
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
     FROM population_binned
 ),
 
 training_hashes AS (
     SELECT DISTINCT
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
     FROM training_binned
 ),
 
@@ -267,6 +271,7 @@ synthetic_with_validity AS (
         CASE WHEN s.ADMISSION_TYPE IN (SELECT value FROM valid_admission_types) THEN 1 ELSE 0 END as admission_type_valid,
         CASE WHEN s.IS_READMISSION_30D IN (SELECT value FROM valid_readmission_flags) THEN 1 ELSE 0 END as readmission_valid,
         -- Check numerical range rules (NULL is allowed, so check value OR NULL)
+        CASE WHEN s.AGE IS NULL OR (s.AGE >= (SELECT age_min FROM num_ranges) AND s.AGE <= (SELECT age_max FROM num_ranges)) THEN 1 ELSE 0 END as age_valid,
         CASE WHEN s.HR_FIRST IS NULL OR (s.HR_FIRST >= (SELECT hr_min FROM num_ranges) AND s.HR_FIRST <= (SELECT hr_max FROM num_ranges)) THEN 1 ELSE 0 END as hr_valid,
         CASE WHEN s.SYSBP_FIRST IS NULL OR (s.SYSBP_FIRST >= (SELECT sysbp_min FROM num_ranges) AND s.SYSBP_FIRST <= (SELECT sysbp_max FROM num_ranges)) THEN 1 ELSE 0 END as sysbp_valid,
         CASE WHEN s.DIASBP_FIRST IS NULL OR (s.DIASBP_FIRST >= (SELECT diasbp_min FROM num_ranges) AND s.DIASBP_FIRST <= (SELECT diasbp_max FROM num_ranges)) THEN 1 ELSE 0 END as diasbp_valid,
@@ -276,6 +281,7 @@ synthetic_with_validity AS (
             AND s.ETHNICITY_GROUPED IN (SELECT value FROM valid_ethnicities)
             AND s.ADMISSION_TYPE IN (SELECT value FROM valid_admission_types)
             AND s.IS_READMISSION_30D IN (SELECT value FROM valid_readmission_flags)
+            AND (s.AGE IS NULL OR (s.AGE >= (SELECT age_min FROM num_ranges) AND s.AGE <= (SELECT age_max FROM num_ranges)))
             AND (s.HR_FIRST IS NULL OR (s.HR_FIRST >= (SELECT hr_min FROM num_ranges) AND s.HR_FIRST <= (SELECT hr_max FROM num_ranges)))
             AND (s.SYSBP_FIRST IS NULL OR (s.SYSBP_FIRST >= (SELECT sysbp_min FROM num_ranges) AND s.SYSBP_FIRST <= (SELECT sysbp_max FROM num_ranges)))
             AND (s.DIASBP_FIRST IS NULL OR (s.DIASBP_FIRST >= (SELECT diasbp_min FROM num_ranges) AND s.DIASBP_FIRST <= (SELECT diasbp_max FROM num_ranges)))
