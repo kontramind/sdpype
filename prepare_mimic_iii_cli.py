@@ -170,19 +170,19 @@ def generate_encoding_config() -> dict:
         # 'HAS_ICUSTAY_DETAIL',
     ]
     numeric_columns = [
-        'AGE',
+        # 'AGE',
         'HR_FIRST',
         'SYSBP_FIRST',
         'DIASBP_FIRST',
-        'RESPRATE_FIRST',
+        # 'RESPRATE_FIRST',
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
-        'NTPROBNP_FIRST',
-        'CREATININE_FIRST',
-        'BUN_FIRST',
-        'POTASSIUM_FIRST',
-        'TOTAL_CHOLESTEROL_FIRST',
+        # 'NTPROBNP_FIRST',
+        # 'CREATININE_FIRST',
+        # 'BUN_FIRST',
+        # 'POTASSIUM_FIRST',
+        # 'TOTAL_CHOLESTEROL_FIRST',
         # 'LOS_ICU',
     ]
     # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
@@ -206,7 +206,19 @@ def generate_encoding_config() -> dict:
     for col in boolean_columns:
         transformers[col] = {'type': 'UniformEncoder', 'params': {}}
     for col in numeric_columns:
-        transformers[col] = {'type': 'FloatFormatter', 'params': {}}
+        # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
+        if col in ['HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']:
+            transformers[col] = {
+                'type': 'FloatFormatter',
+                'params': {
+                    'computer_representation': 'Int16',
+                    'missing_value_generation': None,
+                    'enforce_min_max_values': True,
+                    'learn_rounding_scheme': True
+                }
+            }
+        else:
+            transformers[col] = {'type': 'FloatFormatter', 'params': {}}
     for col in datetime_columns:
         transformers[col] = {
             'type': 'UnixTimestampEncoder',
@@ -235,19 +247,19 @@ def generate_metadata() -> dict:
         # 'HAS_ICUSTAY_DETAIL',
     ]
     numeric_columns = [
-        'AGE',
+        # 'AGE',
         'HR_FIRST',
         'SYSBP_FIRST',
         'DIASBP_FIRST',
-        'RESPRATE_FIRST',
+        # 'RESPRATE_FIRST',
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
-        'NTPROBNP_FIRST',
-        'CREATININE_FIRST',
-        'BUN_FIRST',
-        'POTASSIUM_FIRST',
-        'TOTAL_CHOLESTEROL_FIRST',
+        # 'NTPROBNP_FIRST',
+        # 'CREATININE_FIRST',
+        # 'BUN_FIRST',
+        # 'POTASSIUM_FIRST',
+        # 'TOTAL_CHOLESTEROL_FIRST',
         # 'LOS_ICU',
     ]
     # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
@@ -260,7 +272,14 @@ def generate_metadata() -> dict:
     for col in boolean_columns:
         columns[col] = {'sdtype': 'categorical'}
     for col in numeric_columns:
-        columns[col] = {'sdtype': 'numerical'}
+        # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
+        if col in ['HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST']:
+            columns[col] = {
+                'sdtype': 'numerical',
+                'computer_representation': 'Int16'
+            }
+        else:
+            columns[col] = {'sdtype': 'numerical'}
     for col in datetime_columns:
         columns[col] = {
             'sdtype': 'datetime',
@@ -376,19 +395,19 @@ def transform(
         # Keep only selected columns
         columns_to_keep = [
             'IS_READMISSION_30D',
-            'AGE',
+            # 'AGE',
             'GENDER',
             'ETHNICITY_GROUPED',
             'ADMISSION_TYPE',
             'HR_FIRST',
             'SYSBP_FIRST',
             'DIASBP_FIRST',
-            'RESPRATE_FIRST',
-            'NTPROBNP_FIRST',
-            'CREATININE_FIRST',
-            'BUN_FIRST',
-            'POTASSIUM_FIRST',
-            'TOTAL_CHOLESTEROL_FIRST',
+            # 'RESPRATE_FIRST',
+            # 'NTPROBNP_FIRST',
+            # 'CREATININE_FIRST',
+            # 'BUN_FIRST',
+            # 'POTASSIUM_FIRST',
+            # 'TOTAL_CHOLESTEROL_FIRST',
         ]
         df = df[[col for col in columns_to_keep if col in df.columns]]
         console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
