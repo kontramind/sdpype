@@ -44,7 +44,7 @@
 -- - NULL values → "Missing"
 -- - Valid values → "1" to "num_bins" (as strings)
 -- - Handles edge cases: division by zero, values outside range
-CREATE MACRO bin_numeric(val, min_val, max_val, num_bins) AS
+CREATE OR REPLACE MACRO bin_numeric(val, min_val, max_val, num_bins) AS
     CASE WHEN val IS NULL THEN 'Missing'
          ELSE CAST(LEAST(GREATEST(
              FLOOR((val - min_val) / NULLIF(max_val - min_val, 0) * num_bins) + 1,
