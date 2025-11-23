@@ -170,19 +170,19 @@ def generate_encoding_config() -> dict:
         # 'HAS_ICUSTAY_DETAIL',
     ]
     numeric_columns = [
-        'AGE',
+        # 'AGE',
         'HR_FIRST',
         'SYSBP_FIRST',
         'DIASBP_FIRST',
-        'RESPRATE_FIRST',
+        # 'RESPRATE_FIRST',
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
-        'NTPROBNP_FIRST',
-        'CREATININE_FIRST',
-        'BUN_FIRST',
-        'POTASSIUM_FIRST',
-        'TOTAL_CHOLESTEROL_FIRST',
+        # 'NTPROBNP_FIRST',
+        # 'CREATININE_FIRST',
+        # 'BUN_FIRST',
+        # 'POTASSIUM_FIRST',
+        # 'TOTAL_CHOLESTEROL_FIRST',
         # 'LOS_ICU',
     ]
     # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
@@ -235,19 +235,19 @@ def generate_metadata() -> dict:
         # 'HAS_ICUSTAY_DETAIL',
     ]
     numeric_columns = [
-        'AGE',
+        # 'AGE',
         'HR_FIRST',
         'SYSBP_FIRST',
         'DIASBP_FIRST',
-        'RESPRATE_FIRST',
+        # 'RESPRATE_FIRST',
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
-        'NTPROBNP_FIRST',
-        'CREATININE_FIRST',
-        'BUN_FIRST',
-        'POTASSIUM_FIRST',
-        'TOTAL_CHOLESTEROL_FIRST',
+        # 'NTPROBNP_FIRST',
+        # 'CREATININE_FIRST',
+        # 'BUN_FIRST',
+        # 'POTASSIUM_FIRST',
+        # 'TOTAL_CHOLESTEROL_FIRST',
         # 'LOS_ICU',
     ]
     # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
@@ -376,19 +376,19 @@ def transform(
         # Keep only selected columns
         columns_to_keep = [
             'IS_READMISSION_30D',
-            'AGE',
+            # 'AGE',
             'GENDER',
             'ETHNICITY_GROUPED',
             'ADMISSION_TYPE',
             'HR_FIRST',
             'SYSBP_FIRST',
             'DIASBP_FIRST',
-            'RESPRATE_FIRST',
-            'NTPROBNP_FIRST',
-            'CREATININE_FIRST',
-            'BUN_FIRST',
-            'POTASSIUM_FIRST',
-            'TOTAL_CHOLESTEROL_FIRST',
+            # 'RESPRATE_FIRST',
+            # 'NTPROBNP_FIRST',
+            # 'CREATININE_FIRST',
+            # 'BUN_FIRST',
+            # 'POTASSIUM_FIRST',
+            # 'TOTAL_CHOLESTEROL_FIRST',
         ]
         df = df[[col for col in columns_to_keep if col in df.columns]]
         console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
