@@ -64,10 +64,20 @@ def execute_validation_queries(
     population: pd.DataFrame,
     training: pd.DataFrame,
     synthetic: pd.DataFrame,
-    query_file: Path
+    query_file: Path,
+    output_dir: Path = None,
+    experiment_name: str = None
 ) -> Dict[str, Any]:
     """
     Execute unified validation queries using DuckDB.
+
+    Args:
+        population: Population dataset
+        training: Training dataset
+        synthetic: Synthetic dataset
+        query_file: Path to SQL query file
+        output_dir: Optional directory to save binned CSVs
+        experiment_name: Experiment name for CSV filenames
 
     Returns dictionary with all metrics:
     - synthetic_total_count, synthetic_unique_count
@@ -103,6 +113,48 @@ def execute_validation_queries(
 
     # Convert to dictionary
     result_dict = result_df.to_dict('records')[0]
+
+    # Export binned datasets if output directory is provided
+    if output_dir and experiment_name:
+        print("📊 Exporting binned datasets for hallucination calculations...")
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Extract CTEs from the summary query to access binned tables
+        # Split on the final summary SELECT (marked by comment)
+        if '-- Final Summary' in summary_query:
+            # Split at the final summary comment
+            binning_query_base = summary_query.split('-- Final Summary')[0]
+        else:
+            # Fallback: find the last standalone SELECT statement
+            # Look for the pattern of ") \n\n SELECT" which indicates the end of CTEs
+            parts = summary_query.split('\n\nSELECT')
+            if len(parts) > 1:
+                binning_query_base = parts[0]
+            else:
+                # Fallback: just include everything up to the last closing paren before SELECT
+                binning_query_base = summary_query.rsplit('\n\nSELECT', 1)[0]
+
+        # Export population_binned
+        pop_query = binning_query_base + "\n\nSELECT * FROM population_binned"
+        pop_binned = con.execute(pop_query).fetchdf()
+        pop_output = output_dir / f"population_data_for_hallucinations.csv"
+        pop_binned.to_csv(pop_output, index=False)
+        print(f"   ✓ Saved: {pop_output}")
+
+        # Export training_binned
+        train_query = binning_query_base + "\n\nSELECT * FROM training_binned"
+        train_binned = con.execute(train_query).fetchdf()
+        train_output = output_dir / f"training_data_for_hallucinations.csv"
+        train_binned.to_csv(train_output, index=False)
+        print(f"   ✓ Saved: {train_output}")
+
+        # Export synthetic_binned (without original columns)
+        synth_query = binning_query_base + "\n\nSELECT GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT, HR_BIN, SYSBP_BIN, DIASBP_BIN FROM synthetic_binned"
+        synth_binned = con.execute(synth_query).fetchdf()
+        synth_output = output_dir / f"synthetic_data_{experiment_name}_for_hallucinations.csv"
+        synth_binned.to_csv(synth_output, index=False)
+        print(f"   ✓ Saved: {synth_output}")
 
     # Close connection
     con.close()
@@ -211,7 +263,9 @@ def evaluate_hallucination_metrics(
             population=population,
             training=training,
             synthetic=synthetic,
-            query_file=query_file
+            query_file=query_file,
+            output_dir=Path("experiments/data/binned"),
+            experiment_name=experiment_name
         )
     except Exception as e:
         raise RuntimeError(f"Failed to execute validation queries: {str(e)}")

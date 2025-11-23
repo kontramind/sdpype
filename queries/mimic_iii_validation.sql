@@ -22,11 +22,24 @@
 --
 -- Plausibility Rules:
 -- - Categorical membership: GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D
--- - Numerical ranges: AGE, HR_FIRST, SYSBP_FIRST, DIASBP_FIRST, RESPRATE_FIRST,
---   NTPROBNP_FIRST, CREATININE_FIRST, BUN_FIRST, POTASSIUM_FIRST, TOTAL_CHOLESTEROL_FIRST
+-- - Numerical ranges: HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
 --   (within population min/max)
 --
 -- ============================================================================
+
+-- ============================================================================
+-- Reusable Binning Macro
+-- ============================================================================
+-- Creates equal-width bins for numerical columns, returned as strings
+-- - NULL values → "Missing"
+-- - Valid values → "1" to "num_bins" (as strings)
+-- - Handles edge cases: division by zero, values outside range
+CREATE MACRO bin_numeric(val, min_val, max_val, num_bins) AS
+    CASE WHEN val IS NULL THEN 'Missing'
+         ELSE CAST(LEAST(GREATEST(
+             FLOOR((val - min_val) / NULLIF(max_val - min_val, 0) * num_bins) + 1,
+             1), num_bins) AS VARCHAR)
+    END;
 
 -- @query: summary
 --
@@ -43,21 +56,15 @@ WITH
 -- ============================================================================
 num_ranges AS (
     SELECT
-        MIN(AGE) as age_min, MAX(AGE) as age_max,
         MIN(HR_FIRST) as hr_min, MAX(HR_FIRST) as hr_max,
         MIN(SYSBP_FIRST) as sysbp_min, MAX(SYSBP_FIRST) as sysbp_max,
-        MIN(DIASBP_FIRST) as diasbp_min, MAX(DIASBP_FIRST) as diasbp_max,
-        MIN(RESPRATE_FIRST) as resprate_min, MAX(RESPRATE_FIRST) as resprate_max,
-        MIN(NTPROBNP_FIRST) as ntprobnp_min, MAX(NTPROBNP_FIRST) as ntprobnp_max,
-        MIN(CREATININE_FIRST) as creatinine_min, MAX(CREATININE_FIRST) as creatinine_max,
-        MIN(BUN_FIRST) as bun_min, MAX(BUN_FIRST) as bun_max,
-        MIN(POTASSIUM_FIRST) as potassium_min, MAX(POTASSIUM_FIRST) as potassium_max,
-        MIN(TOTAL_CHOLESTEROL_FIRST) as cholesterol_min, MAX(TOTAL_CHOLESTEROL_FIRST) as cholesterol_max
+        MIN(DIASBP_FIRST) as diasbp_min, MAX(DIASBP_FIRST) as diasbp_max
     FROM population
 ),
 
 -- ============================================================================
--- Binned Datasets for Factuality Checks (20 bins, NULL = bin 0)
+-- Binned Datasets for Factuality Checks (20 bins as strings)
+-- Numerical columns → bin strings: "Missing", "1", "2", ..., "20"
 -- ============================================================================
 population_binned AS (
     SELECT
@@ -66,17 +73,10 @@ population_binned AS (
         ETHNICITY_GROUPED,
         ADMISSION_TYPE,
         IS_READMISSION_30D,
-        -- Numerical columns (binned): NULL=0, else 1-20
-        CASE WHEN AGE IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((AGE - r.age_min) / NULLIF(r.age_max - r.age_min, 0) * 20) + 1, 1), 20)::INT END as AGE_BIN,
-        CASE WHEN HR_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((HR_FIRST - r.hr_min) / NULLIF(r.hr_max - r.hr_min, 0) * 20) + 1, 1), 20)::INT END as HR_BIN,
-        CASE WHEN SYSBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((SYSBP_FIRST - r.sysbp_min) / NULLIF(r.sysbp_max - r.sysbp_min, 0) * 20) + 1, 1), 20)::INT END as SYSBP_BIN,
-        CASE WHEN DIASBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((DIASBP_FIRST - r.diasbp_min) / NULLIF(r.diasbp_max - r.diasbp_min, 0) * 20) + 1, 1), 20)::INT END as DIASBP_BIN,
-        CASE WHEN RESPRATE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((RESPRATE_FIRST - r.resprate_min) / NULLIF(r.resprate_max - r.resprate_min, 0) * 20) + 1, 1), 20)::INT END as RESPRATE_BIN,
-        CASE WHEN NTPROBNP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((NTPROBNP_FIRST - r.ntprobnp_min) / NULLIF(r.ntprobnp_max - r.ntprobnp_min, 0) * 20) + 1, 1), 20)::INT END as NTPROBNP_BIN,
-        CASE WHEN CREATININE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((CREATININE_FIRST - r.creatinine_min) / NULLIF(r.creatinine_max - r.creatinine_min, 0) * 20) + 1, 1), 20)::INT END as CREATININE_BIN,
-        CASE WHEN BUN_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((BUN_FIRST - r.bun_min) / NULLIF(r.bun_max - r.bun_min, 0) * 20) + 1, 1), 20)::INT END as BUN_BIN,
-        CASE WHEN POTASSIUM_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((POTASSIUM_FIRST - r.potassium_min) / NULLIF(r.potassium_max - r.potassium_min, 0) * 20) + 1, 1), 20)::INT END as POTASSIUM_BIN,
-        CASE WHEN TOTAL_CHOLESTEROL_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((TOTAL_CHOLESTEROL_FIRST - r.cholesterol_min) / NULLIF(r.cholesterol_max - r.cholesterol_min, 0) * 20) + 1, 1), 20)::INT END as CHOLESTEROL_BIN
+        -- Numerical columns (binned as strings): "Missing", "1"-"20"
+        bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
+        bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
+        bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
     FROM population, num_ranges r
 ),
 
@@ -87,17 +87,10 @@ training_binned AS (
         ETHNICITY_GROUPED,
         ADMISSION_TYPE,
         IS_READMISSION_30D,
-        -- Numerical columns (binned): NULL=0, else 1-20
-        CASE WHEN AGE IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((AGE - r.age_min) / NULLIF(r.age_max - r.age_min, 0) * 20) + 1, 1), 20)::INT END as AGE_BIN,
-        CASE WHEN HR_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((HR_FIRST - r.hr_min) / NULLIF(r.hr_max - r.hr_min, 0) * 20) + 1, 1), 20)::INT END as HR_BIN,
-        CASE WHEN SYSBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((SYSBP_FIRST - r.sysbp_min) / NULLIF(r.sysbp_max - r.sysbp_min, 0) * 20) + 1, 1), 20)::INT END as SYSBP_BIN,
-        CASE WHEN DIASBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((DIASBP_FIRST - r.diasbp_min) / NULLIF(r.diasbp_max - r.diasbp_min, 0) * 20) + 1, 1), 20)::INT END as DIASBP_BIN,
-        CASE WHEN RESPRATE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((RESPRATE_FIRST - r.resprate_min) / NULLIF(r.resprate_max - r.resprate_min, 0) * 20) + 1, 1), 20)::INT END as RESPRATE_BIN,
-        CASE WHEN NTPROBNP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((NTPROBNP_FIRST - r.ntprobnp_min) / NULLIF(r.ntprobnp_max - r.ntprobnp_min, 0) * 20) + 1, 1), 20)::INT END as NTPROBNP_BIN,
-        CASE WHEN CREATININE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((CREATININE_FIRST - r.creatinine_min) / NULLIF(r.creatinine_max - r.creatinine_min, 0) * 20) + 1, 1), 20)::INT END as CREATININE_BIN,
-        CASE WHEN BUN_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((BUN_FIRST - r.bun_min) / NULLIF(r.bun_max - r.bun_min, 0) * 20) + 1, 1), 20)::INT END as BUN_BIN,
-        CASE WHEN POTASSIUM_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((POTASSIUM_FIRST - r.potassium_min) / NULLIF(r.potassium_max - r.potassium_min, 0) * 20) + 1, 1), 20)::INT END as POTASSIUM_BIN,
-        CASE WHEN TOTAL_CHOLESTEROL_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((TOTAL_CHOLESTEROL_FIRST - r.cholesterol_min) / NULLIF(r.cholesterol_max - r.cholesterol_min, 0) * 20) + 1, 1), 20)::INT END as CHOLESTEROL_BIN
+        -- Numerical columns (binned as strings): "Missing", "1"-"20"
+        bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
+        bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
+        bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
     FROM training, num_ranges r
 ),
 
@@ -109,17 +102,10 @@ synthetic_binned AS (
         s.ETHNICITY_GROUPED as ETHNICITY_CAT,
         s.ADMISSION_TYPE as ADMISSION_CAT,
         s.IS_READMISSION_30D as READMISSION_CAT,
-        -- Numerical columns (binned): NULL=0, else 1-20
-        CASE WHEN s.AGE IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.AGE - r.age_min) / NULLIF(r.age_max - r.age_min, 0) * 20) + 1, 1), 20)::INT END as AGE_BIN,
-        CASE WHEN s.HR_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.HR_FIRST - r.hr_min) / NULLIF(r.hr_max - r.hr_min, 0) * 20) + 1, 1), 20)::INT END as HR_BIN,
-        CASE WHEN s.SYSBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.SYSBP_FIRST - r.sysbp_min) / NULLIF(r.sysbp_max - r.sysbp_min, 0) * 20) + 1, 1), 20)::INT END as SYSBP_BIN,
-        CASE WHEN s.DIASBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.DIASBP_FIRST - r.diasbp_min) / NULLIF(r.diasbp_max - r.diasbp_min, 0) * 20) + 1, 1), 20)::INT END as DIASBP_BIN,
-        CASE WHEN s.RESPRATE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.RESPRATE_FIRST - r.resprate_min) / NULLIF(r.resprate_max - r.resprate_min, 0) * 20) + 1, 1), 20)::INT END as RESPRATE_BIN,
-        CASE WHEN s.NTPROBNP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.NTPROBNP_FIRST - r.ntprobnp_min) / NULLIF(r.ntprobnp_max - r.ntprobnp_min, 0) * 20) + 1, 1), 20)::INT END as NTPROBNP_BIN,
-        CASE WHEN s.CREATININE_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.CREATININE_FIRST - r.creatinine_min) / NULLIF(r.creatinine_max - r.creatinine_min, 0) * 20) + 1, 1), 20)::INT END as CREATININE_BIN,
-        CASE WHEN s.BUN_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.BUN_FIRST - r.bun_min) / NULLIF(r.bun_max - r.bun_min, 0) * 20) + 1, 1), 20)::INT END as BUN_BIN,
-        CASE WHEN s.POTASSIUM_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.POTASSIUM_FIRST - r.potassium_min) / NULLIF(r.potassium_max - r.potassium_min, 0) * 20) + 1, 1), 20)::INT END as POTASSIUM_BIN,
-        CASE WHEN s.TOTAL_CHOLESTEROL_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.TOTAL_CHOLESTEROL_FIRST - r.cholesterol_min) / NULLIF(r.cholesterol_max - r.cholesterol_min, 0) * 20) + 1, 1), 20)::INT END as CHOLESTEROL_BIN
+        -- Numerical columns (binned as strings): "Missing", "1"-"20"
+        bin_numeric(s.HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
+        bin_numeric(s.SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
+        bin_numeric(s.DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
     FROM synthetic s, num_ranges r
 ),
 
@@ -130,24 +116,21 @@ synthetic_hashed AS (
     SELECT
         *,
         hash(GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN,
-             NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, CHOLESTEROL_BIN) as row_hash
+             HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
     FROM synthetic_binned
 ),
 
 population_hashes AS (
     SELECT DISTINCT
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN,
-             NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, CHOLESTEROL_BIN) as row_hash
+             HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
     FROM population_binned
 ),
 
 training_hashes AS (
     SELECT DISTINCT
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN,
-             NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, CHOLESTEROL_BIN) as row_hash
+             HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
     FROM training_binned
 ),
 
@@ -159,8 +142,7 @@ population_stats AS (
         COUNT(*) as total,
         COUNT(DISTINCT row_hash) as unique_count
     FROM (SELECT hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN,
-             NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, CHOLESTEROL_BIN) as row_hash
+             HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
           FROM population_binned)
 ),
 
@@ -169,8 +151,7 @@ training_stats AS (
         COUNT(*) as total,
         COUNT(DISTINCT row_hash) as unique_count
     FROM (SELECT hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN,
-             NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, CHOLESTEROL_BIN) as row_hash
+             HR_BIN, SYSBP_BIN, DIASBP_BIN) as row_hash
           FROM training_binned)
 ),
 
@@ -285,32 +266,18 @@ synthetic_with_validity AS (
         CASE WHEN s.ADMISSION_TYPE IN (SELECT value FROM valid_admission_types) THEN 1 ELSE 0 END as admission_type_valid,
         CASE WHEN s.IS_READMISSION_30D IN (SELECT value FROM valid_readmission_flags) THEN 1 ELSE 0 END as readmission_valid,
         -- Check numerical range rules (NULL is allowed, so check value OR NULL)
-        CASE WHEN s.AGE IS NULL OR (s.AGE >= (SELECT age_min FROM num_ranges) AND s.AGE <= (SELECT age_max FROM num_ranges)) THEN 1 ELSE 0 END as age_valid,
         CASE WHEN s.HR_FIRST IS NULL OR (s.HR_FIRST >= (SELECT hr_min FROM num_ranges) AND s.HR_FIRST <= (SELECT hr_max FROM num_ranges)) THEN 1 ELSE 0 END as hr_valid,
         CASE WHEN s.SYSBP_FIRST IS NULL OR (s.SYSBP_FIRST >= (SELECT sysbp_min FROM num_ranges) AND s.SYSBP_FIRST <= (SELECT sysbp_max FROM num_ranges)) THEN 1 ELSE 0 END as sysbp_valid,
         CASE WHEN s.DIASBP_FIRST IS NULL OR (s.DIASBP_FIRST >= (SELECT diasbp_min FROM num_ranges) AND s.DIASBP_FIRST <= (SELECT diasbp_max FROM num_ranges)) THEN 1 ELSE 0 END as diasbp_valid,
-        CASE WHEN s.RESPRATE_FIRST IS NULL OR (s.RESPRATE_FIRST >= (SELECT resprate_min FROM num_ranges) AND s.RESPRATE_FIRST <= (SELECT resprate_max FROM num_ranges)) THEN 1 ELSE 0 END as resprate_valid,
-        CASE WHEN s.NTPROBNP_FIRST IS NULL OR (s.NTPROBNP_FIRST >= (SELECT ntprobnp_min FROM num_ranges) AND s.NTPROBNP_FIRST <= (SELECT ntprobnp_max FROM num_ranges)) THEN 1 ELSE 0 END as ntprobnp_valid,
-        CASE WHEN s.CREATININE_FIRST IS NULL OR (s.CREATININE_FIRST >= (SELECT creatinine_min FROM num_ranges) AND s.CREATININE_FIRST <= (SELECT creatinine_max FROM num_ranges)) THEN 1 ELSE 0 END as creatinine_valid,
-        CASE WHEN s.BUN_FIRST IS NULL OR (s.BUN_FIRST >= (SELECT bun_min FROM num_ranges) AND s.BUN_FIRST <= (SELECT bun_max FROM num_ranges)) THEN 1 ELSE 0 END as bun_valid,
-        CASE WHEN s.POTASSIUM_FIRST IS NULL OR (s.POTASSIUM_FIRST >= (SELECT potassium_min FROM num_ranges) AND s.POTASSIUM_FIRST <= (SELECT potassium_max FROM num_ranges)) THEN 1 ELSE 0 END as potassium_valid,
-        CASE WHEN s.TOTAL_CHOLESTEROL_FIRST IS NULL OR (s.TOTAL_CHOLESTEROL_FIRST >= (SELECT cholesterol_min FROM num_ranges) AND s.TOTAL_CHOLESTEROL_FIRST <= (SELECT cholesterol_max FROM num_ranges)) THEN 1 ELSE 0 END as cholesterol_valid,
         -- Check if ALL rules pass
         CASE WHEN
             s.GENDER IN (SELECT value FROM valid_genders)
             AND s.ETHNICITY_GROUPED IN (SELECT value FROM valid_ethnicities)
             AND s.ADMISSION_TYPE IN (SELECT value FROM valid_admission_types)
             AND s.IS_READMISSION_30D IN (SELECT value FROM valid_readmission_flags)
-            AND (s.AGE IS NULL OR (s.AGE >= (SELECT age_min FROM num_ranges) AND s.AGE <= (SELECT age_max FROM num_ranges)))
             AND (s.HR_FIRST IS NULL OR (s.HR_FIRST >= (SELECT hr_min FROM num_ranges) AND s.HR_FIRST <= (SELECT hr_max FROM num_ranges)))
             AND (s.SYSBP_FIRST IS NULL OR (s.SYSBP_FIRST >= (SELECT sysbp_min FROM num_ranges) AND s.SYSBP_FIRST <= (SELECT sysbp_max FROM num_ranges)))
             AND (s.DIASBP_FIRST IS NULL OR (s.DIASBP_FIRST >= (SELECT diasbp_min FROM num_ranges) AND s.DIASBP_FIRST <= (SELECT diasbp_max FROM num_ranges)))
-            AND (s.RESPRATE_FIRST IS NULL OR (s.RESPRATE_FIRST >= (SELECT resprate_min FROM num_ranges) AND s.RESPRATE_FIRST <= (SELECT resprate_max FROM num_ranges)))
-            AND (s.NTPROBNP_FIRST IS NULL OR (s.NTPROBNP_FIRST >= (SELECT ntprobnp_min FROM num_ranges) AND s.NTPROBNP_FIRST <= (SELECT ntprobnp_max FROM num_ranges)))
-            AND (s.CREATININE_FIRST IS NULL OR (s.CREATININE_FIRST >= (SELECT creatinine_min FROM num_ranges) AND s.CREATININE_FIRST <= (SELECT creatinine_max FROM num_ranges)))
-            AND (s.BUN_FIRST IS NULL OR (s.BUN_FIRST >= (SELECT bun_min FROM num_ranges) AND s.BUN_FIRST <= (SELECT bun_max FROM num_ranges)))
-            AND (s.POTASSIUM_FIRST IS NULL OR (s.POTASSIUM_FIRST >= (SELECT potassium_min FROM num_ranges) AND s.POTASSIUM_FIRST <= (SELECT potassium_max FROM num_ranges)))
-            AND (s.TOTAL_CHOLESTEROL_FIRST IS NULL OR (s.TOTAL_CHOLESTEROL_FIRST >= (SELECT cholesterol_min FROM num_ranges) AND s.TOTAL_CHOLESTEROL_FIRST <= (SELECT cholesterol_max FROM num_ranges)))
         THEN 1 ELSE 0 END as passes_all_rules
     FROM synthetic_hashed s
 ),
