@@ -27,6 +27,20 @@
 --
 -- ============================================================================
 
+-- ============================================================================
+-- Reusable Binning Macro
+-- ============================================================================
+-- Creates equal-width bins for numerical columns
+-- - NULL values → bin 0
+-- - Valid values → bins 1 to num_bins
+-- - Handles edge cases: division by zero, values outside range
+CREATE MACRO bin_numeric(val, min_val, max_val, num_bins) AS
+    CASE WHEN val IS NULL THEN 0
+         ELSE LEAST(GREATEST(
+             FLOOR((val - min_val) / NULLIF(max_val - min_val, 0) * num_bins) + 1,
+             1), num_bins)::INT
+    END;
+
 -- @query: summary
 --
 -- Compute all metrics in a single query for efficiency:
@@ -59,9 +73,9 @@ population_binned AS (
         ADMISSION_TYPE,
         IS_READMISSION_30D,
         -- Numerical columns (binned): NULL=0, else 1-20
-        CASE WHEN HR_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((HR_FIRST - r.hr_min) / NULLIF(r.hr_max - r.hr_min, 0) * 20) + 1, 1), 20)::INT END as HR_BIN,
-        CASE WHEN SYSBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((SYSBP_FIRST - r.sysbp_min) / NULLIF(r.sysbp_max - r.sysbp_min, 0) * 20) + 1, 1), 20)::INT END as SYSBP_BIN,
-        CASE WHEN DIASBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((DIASBP_FIRST - r.diasbp_min) / NULLIF(r.diasbp_max - r.diasbp_min, 0) * 20) + 1, 1), 20)::INT END as DIASBP_BIN
+        bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
+        bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
+        bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
     FROM population, num_ranges r
 ),
 
@@ -73,9 +87,9 @@ training_binned AS (
         ADMISSION_TYPE,
         IS_READMISSION_30D,
         -- Numerical columns (binned): NULL=0, else 1-20
-        CASE WHEN HR_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((HR_FIRST - r.hr_min) / NULLIF(r.hr_max - r.hr_min, 0) * 20) + 1, 1), 20)::INT END as HR_BIN,
-        CASE WHEN SYSBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((SYSBP_FIRST - r.sysbp_min) / NULLIF(r.sysbp_max - r.sysbp_min, 0) * 20) + 1, 1), 20)::INT END as SYSBP_BIN,
-        CASE WHEN DIASBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((DIASBP_FIRST - r.diasbp_min) / NULLIF(r.diasbp_max - r.diasbp_min, 0) * 20) + 1, 1), 20)::INT END as DIASBP_BIN
+        bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
+        bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
+        bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
     FROM training, num_ranges r
 ),
 
@@ -88,9 +102,9 @@ synthetic_binned AS (
         s.ADMISSION_TYPE as ADMISSION_CAT,
         s.IS_READMISSION_30D as READMISSION_CAT,
         -- Numerical columns (binned): NULL=0, else 1-20
-        CASE WHEN s.HR_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.HR_FIRST - r.hr_min) / NULLIF(r.hr_max - r.hr_min, 0) * 20) + 1, 1), 20)::INT END as HR_BIN,
-        CASE WHEN s.SYSBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.SYSBP_FIRST - r.sysbp_min) / NULLIF(r.sysbp_max - r.sysbp_min, 0) * 20) + 1, 1), 20)::INT END as SYSBP_BIN,
-        CASE WHEN s.DIASBP_FIRST IS NULL THEN 0 ELSE LEAST(GREATEST(FLOOR((s.DIASBP_FIRST - r.diasbp_min) / NULLIF(r.diasbp_max - r.diasbp_min, 0) * 20) + 1, 1), 20)::INT END as DIASBP_BIN
+        bin_numeric(s.HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
+        bin_numeric(s.SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
+        bin_numeric(s.DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN
     FROM synthetic s, num_ranges r
 ),
 
