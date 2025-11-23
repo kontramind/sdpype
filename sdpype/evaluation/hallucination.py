@@ -121,25 +121,36 @@ def execute_validation_queries(
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Extract CTEs from the summary query to access binned tables
-        # We need to run queries that select from the CTEs
-        binning_query_base = summary_query.split('SELECT')[0]  # Get the CTE definitions
+        # Split on the final summary SELECT (marked by comment)
+        if '-- Final Summary' in summary_query:
+            # Split at the final summary comment
+            binning_query_base = summary_query.split('-- Final Summary')[0]
+        else:
+            # Fallback: find the last standalone SELECT statement
+            # Look for the pattern of ") \n\n SELECT" which indicates the end of CTEs
+            parts = summary_query.split('\n\nSELECT')
+            if len(parts) > 1:
+                binning_query_base = parts[0]
+            else:
+                # Fallback: just include everything up to the last closing paren before SELECT
+                binning_query_base = summary_query.rsplit('\n\nSELECT', 1)[0]
 
         # Export population_binned
-        pop_query = binning_query_base + "\nSELECT * FROM population_binned"
+        pop_query = binning_query_base + "\n\nSELECT * FROM population_binned"
         pop_binned = con.execute(pop_query).fetchdf()
         pop_output = output_dir / f"population_data_for_hallucinations.csv"
         pop_binned.to_csv(pop_output, index=False)
         print(f"   ✓ Saved: {pop_output}")
 
         # Export training_binned
-        train_query = binning_query_base + "\nSELECT * FROM training_binned"
+        train_query = binning_query_base + "\n\nSELECT * FROM training_binned"
         train_binned = con.execute(train_query).fetchdf()
         train_output = output_dir / f"training_data_for_hallucinations.csv"
         train_binned.to_csv(train_output, index=False)
         print(f"   ✓ Saved: {train_output}")
 
         # Export synthetic_binned (without original columns)
-        synth_query = binning_query_base + "\nSELECT GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT, HR_BIN, SYSBP_BIN, DIASBP_BIN FROM synthetic_binned"
+        synth_query = binning_query_base + "\n\nSELECT GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT, HR_BIN, SYSBP_BIN, DIASBP_BIN FROM synthetic_binned"
         synth_binned = con.execute(synth_query).fetchdf()
         synth_output = output_dir / f"synthetic_data_{experiment_name}_for_hallucinations.csv"
         synth_binned.to_csv(synth_output, index=False)
