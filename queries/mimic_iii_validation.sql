@@ -27,6 +27,16 @@
 --
 -- ============================================================================
 
+-- @query: summary
+--
+-- Compute all metrics in a single query for efficiency:
+-- - Synthetic dataset statistics (total, unique counts)
+-- - DDR metrics (desirable records: in population but not in training)
+-- - Hallucination metrics (records not in population)
+-- - Training copy metrics (records that match training data)
+-- - Plausibility metrics (records passing all validation rules)
+--
+
 -- ============================================================================
 -- Reusable Binning Macro
 -- ============================================================================
@@ -41,15 +51,6 @@ CREATE MACRO bin_numeric(val, min_val, max_val, num_bins) AS
              1), num_bins) AS VARCHAR)
     END;
 
--- @query: summary
---
--- Compute all metrics in a single query for efficiency:
--- - Synthetic dataset statistics (total, unique counts)
--- - DDR metrics (desirable records: in population but not in training)
--- - Hallucination metrics (records not in population)
--- - Training copy metrics (records that match training data)
--- - Plausibility metrics (records passing all validation rules)
---
 WITH
 -- ============================================================================
 -- Numerical Column Ranges from Population (for binning)
