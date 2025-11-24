@@ -207,7 +207,7 @@ def generate_encoding_config() -> dict:
         transformers[col] = {'type': 'UniformEncoder', 'params': {}}
     for col in numeric_columns:
         # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
-        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
+        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
             transformers[col] = {
                 'type': 'FloatFormatter',
                 'params': {
@@ -217,7 +217,7 @@ def generate_encoding_config() -> dict:
                     'learn_rounding_scheme': True
                 }
             }
-        elif col in ['RESPRATE_FIRST', 'CREATININE_FIRST', 'POTASSIUM_FIRST']:
+        elif col in ['CREATININE_FIRST', 'POTASSIUM_FIRST']:
             transformers[col] = {
                 'type': 'FloatFormatter',
                 'params': {
@@ -283,12 +283,12 @@ def generate_metadata() -> dict:
         columns[col] = {'sdtype': 'categorical'}
     for col in numeric_columns:
         # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
-        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
+        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
             columns[col] = {
                 'sdtype': 'numerical',
                 'computer_representation': 'Int16'
             }
-        elif col in ['RESPRATE_FIRST', 'CREATININE_FIRST', 'POTASSIUM_FIRST']:
+        elif col in ['CREATININE_FIRST', 'POTASSIUM_FIRST']:
             columns[col] = {
                 'sdtype': 'numerical',
                 'computer_representation': 'Float'
@@ -428,7 +428,7 @@ def transform(
         console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
 
         # Convert numeric columns to Int16 (nullable integer type)
-        int16_columns = ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'TOTAL_CHOLESTEROL_FIRST']
+        int16_columns = ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'TOTAL_CHOLESTEROL_FIRST']
         for col in int16_columns:
             if col in df.columns:
                 df[col] = df[col].round().astype('Int16')
