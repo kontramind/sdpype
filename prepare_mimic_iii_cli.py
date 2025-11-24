@@ -182,7 +182,7 @@ def generate_encoding_config() -> dict:
         'CREATININE_FIRST',
         # 'BUN_FIRST',
         'POTASSIUM_FIRST',
-        # 'TOTAL_CHOLESTEROL_FIRST',
+        'TOTAL_CHOLESTEROL_FIRST',
         # 'LOS_ICU',
     ]
     # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
@@ -217,7 +217,7 @@ def generate_encoding_config() -> dict:
                     'learn_rounding_scheme': True
                 }
             }
-        elif col in ['RESPRATE_FIRST', 'CREATININE_FIRST', 'POTASSIUM_FIRST']:
+        elif col in ['RESPRATE_FIRST', 'CREATININE_FIRST', 'POTASSIUM_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
             transformers[col] = {
                 'type': 'FloatFormatter',
                 'params': {
@@ -269,7 +269,7 @@ def generate_metadata() -> dict:
         'CREATININE_FIRST',
         # 'BUN_FIRST',
         'POTASSIUM_FIRST',
-        # 'TOTAL_CHOLESTEROL_FIRST',
+        'TOTAL_CHOLESTEROL_FIRST',
         # 'LOS_ICU',
     ]
     # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
@@ -288,7 +288,7 @@ def generate_metadata() -> dict:
                 'sdtype': 'numerical',
                 'computer_representation': 'Int16'
             }
-        elif col in ['RESPRATE_FIRST', 'CREATININE_FIRST', 'POTASSIUM_FIRST']:
+        elif col in ['RESPRATE_FIRST', 'CREATININE_FIRST', 'POTASSIUM_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
             columns[col] = {
                 'sdtype': 'numerical',
                 'computer_representation': 'Float'
@@ -396,7 +396,7 @@ def transform(
             'CREATININE_FIRST',
             # 'BUN_FIRST',
             'POTASSIUM_FIRST',
-            # 'TOTAL_CHOLESTEROL_FIRST',
+            'TOTAL_CHOLESTEROL_FIRST',
             # 'LOS_ICU',
         ]
         for col in numeric_columns:
@@ -422,7 +422,7 @@ def transform(
             'CREATININE_FIRST',
             # 'BUN_FIRST',
             'POTASSIUM_FIRST',
-            # 'TOTAL_CHOLESTEROL_FIRST',
+            'TOTAL_CHOLESTEROL_FIRST',
         ]
         df = df[[col for col in columns_to_keep if col in df.columns]]
         console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
@@ -435,7 +435,7 @@ def transform(
                 console.print(f"  [green]>[/green] Converted {col} to Int16")
 
         # Round float columns to 2 decimal places
-        float_columns = ['CREATININE_FIRST', 'POTASSIUM_FIRST']
+        float_columns = ['CREATININE_FIRST', 'POTASSIUM_FIRST', 'TOTAL_CHOLESTEROL_FIRST']
         for col in float_columns:
             if col in df.columns:
                 df[col] = df[col].round(2)
