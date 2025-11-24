@@ -180,7 +180,7 @@ def generate_encoding_config() -> dict:
         # 'BMI',
         # 'NTPROBNP_FIRST',
         'CREATININE_FIRST',
-        # 'BUN_FIRST',
+        'BUN_FIRST',
         'POTASSIUM_FIRST',
         'TOTAL_CHOLESTEROL_FIRST',
         # 'LOS_ICU',
@@ -207,7 +207,7 @@ def generate_encoding_config() -> dict:
         transformers[col] = {'type': 'UniformEncoder', 'params': {}}
     for col in numeric_columns:
         # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
-        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
+        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'BUN_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
             transformers[col] = {
                 'type': 'FloatFormatter',
                 'params': {
@@ -267,7 +267,7 @@ def generate_metadata() -> dict:
         # 'BMI',
         # 'NTPROBNP_FIRST',
         'CREATININE_FIRST',
-        # 'BUN_FIRST',
+        'BUN_FIRST',
         'POTASSIUM_FIRST',
         'TOTAL_CHOLESTEROL_FIRST',
         # 'LOS_ICU',
@@ -283,7 +283,7 @@ def generate_metadata() -> dict:
         columns[col] = {'sdtype': 'categorical'}
     for col in numeric_columns:
         # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
-        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
+        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'BUN_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
             columns[col] = {
                 'sdtype': 'numerical',
                 'computer_representation': 'Int16'
@@ -321,16 +321,14 @@ def transform(
     Transformations applied:
     - Drop ID columns (ICUSTAY_ID, SUBJECT_ID, HADM_ID)
     - Convert all column names to UPPERCASE
-    - AGE: numeric
+    - AGE: numeric (Int16)
     - GENDER: string, NULL -> 'Missing'
     - ETHNICITY_GROUPED: string, NULL -> 'Missing'
     - ADMISSION_TYPE: string, NULL -> 'Missing'
-    - Boolean columns (allow NULLs): LEADS_TO_READMISSION_30D, IS_READMISSION_30D,
-      HOSPITAL_EXPIRE_FLAG, ICU_MORTALITY_FLAG, HAS_ADMISSION_RECORD, HAS_ICUSTAY_DETAIL
-    - Numeric columns (allow NULLs): HR_FIRST, SYSBP_FIRST, DIASBP_FIRST, RESPRATE_FIRST,
-      HEIGHT_FIRST, WEIGHT_FIRST, BMI, NTPROBNP_FIRST, CREATININE_FIRST, BUN_FIRST,
-      POTASSIUM_FIRST, TOTAL_CHOLESTEROL_FIRST, LOS_ICU
-    - Datetime columns: DOD (allow NULLs), ICU_INTIME, ICU_OUTTIME (allow NULLs)
+    - Boolean columns (allow NULLs): IS_READMISSION_30D
+    - Numeric columns (allow NULLs):
+      * Int16: HR_FIRST, SYSBP_FIRST, DIASBP_FIRST, RESPRATE_FIRST, BUN_FIRST, TOTAL_CHOLESTEROL_FIRST
+      * Float: CREATININE_FIRST, POTASSIUM_FIRST
     """
     if not csv_path.exists():
         console.print(f"[red]Error: CSV file not found: {csv_path}[/red]")
@@ -394,7 +392,7 @@ def transform(
             # 'BMI',
             # 'NTPROBNP_FIRST',
             'CREATININE_FIRST',
-            # 'BUN_FIRST',
+            'BUN_FIRST',
             'POTASSIUM_FIRST',
             'TOTAL_CHOLESTEROL_FIRST',
             # 'LOS_ICU',
@@ -420,7 +418,7 @@ def transform(
             'RESPRATE_FIRST',
             # 'NTPROBNP_FIRST',
             'CREATININE_FIRST',
-            # 'BUN_FIRST',
+            'BUN_FIRST',
             'POTASSIUM_FIRST',
             'TOTAL_CHOLESTEROL_FIRST',
         ]
@@ -428,7 +426,7 @@ def transform(
         console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
 
         # Convert numeric columns to Int16 (nullable integer type)
-        int16_columns = ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'TOTAL_CHOLESTEROL_FIRST']
+        int16_columns = ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'BUN_FIRST', 'TOTAL_CHOLESTEROL_FIRST']
         for col in int16_columns:
             if col in df.columns:
                 df[col] = df[col].round().astype('Int16')
