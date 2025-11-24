@@ -22,6 +22,262 @@ app = typer.Typer(
 )
 
 
+# =============================================================================
+# Column Configuration
+# =============================================================================
+# Central configuration for all columns - comment out any column to exclude it
+# from the transformation pipeline
+COLUMN_CONFIG = [
+    # Boolean column (treated as categorical: '0'/'1'/'Missing')
+    {
+        'name': 'IS_READMISSION_30D',
+        'category': 'boolean',
+        'sdtype': 'categorical',
+        'transformer': {'type': 'UniformEncoder', 'params': {}},
+        'order': 1,
+    },
+
+    # Categorical columns
+    {
+        'name': 'AGE',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Int16',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 2,
+    },
+    {
+        'name': 'GENDER',
+        'category': 'categorical',
+        'sdtype': 'categorical',
+        'transformer': {'type': 'UniformEncoder', 'params': {}},
+        'order': 3,
+    },
+    {
+        'name': 'ETHNICITY_GROUPED',
+        'category': 'categorical',
+        'sdtype': 'categorical',
+        'transformer': {'type': 'UniformEncoder', 'params': {}},
+        'order': 4,
+    },
+    {
+        'name': 'ADMISSION_TYPE',
+        'category': 'categorical',
+        'sdtype': 'categorical',
+        'transformer': {'type': 'UniformEncoder', 'params': {}},
+        'order': 5,
+    },
+
+    # Numeric columns (Int16 representation)
+    {
+        'name': 'HR_FIRST',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Int16',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 6,
+    },
+    {
+        'name': 'SYSBP_FIRST',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Int16',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 7,
+    },
+    {
+        'name': 'DIASBP_FIRST',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Int16',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 8,
+    },
+    {
+        'name': 'RESPRATE_FIRST',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Int16',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 9,
+    },
+
+    # Numeric columns (Int32 representation)
+    {
+        'name': 'NTPROBNP_FIRST',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Int32',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int32',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 10,
+    },
+
+    # Numeric columns (Float representation)
+    {
+        'name': 'CREATININE_FIRST',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Float',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Float',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 11,
+    },
+    {
+        'name': 'BUN_FIRST',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Int16',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 12,
+    },
+    {
+        'name': 'POTASSIUM_FIRST',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Float',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Float',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 13,
+    },
+    {
+        'name': 'TOTAL_CHOLESTEROL_FIRST',
+        'category': 'numeric',
+        'sdtype': 'numerical',
+        'computer_representation': 'Int16',
+        'transformer': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': None,
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'order': 14,
+    },
+
+    # Commented out columns - uncomment to include them in the pipeline:
+    # {
+    #     'name': 'LEADS_TO_READMISSION_30D',
+    #     'category': 'boolean',
+    #     'sdtype': 'categorical',
+    #     'transformer': {'type': 'UniformEncoder', 'params': {}},
+    #     'order': 15,
+    # },
+    # {
+    #     'name': 'HOSPITAL_EXPIRE_FLAG',
+    #     'category': 'boolean',
+    #     'sdtype': 'categorical',
+    #     'transformer': {'type': 'UniformEncoder', 'params': {}},
+    #     'order': 16,
+    # },
+    # {
+    #     'name': 'HEIGHT_FIRST',
+    #     'category': 'numeric',
+    #     'sdtype': 'numerical',
+    #     'computer_representation': 'Float',
+    #     'transformer': {'type': 'FloatFormatter', 'params': {}},
+    #     'order': 17,
+    # },
+    # {
+    #     'name': 'WEIGHT_FIRST',
+    #     'category': 'numeric',
+    #     'sdtype': 'numerical',
+    #     'computer_representation': 'Float',
+    #     'transformer': {'type': 'FloatFormatter', 'params': {}},
+    #     'order': 18,
+    # },
+]
+
+
+def get_columns_by_category(category: str) -> list:
+    """Get list of column names by category."""
+    return [col['name'] for col in COLUMN_CONFIG if col['category'] == category]
+
+
+def get_columns_by_representation(representation: str) -> list:
+    """Get list of column names by computer representation."""
+    return [
+        col['name'] for col in COLUMN_CONFIG
+        if col.get('computer_representation') == representation
+    ]
+
+
+def get_all_column_names() -> list:
+    """Get all column names in order."""
+    return [col['name'] for col in sorted(COLUMN_CONFIG, key=lambda x: x['order'])]
+
+
 @app.command()
 def columns(
     csv_path: Path = typer.Argument(..., help="Path to CSV file"),
@@ -155,95 +411,14 @@ def transform_datetime_column(df: pd.DataFrame, col_name: str, allow_nulls: bool
 
 
 def generate_encoding_config() -> dict:
-    """Generate RDT encoding configuration for MIMIC-III ICU stay dataset."""
-    categorical_columns = [
-        'GENDER',
-        'ETHNICITY_GROUPED',
-        'ADMISSION_TYPE',
-    ]
-    boolean_columns = [
-        # 'LEADS_TO_READMISSION_30D',
-        'IS_READMISSION_30D',
-        # 'HOSPITAL_EXPIRE_FLAG',
-        # 'ICU_MORTALITY_FLAG',
-        # 'HAS_ADMISSION_RECORD',
-        # 'HAS_ICUSTAY_DETAIL',
-    ]
-    numeric_columns = [
-        'AGE',
-        'HR_FIRST',
-        'SYSBP_FIRST',
-        'DIASBP_FIRST',
-        'RESPRATE_FIRST',
-        # 'HEIGHT_FIRST',
-        # 'WEIGHT_FIRST',
-        # 'BMI',
-        'NTPROBNP_FIRST',
-        'CREATININE_FIRST',
-        'BUN_FIRST',
-        'POTASSIUM_FIRST',
-        'TOTAL_CHOLESTEROL_FIRST',
-        # 'LOS_ICU',
-    ]
-    # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
-    datetime_columns = []
-
-    # Build sdtypes (boolean columns treated as categorical)
+    """Generate RDT encoding configuration from COLUMN_CONFIG."""
     sdtypes = {}
-    for col in categorical_columns:
-        sdtypes[col] = 'categorical'
-    for col in boolean_columns:
-        sdtypes[col] = 'categorical'
-    for col in numeric_columns:
-        sdtypes[col] = 'numerical'
-    for col in datetime_columns:
-        sdtypes[col] = 'datetime'
-
-    # Build transformers
     transformers = {}
-    for col in categorical_columns:
-        transformers[col] = {'type': 'UniformEncoder', 'params': {}}
-    for col in boolean_columns:
-        transformers[col] = {'type': 'UniformEncoder', 'params': {}}
-    for col in numeric_columns:
-        # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
-        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'BUN_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
-            transformers[col] = {
-                'type': 'FloatFormatter',
-                'params': {
-                    'computer_representation': 'Int16',
-                    'missing_value_generation': None,
-                    'enforce_min_max_values': True,
-                    'learn_rounding_scheme': True
-                }
-            }
-        elif col in ['NTPROBNP_FIRST']:
-            transformers[col] = {
-                'type': 'FloatFormatter',
-                'params': {
-                    'computer_representation': 'Int32',
-                    'missing_value_generation': None,
-                    'enforce_min_max_values': True,
-                    'learn_rounding_scheme': True
-                }
-            }
-        elif col in ['CREATININE_FIRST', 'POTASSIUM_FIRST']:
-            transformers[col] = {
-                'type': 'FloatFormatter',
-                'params': {
-                    'computer_representation': 'Float',
-                    'missing_value_generation': None,
-                    'enforce_min_max_values': True,
-                    'learn_rounding_scheme': True
-                }
-            }
-        else:
-            transformers[col] = {'type': 'FloatFormatter', 'params': {}}
-    for col in datetime_columns:
-        transformers[col] = {
-            'type': 'UnixTimestampEncoder',
-            'params': {'datetime_format': '%Y-%m-%d %H:%M:%S'}
-        }
+
+    for col_config in COLUMN_CONFIG:
+        col_name = col_config['name']
+        sdtypes[col_name] = col_config['sdtype']
+        transformers[col_name] = col_config['transformer']
 
     return {
         'sdtypes': sdtypes,
@@ -252,69 +427,22 @@ def generate_encoding_config() -> dict:
 
 
 def generate_metadata() -> dict:
-    """Generate SDV metadata for MIMIC-III ICU stay dataset."""
-    categorical_columns = [
-        'GENDER',
-        'ETHNICITY_GROUPED',
-        'ADMISSION_TYPE',
-    ]
-    boolean_columns = [
-        # 'LEADS_TO_READMISSION_30D',
-        'IS_READMISSION_30D',
-        # 'HOSPITAL_EXPIRE_FLAG',
-        # 'ICU_MORTALITY_FLAG',
-        # 'HAS_ADMISSION_RECORD',
-        # 'HAS_ICUSTAY_DETAIL',
-    ]
-    numeric_columns = [
-        'AGE',
-        'HR_FIRST',
-        'SYSBP_FIRST',
-        'DIASBP_FIRST',
-        'RESPRATE_FIRST',
-        # 'HEIGHT_FIRST',
-        # 'WEIGHT_FIRST',
-        # 'BMI',
-        'NTPROBNP_FIRST',
-        'CREATININE_FIRST',
-        'BUN_FIRST',
-        'POTASSIUM_FIRST',
-        'TOTAL_CHOLESTEROL_FIRST',
-        # 'LOS_ICU',
-    ]
-    # datetime_columns = ['DOD', 'ICU_INTIME', 'ICU_OUTTIME']
-    datetime_columns = []
-
-    # Boolean columns treated as categorical
+    """Generate SDV metadata from COLUMN_CONFIG."""
     columns = {}
-    for col in categorical_columns:
-        columns[col] = {'sdtype': 'categorical'}
-    for col in boolean_columns:
-        columns[col] = {'sdtype': 'categorical'}
-    for col in numeric_columns:
-        # Use Int16 for HR_FIRST, SYSBP_FIRST, DIASBP_FIRST
-        if col in ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'BUN_FIRST', 'TOTAL_CHOLESTEROL_FIRST']:
-            columns[col] = {
-                'sdtype': 'numerical',
-                'computer_representation': 'Int16'
-            }
-        elif col in ['NTPROBNP_FIRST']:
-            columns[col] = {
-                'sdtype': 'numerical',
-                'computer_representation': 'Int32'
-            }
-        elif col in ['CREATININE_FIRST', 'POTASSIUM_FIRST']:
-            columns[col] = {
-                'sdtype': 'numerical',
-                'computer_representation': 'Float'
-            }
-        else:
-            columns[col] = {'sdtype': 'numerical'}
-    for col in datetime_columns:
-        columns[col] = {
-            'sdtype': 'datetime',
-            'datetime_format': '%Y-%m-%d %H:%M:%S'
-        }
+
+    for col_config in COLUMN_CONFIG:
+        col_name = col_config['name']
+        col_metadata = {'sdtype': col_config['sdtype']}
+
+        # Add computer_representation if present
+        if 'computer_representation' in col_config:
+            col_metadata['computer_representation'] = col_config['computer_representation']
+
+        # Add datetime_format if present
+        if 'datetime_format' in col_config:
+            col_metadata['datetime_format'] = col_config['datetime_format']
+
+        columns[col_name] = col_metadata
 
     return {
         'METADATA_SPEC_VERSION': 'SINGLE_TABLE_V1',
@@ -333,18 +461,17 @@ def transform(
     """
     Apply transformations to MIMIC-III ICU stay dataset.
 
-    Transformations applied:
+    Transformations are defined in COLUMN_CONFIG at the top of this file.
+    To exclude a column from export, simply comment it out in COLUMN_CONFIG.
+
+    General transformations:
     - Drop ID columns (ICUSTAY_ID, SUBJECT_ID, HADM_ID)
     - Convert all column names to UPPERCASE
-    - AGE: numeric (Int16)
-    - GENDER: string, NULL -> 'Missing'
-    - ETHNICITY_GROUPED: string, NULL -> 'Missing'
-    - ADMISSION_TYPE: string, NULL -> 'Missing'
-    - Boolean columns (allow NULLs): IS_READMISSION_30D
-    - Numeric columns (allow NULLs):
-      * Int16: HR_FIRST, SYSBP_FIRST, DIASBP_FIRST, RESPRATE_FIRST, BUN_FIRST, TOTAL_CHOLESTEROL_FIRST
-      * Int32: NTPROBNP_FIRST
-      * Float: CREATININE_FIRST, POTASSIUM_FIRST
+    - Categorical columns: string, NULL -> 'Missing'
+    - Boolean columns: '0'/'1'/'Missing' as categorical strings
+    - Numeric columns: various representations (Int16, Int32, Float) with NULLs allowed
+
+    See COLUMN_CONFIG for the complete list of columns and their configurations.
     """
     if not csv_path.exists():
         console.print(f"[red]Error: CSV file not found: {csv_path}[/red]")
@@ -386,33 +513,12 @@ def transform(
         df = transform_admission_type(df)
 
         # Boolean columns (as categorical strings: '0'/'1'/'Missing')
-        boolean_columns = [
-            # 'LEADS_TO_READMISSION_30D',
-            'IS_READMISSION_30D',
-            # 'HOSPITAL_EXPIRE_FLAG',
-            # 'ICU_MORTALITY_FLAG',
-            # 'HAS_ADMISSION_RECORD',
-            # 'HAS_ICUSTAY_DETAIL',
-        ]
+        boolean_columns = get_columns_by_category('boolean')
         for col in boolean_columns:
             df = transform_boolean_column(df, col)
 
         # Numeric columns (allow NULLs)
-        numeric_columns = [
-            'HR_FIRST',
-            'SYSBP_FIRST',
-            'DIASBP_FIRST',
-            'RESPRATE_FIRST',
-            # 'HEIGHT_FIRST',
-            # 'WEIGHT_FIRST',
-            # 'BMI',
-            'NTPROBNP_FIRST',
-            'CREATININE_FIRST',
-            'BUN_FIRST',
-            'POTASSIUM_FIRST',
-            'TOTAL_CHOLESTEROL_FIRST',
-            # 'LOS_ICU',
-        ]
+        numeric_columns = get_columns_by_category('numeric')
         for col in numeric_columns:
             df = transform_numeric_column(df, col)
 
@@ -421,42 +527,27 @@ def transform(
         # df = transform_datetime_column(df, 'ICU_INTIME', allow_nulls=False)
         # df = transform_datetime_column(df, 'ICU_OUTTIME', allow_nulls=True)
 
-        # Keep only selected columns
-        columns_to_keep = [
-            'IS_READMISSION_30D',
-            'AGE',
-            'GENDER',
-            'ETHNICITY_GROUPED',
-            'ADMISSION_TYPE',
-            'HR_FIRST',
-            'SYSBP_FIRST',
-            'DIASBP_FIRST',
-            'RESPRATE_FIRST',
-            'NTPROBNP_FIRST',
-            'CREATININE_FIRST',
-            'BUN_FIRST',
-            'POTASSIUM_FIRST',
-            'TOTAL_CHOLESTEROL_FIRST',
-        ]
+        # Keep only selected columns (from COLUMN_CONFIG)
+        columns_to_keep = get_all_column_names()
         df = df[[col for col in columns_to_keep if col in df.columns]]
         console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
 
         # Convert numeric columns to Int16 (nullable integer type)
-        int16_columns = ['AGE', 'HR_FIRST', 'SYSBP_FIRST', 'DIASBP_FIRST', 'RESPRATE_FIRST', 'BUN_FIRST', 'TOTAL_CHOLESTEROL_FIRST']
+        int16_columns = get_columns_by_representation('Int16')
         for col in int16_columns:
             if col in df.columns:
                 df[col] = df[col].round().astype('Int16')
                 console.print(f"  [green]>[/green] Converted {col} to Int16")
 
         # Convert numeric columns to Int32 (nullable integer type)
-        int32_columns = ['NTPROBNP_FIRST']
+        int32_columns = get_columns_by_representation('Int32')
         for col in int32_columns:
             if col in df.columns:
                 df[col] = df[col].round().astype('Int32')
                 console.print(f"  [green]>[/green] Converted {col} to Int32")
 
         # Round float columns to 2 decimal places
-        float_columns = ['CREATININE_FIRST', 'POTASSIUM_FIRST']
+        float_columns = get_columns_by_representation('Float')
         for col in float_columns:
             if col in df.columns:
                 df[col] = df[col].round(2)
