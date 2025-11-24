@@ -179,7 +179,7 @@ def generate_encoding_config() -> dict:
         # 'WEIGHT_FIRST',
         # 'BMI',
         # 'NTPROBNP_FIRST',
-        # 'CREATININE_FIRST',
+        'CREATININE_FIRST',
         # 'BUN_FIRST',
         # 'POTASSIUM_FIRST',
         # 'TOTAL_CHOLESTEROL_FIRST',
@@ -217,7 +217,7 @@ def generate_encoding_config() -> dict:
                     'learn_rounding_scheme': True
                 }
             }
-        elif col == 'RESPRATE_FIRST':
+        elif col in ['RESPRATE_FIRST', 'CREATININE_FIRST']:
             transformers[col] = {
                 'type': 'FloatFormatter',
                 'params': {
@@ -266,7 +266,7 @@ def generate_metadata() -> dict:
         # 'WEIGHT_FIRST',
         # 'BMI',
         # 'NTPROBNP_FIRST',
-        # 'CREATININE_FIRST',
+        'CREATININE_FIRST',
         # 'BUN_FIRST',
         # 'POTASSIUM_FIRST',
         # 'TOTAL_CHOLESTEROL_FIRST',
@@ -288,7 +288,7 @@ def generate_metadata() -> dict:
                 'sdtype': 'numerical',
                 'computer_representation': 'Int16'
             }
-        elif col == 'RESPRATE_FIRST':
+        elif col in ['RESPRATE_FIRST', 'CREATININE_FIRST']:
             columns[col] = {
                 'sdtype': 'numerical',
                 'computer_representation': 'Float'
@@ -393,7 +393,7 @@ def transform(
             # 'WEIGHT_FIRST',
             # 'BMI',
             # 'NTPROBNP_FIRST',
-            # 'CREATININE_FIRST',
+            'CREATININE_FIRST',
             # 'BUN_FIRST',
             # 'POTASSIUM_FIRST',
             # 'TOTAL_CHOLESTEROL_FIRST',
@@ -419,7 +419,7 @@ def transform(
             'DIASBP_FIRST',
             'RESPRATE_FIRST',
             # 'NTPROBNP_FIRST',
-            # 'CREATININE_FIRST',
+            'CREATININE_FIRST',
             # 'BUN_FIRST',
             # 'POTASSIUM_FIRST',
             # 'TOTAL_CHOLESTEROL_FIRST',
@@ -433,6 +433,13 @@ def transform(
             if col in df.columns:
                 df[col] = df[col].round().astype('Int16')
                 console.print(f"  [green]>[/green] Converted {col} to Int16")
+
+        # Round float columns to 2 decimal places
+        float_columns = ['CREATININE_FIRST']
+        for col in float_columns:
+            if col in df.columns:
+                df[col] = df[col].round(2)
+                console.print(f"  [green]>[/green] Rounded {col} to 2 decimal places")
 
         console.print()
         final_rows, final_cols = df.shape
