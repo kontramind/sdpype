@@ -178,7 +178,7 @@ def generate_encoding_config() -> dict:
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
-        'NTPROBNP_FIRST',
+        # 'NTPROBNP_FIRST',
         # 'CREATININE_FIRST',
         # 'BUN_FIRST',
         # 'POTASSIUM_FIRST',
@@ -217,7 +217,7 @@ def generate_encoding_config() -> dict:
                     'learn_rounding_scheme': True
                 }
             }
-        elif col in ['RESPRATE_FIRST', 'NTPROBNP_FIRST']:
+        elif col == 'RESPRATE_FIRST':
             transformers[col] = {
                 'type': 'FloatFormatter',
                 'params': {
@@ -265,7 +265,7 @@ def generate_metadata() -> dict:
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
-        'NTPROBNP_FIRST',
+        # 'NTPROBNP_FIRST',
         # 'CREATININE_FIRST',
         # 'BUN_FIRST',
         # 'POTASSIUM_FIRST',
@@ -288,7 +288,7 @@ def generate_metadata() -> dict:
                 'sdtype': 'numerical',
                 'computer_representation': 'Int16'
             }
-        elif col in ['RESPRATE_FIRST', 'NTPROBNP_FIRST']:
+        elif col == 'RESPRATE_FIRST':
             columns[col] = {
                 'sdtype': 'numerical',
                 'computer_representation': 'Float'
@@ -392,7 +392,7 @@ def transform(
             # 'HEIGHT_FIRST',
             # 'WEIGHT_FIRST',
             # 'BMI',
-            'NTPROBNP_FIRST',
+            # 'NTPROBNP_FIRST',
             # 'CREATININE_FIRST',
             # 'BUN_FIRST',
             # 'POTASSIUM_FIRST',
@@ -418,7 +418,7 @@ def transform(
             'SYSBP_FIRST',
             'DIASBP_FIRST',
             'RESPRATE_FIRST',
-            'NTPROBNP_FIRST',
+            # 'NTPROBNP_FIRST',
             # 'CREATININE_FIRST',
             # 'BUN_FIRST',
             # 'POTASSIUM_FIRST',
