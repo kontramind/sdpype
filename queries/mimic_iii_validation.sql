@@ -61,7 +61,8 @@ num_ranges AS (
         MIN(HR_FIRST) as hr_min, MAX(HR_FIRST) as hr_max,
         MIN(SYSBP_FIRST) as sysbp_min, MAX(SYSBP_FIRST) as sysbp_max,
         MIN(DIASBP_FIRST) as diasbp_min, MAX(DIASBP_FIRST) as diasbp_max,
-        MIN(RESPRATE_FIRST) as resprate_min, MAX(RESPRATE_FIRST) as resprate_max
+        MIN(RESPRATE_FIRST) as resprate_min, MAX(RESPRATE_FIRST) as resprate_max,
+        MIN(NTPROBNP_FIRST) as ntprobnp_min, MAX(NTPROBNP_FIRST) as ntprobnp_max
     FROM population
 ),
 
@@ -81,7 +82,8 @@ population_binned AS (
         bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN,
-        bin_numeric(RESPRATE_FIRST, r.resprate_min, r.resprate_max, 20) as RESPRATE_BIN
+        bin_numeric(RESPRATE_FIRST, r.resprate_min, r.resprate_max, 20) as RESPRATE_BIN,
+        bin_numeric(NTPROBNP_FIRST, r.ntprobnp_min, r.ntprobnp_max, 20) as NTPROBNP_BIN
     FROM population, num_ranges r
 ),
 
@@ -97,7 +99,8 @@ training_binned AS (
         bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN,
-        bin_numeric(RESPRATE_FIRST, r.resprate_min, r.resprate_max, 20) as RESPRATE_BIN
+        bin_numeric(RESPRATE_FIRST, r.resprate_min, r.resprate_max, 20) as RESPRATE_BIN,
+        bin_numeric(NTPROBNP_FIRST, r.ntprobnp_min, r.ntprobnp_max, 20) as NTPROBNP_BIN
     FROM training, num_ranges r
 ),
 
@@ -114,7 +117,8 @@ synthetic_binned AS (
         bin_numeric(s.HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(s.SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(s.DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN,
-        bin_numeric(s.RESPRATE_FIRST, r.resprate_min, r.resprate_max, 20) as RESPRATE_BIN
+        bin_numeric(s.RESPRATE_FIRST, r.resprate_min, r.resprate_max, 20) as RESPRATE_BIN,
+        bin_numeric(s.NTPROBNP_FIRST, r.ntprobnp_min, r.ntprobnp_max, 20) as NTPROBNP_BIN
     FROM synthetic s, num_ranges r
 ),
 
@@ -125,21 +129,21 @@ synthetic_hashed AS (
     SELECT
         *,
         hash(GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN) as row_hash
     FROM synthetic_binned
 ),
 
 population_hashes AS (
     SELECT DISTINCT
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN) as row_hash
     FROM population_binned
 ),
 
 training_hashes AS (
     SELECT DISTINCT
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN) as row_hash
     FROM training_binned
 ),
 
@@ -151,7 +155,7 @@ population_stats AS (
         COUNT(*) as total,
         COUNT(DISTINCT row_hash) as unique_count
     FROM (SELECT hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN) as row_hash
           FROM population_binned)
 ),
 
@@ -160,7 +164,7 @@ training_stats AS (
         COUNT(*) as total,
         COUNT(DISTINCT row_hash) as unique_count
     FROM (SELECT hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN) as row_hash
           FROM training_binned)
 ),
 
@@ -280,6 +284,7 @@ synthetic_with_validity AS (
         CASE WHEN s.SYSBP_FIRST IS NULL OR (s.SYSBP_FIRST >= (SELECT sysbp_min FROM num_ranges) AND s.SYSBP_FIRST <= (SELECT sysbp_max FROM num_ranges)) THEN 1 ELSE 0 END as sysbp_valid,
         CASE WHEN s.DIASBP_FIRST IS NULL OR (s.DIASBP_FIRST >= (SELECT diasbp_min FROM num_ranges) AND s.DIASBP_FIRST <= (SELECT diasbp_max FROM num_ranges)) THEN 1 ELSE 0 END as diasbp_valid,
         CASE WHEN s.RESPRATE_FIRST IS NULL OR (s.RESPRATE_FIRST >= (SELECT resprate_min FROM num_ranges) AND s.RESPRATE_FIRST <= (SELECT resprate_max FROM num_ranges)) THEN 1 ELSE 0 END as resprate_valid,
+        CASE WHEN s.NTPROBNP_FIRST IS NULL OR (s.NTPROBNP_FIRST >= (SELECT ntprobnp_min FROM num_ranges) AND s.NTPROBNP_FIRST <= (SELECT ntprobnp_max FROM num_ranges)) THEN 1 ELSE 0 END as ntprobnp_valid,
         -- Check if ALL rules pass
         CASE WHEN
             s.GENDER IN (SELECT value FROM valid_genders)
@@ -291,6 +296,7 @@ synthetic_with_validity AS (
             AND (s.SYSBP_FIRST IS NULL OR (s.SYSBP_FIRST >= (SELECT sysbp_min FROM num_ranges) AND s.SYSBP_FIRST <= (SELECT sysbp_max FROM num_ranges)))
             AND (s.DIASBP_FIRST IS NULL OR (s.DIASBP_FIRST >= (SELECT diasbp_min FROM num_ranges) AND s.DIASBP_FIRST <= (SELECT diasbp_max FROM num_ranges)))
             AND (s.RESPRATE_FIRST IS NULL OR (s.RESPRATE_FIRST >= (SELECT resprate_min FROM num_ranges) AND s.RESPRATE_FIRST <= (SELECT resprate_max FROM num_ranges)))
+            AND (s.NTPROBNP_FIRST IS NULL OR (s.NTPROBNP_FIRST >= (SELECT ntprobnp_min FROM num_ranges) AND s.NTPROBNP_FIRST <= (SELECT ntprobnp_max FROM num_ranges)))
         THEN 1 ELSE 0 END as passes_all_rules
     FROM synthetic_hashed s
 ),
