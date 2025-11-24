@@ -178,7 +178,7 @@ def generate_encoding_config() -> dict:
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
-        # 'NTPROBNP_FIRST',
+        'NTPROBNP_FIRST',
         'CREATININE_FIRST',
         'BUN_FIRST',
         'POTASSIUM_FIRST',
@@ -212,6 +212,16 @@ def generate_encoding_config() -> dict:
                 'type': 'FloatFormatter',
                 'params': {
                     'computer_representation': 'Int16',
+                    'missing_value_generation': None,
+                    'enforce_min_max_values': True,
+                    'learn_rounding_scheme': True
+                }
+            }
+        elif col in ['NTPROBNP_FIRST']:
+            transformers[col] = {
+                'type': 'FloatFormatter',
+                'params': {
+                    'computer_representation': 'Int32',
                     'missing_value_generation': None,
                     'enforce_min_max_values': True,
                     'learn_rounding_scheme': True
@@ -265,7 +275,7 @@ def generate_metadata() -> dict:
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
-        # 'NTPROBNP_FIRST',
+        'NTPROBNP_FIRST',
         'CREATININE_FIRST',
         'BUN_FIRST',
         'POTASSIUM_FIRST',
@@ -287,6 +297,11 @@ def generate_metadata() -> dict:
             columns[col] = {
                 'sdtype': 'numerical',
                 'computer_representation': 'Int16'
+            }
+        elif col in ['NTPROBNP_FIRST']:
+            columns[col] = {
+                'sdtype': 'numerical',
+                'computer_representation': 'Int32'
             }
         elif col in ['CREATININE_FIRST', 'POTASSIUM_FIRST']:
             columns[col] = {
@@ -328,6 +343,7 @@ def transform(
     - Boolean columns (allow NULLs): IS_READMISSION_30D
     - Numeric columns (allow NULLs):
       * Int16: HR_FIRST, SYSBP_FIRST, DIASBP_FIRST, RESPRATE_FIRST, BUN_FIRST, TOTAL_CHOLESTEROL_FIRST
+      * Int32: NTPROBNP_FIRST
       * Float: CREATININE_FIRST, POTASSIUM_FIRST
     """
     if not csv_path.exists():
@@ -390,7 +406,7 @@ def transform(
             # 'HEIGHT_FIRST',
             # 'WEIGHT_FIRST',
             # 'BMI',
-            # 'NTPROBNP_FIRST',
+            'NTPROBNP_FIRST',
             'CREATININE_FIRST',
             'BUN_FIRST',
             'POTASSIUM_FIRST',
@@ -416,7 +432,7 @@ def transform(
             'SYSBP_FIRST',
             'DIASBP_FIRST',
             'RESPRATE_FIRST',
-            # 'NTPROBNP_FIRST',
+            'NTPROBNP_FIRST',
             'CREATININE_FIRST',
             'BUN_FIRST',
             'POTASSIUM_FIRST',
@@ -431,6 +447,13 @@ def transform(
             if col in df.columns:
                 df[col] = df[col].round().astype('Int16')
                 console.print(f"  [green]>[/green] Converted {col} to Int16")
+
+        # Convert numeric columns to Int32 (nullable integer type)
+        int32_columns = ['NTPROBNP_FIRST']
+        for col in int32_columns:
+            if col in df.columns:
+                df[col] = df[col].round().astype('Int32')
+                console.print(f"  [green]>[/green] Converted {col} to Int32")
 
         # Round float columns to 2 decimal places
         float_columns = ['CREATININE_FIRST', 'POTASSIUM_FIRST']
