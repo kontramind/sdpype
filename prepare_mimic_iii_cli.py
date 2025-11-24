@@ -174,7 +174,7 @@ def generate_encoding_config() -> dict:
         'HR_FIRST',
         'SYSBP_FIRST',
         'DIASBP_FIRST',
-        # 'RESPRATE_FIRST',
+        'RESPRATE_FIRST',
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
@@ -217,6 +217,16 @@ def generate_encoding_config() -> dict:
                     'learn_rounding_scheme': True
                 }
             }
+        elif col == 'RESPRATE_FIRST':
+            transformers[col] = {
+                'type': 'FloatFormatter',
+                'params': {
+                    'computer_representation': 'Float',
+                    'missing_value_generation': None,
+                    'enforce_min_max_values': True,
+                    'learn_rounding_scheme': True
+                }
+            }
         else:
             transformers[col] = {'type': 'FloatFormatter', 'params': {}}
     for col in datetime_columns:
@@ -251,7 +261,7 @@ def generate_metadata() -> dict:
         'HR_FIRST',
         'SYSBP_FIRST',
         'DIASBP_FIRST',
-        # 'RESPRATE_FIRST',
+        'RESPRATE_FIRST',
         # 'HEIGHT_FIRST',
         # 'WEIGHT_FIRST',
         # 'BMI',
@@ -277,6 +287,11 @@ def generate_metadata() -> dict:
             columns[col] = {
                 'sdtype': 'numerical',
                 'computer_representation': 'Int16'
+            }
+        elif col == 'RESPRATE_FIRST':
+            columns[col] = {
+                'sdtype': 'numerical',
+                'computer_representation': 'Float'
             }
         else:
             columns[col] = {'sdtype': 'numerical'}
@@ -373,7 +388,7 @@ def transform(
             'HR_FIRST',
             'SYSBP_FIRST',
             'DIASBP_FIRST',
-            # 'RESPRATE_FIRST',
+            'RESPRATE_FIRST',
             # 'HEIGHT_FIRST',
             # 'WEIGHT_FIRST',
             # 'BMI',
@@ -402,7 +417,7 @@ def transform(
             'HR_FIRST',
             'SYSBP_FIRST',
             'DIASBP_FIRST',
-            # 'RESPRATE_FIRST',
+            'RESPRATE_FIRST',
             # 'NTPROBNP_FIRST',
             # 'CREATININE_FIRST',
             # 'BUN_FIRST',
