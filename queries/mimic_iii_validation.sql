@@ -27,6 +27,41 @@
 --
 -- ============================================================================
 
+
+-- ============================================================================
+-- COLUMN CONFIGURATION
+-- ============================================================================
+-- To add/remove columns from validation:
+-- 1. Update the lists below by commenting/uncommenting lines
+-- 2. Update the corresponding sections marked with [UPDATE REQUIRED]
+--
+-- CATEGORICAL COLUMNS (for categorical validation):
+--   - GENDER
+--   - ETHNICITY_GROUPED
+--   - ADMISSION_TYPE
+--   - IS_READMISSION_30D
+--
+-- NUMERIC COLUMNS (for binning and range validation):
+--   - AGE
+--   - HR_FIRST
+--   - SYSBP_FIRST
+--   - DIASBP_FIRST
+--   - RESPRATE_FIRST
+--   - CREATININE_FIRST
+--   - POTASSIUM_FIRST
+--   - TOTAL_CHOLESTEROL_FIRST
+--
+-- When adding/removing columns, update these sections:
+-- [1] num_ranges CTE (lines ~105-115)
+-- [2] population_binned CTE (lines ~125-145)
+-- [3] training_binned CTE (lines ~150-170)
+-- [4] synthetic_binned CTE (lines ~175-195)
+-- [5] Hash calculations (lines ~205, ~215, ~225, ~235, ~245)
+-- [6] Valid categorical CTEs (lines ~315-335)
+-- [7] Plausibility validation (lines ~345-395)
+--
+-- ============================================================================
+
 -- @query: summary
 --
 -- Compute all metrics in a single query for efficiency:
@@ -53,10 +88,12 @@ CREATE OR REPLACE MACRO bin_numeric(val, min_val, max_val, num_bins) AS
 
 WITH
 -- ============================================================================
--- Numerical Column Ranges from Population (for binning)
+-- [1] Numerical Column Ranges from Population (for binning)
+-- [UPDATE REQUIRED] Add/remove numeric columns here
 -- ============================================================================
 num_ranges AS (
     SELECT
+        -- Add MIN/MAX for each numeric column:
         MIN(AGE) as age_min, MAX(AGE) as age_max,
         MIN(HR_FIRST) as hr_min, MAX(HR_FIRST) as hr_max,
         MIN(SYSBP_FIRST) as sysbp_min, MAX(SYSBP_FIRST) as sysbp_max,
@@ -65,21 +102,24 @@ num_ranges AS (
         MIN(CREATININE_FIRST) as creatinine_min, MAX(CREATININE_FIRST) as creatinine_max,
         MIN(POTASSIUM_FIRST) as potassium_min, MAX(POTASSIUM_FIRST) as potassium_max,
         MIN(TOTAL_CHOLESTEROL_FIRST) as total_cholesterol_min, MAX(TOTAL_CHOLESTEROL_FIRST) as total_cholesterol_max
+        -- To add a column: MIN(COLUMN_NAME) as column_min, MAX(COLUMN_NAME) as column_max,
+        -- To remove a column: comment out or delete the corresponding line
     FROM population
 ),
 
 -- ============================================================================
--- Binned Datasets for Factuality Checks (20 bins as strings)
+-- [2] Binned Datasets for Factuality Checks (20 bins as strings)
+-- [UPDATE REQUIRED] Add/remove columns here
 -- Numerical columns → bin strings: "Missing", "1", "2", ..., "20"
 -- ============================================================================
 population_binned AS (
     SELECT
-        -- Categorical columns (as-is)
+        -- [2a] Categorical columns (add/remove as-is, no binning)
         GENDER,
         ETHNICITY_GROUPED,
         ADMISSION_TYPE,
         IS_READMISSION_30D,
-        -- Numerical columns (binned as strings): "Missing", "1"-"20"
+        -- [2b] Numerical columns (add/remove bin_numeric calls)
         bin_numeric(AGE, r.age_min, r.age_max, 20) as AGE_BIN,
         bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
@@ -88,17 +128,20 @@ population_binned AS (
         bin_numeric(CREATININE_FIRST, r.creatinine_min, r.creatinine_max, 20) as CREATININE_BIN,
         bin_numeric(POTASSIUM_FIRST, r.potassium_min, r.potassium_max, 20) as POTASSIUM_BIN,
         bin_numeric(TOTAL_CHOLESTEROL_FIRST, r.total_cholesterol_min, r.total_cholesterol_max, 20) as TOTAL_CHOLESTEROL_BIN
+        -- To add: bin_numeric(COLUMN_NAME, r.column_min, r.column_max, 20) as COLUMN_BIN,
     FROM population, num_ranges r
 ),
 
+-- [3] Training Binned - Same structure as population_binned
+-- [UPDATE REQUIRED] Keep in sync with population_binned
 training_binned AS (
     SELECT
-        -- Categorical columns (as-is)
+        -- [3a] Categorical columns (must match population_binned)
         GENDER,
         ETHNICITY_GROUPED,
         ADMISSION_TYPE,
         IS_READMISSION_30D,
-        -- Numerical columns (binned as strings): "Missing", "1"-"20"
+        -- [3b] Numerical columns (must match population_binned)
         bin_numeric(AGE, r.age_min, r.age_max, 20) as AGE_BIN,
         bin_numeric(HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
@@ -110,15 +153,17 @@ training_binned AS (
     FROM training, num_ranges r
 ),
 
+-- [4] Synthetic Binned - Similar to population_binned but with aliases
+-- [UPDATE REQUIRED] Keep in sync with population_binned
 synthetic_binned AS (
     SELECT
         s.*,
-        -- Categorical columns (as-is)
+        -- [4a] Categorical columns (create _CAT aliases for hash)
         s.GENDER as GENDER_CAT,
         s.ETHNICITY_GROUPED as ETHNICITY_CAT,
         s.ADMISSION_TYPE as ADMISSION_CAT,
         s.IS_READMISSION_30D as READMISSION_CAT,
-        -- Numerical columns (binned as strings): "Missing", "1"-"20"
+        -- [4b] Numerical columns (must match population_binned)
         bin_numeric(s.AGE, r.age_min, r.age_max, 20) as AGE_BIN,
         bin_numeric(s.HR_FIRST, r.hr_min, r.hr_max, 20) as HR_BIN,
         bin_numeric(s.SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
@@ -131,11 +176,13 @@ synthetic_binned AS (
 ),
 
 -- ============================================================================
--- Hash Datasets for Factuality Comparisons (using binned values)
+-- [5] Hash Datasets for Factuality Comparisons (using binned values)
+-- [UPDATE REQUIRED] Add/remove columns in hash() calls
 -- ============================================================================
 synthetic_hashed AS (
     SELECT
         *,
+        -- [5a] Hash: categorical _CAT aliases + _BIN columns (order matters!)
         hash(GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT,
              AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, CREATININE_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
     FROM synthetic_binned
@@ -143,6 +190,7 @@ synthetic_hashed AS (
 
 population_hashes AS (
     SELECT DISTINCT
+        -- [5b] Hash: categorical columns + _BIN columns (must match order of 5a)
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
              AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, CREATININE_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
     FROM population_binned
@@ -150,13 +198,15 @@ population_hashes AS (
 
 training_hashes AS (
     SELECT DISTINCT
+        -- [5c] Hash: categorical columns + _BIN columns (must match order of 5a)
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
              AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, CREATININE_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
     FROM training_binned
 ),
 
 -- ============================================================================
--- Dataset Statistics
+-- [5d] Dataset Statistics (also uses hash calculations)
+-- [UPDATE REQUIRED] Keep hash columns in sync with [5a-5c]
 -- ============================================================================
 population_stats AS (
     SELECT
@@ -254,10 +304,11 @@ new_hallucination_unique AS (
 ),
 
 -- ============================================================================
--- Plausibility Rules: Extract valid values/ranges from population
+-- [6] Plausibility Rules: Extract valid values/ranges from population
+-- [UPDATE REQUIRED] Add/remove valid categorical value CTEs
 -- ============================================================================
 
--- Valid categorical values from population
+-- [6a] Valid categorical values from population (one CTE per categorical column)
 valid_genders AS (
     SELECT DISTINCT GENDER as value FROM population
 ),
@@ -273,20 +324,25 @@ valid_admission_types AS (
 valid_readmission_flags AS (
     SELECT DISTINCT IS_READMISSION_30D as value FROM population
 ),
+-- To add a categorical column: Add a CTE like:
+-- valid_column_name AS (
+--     SELECT DISTINCT COLUMN_NAME as value FROM population
+-- ),
 
 -- ============================================================================
--- Plausibility Validation: Check each synthetic record against all rules
+-- [7] Plausibility Validation: Check each synthetic record against all rules
+-- [UPDATE REQUIRED] Add/remove validation checks for each column
 -- ============================================================================
 
 synthetic_with_validity AS (
     SELECT
         s.*,
-        -- Check categorical rules
+        -- [7a] Check categorical rules (one CASE per categorical column)
         CASE WHEN s.GENDER IN (SELECT value FROM valid_genders) THEN 1 ELSE 0 END as gender_valid,
         CASE WHEN s.ETHNICITY_GROUPED IN (SELECT value FROM valid_ethnicities) THEN 1 ELSE 0 END as ethnicity_valid,
         CASE WHEN s.ADMISSION_TYPE IN (SELECT value FROM valid_admission_types) THEN 1 ELSE 0 END as admission_type_valid,
         CASE WHEN s.IS_READMISSION_30D IN (SELECT value FROM valid_readmission_flags) THEN 1 ELSE 0 END as readmission_valid,
-        -- Check numerical range rules (NULL is allowed, so check value OR NULL)
+        -- [7b] Check numerical range rules (NULL is allowed, one CASE per numeric column)
         CASE WHEN s.AGE IS NULL OR (s.AGE >= (SELECT age_min FROM num_ranges) AND s.AGE <= (SELECT age_max FROM num_ranges)) THEN 1 ELSE 0 END as age_valid,
         CASE WHEN s.HR_FIRST IS NULL OR (s.HR_FIRST >= (SELECT hr_min FROM num_ranges) AND s.HR_FIRST <= (SELECT hr_max FROM num_ranges)) THEN 1 ELSE 0 END as hr_valid,
         CASE WHEN s.SYSBP_FIRST IS NULL OR (s.SYSBP_FIRST >= (SELECT sysbp_min FROM num_ranges) AND s.SYSBP_FIRST <= (SELECT sysbp_max FROM num_ranges)) THEN 1 ELSE 0 END as sysbp_valid,
@@ -295,7 +351,7 @@ synthetic_with_validity AS (
         CASE WHEN s.CREATININE_FIRST IS NULL OR (s.CREATININE_FIRST >= (SELECT creatinine_min FROM num_ranges) AND s.CREATININE_FIRST <= (SELECT creatinine_max FROM num_ranges)) THEN 1 ELSE 0 END as creatinine_valid,
         CASE WHEN s.POTASSIUM_FIRST IS NULL OR (s.POTASSIUM_FIRST >= (SELECT potassium_min FROM num_ranges) AND s.POTASSIUM_FIRST <= (SELECT potassium_max FROM num_ranges)) THEN 1 ELSE 0 END as potassium_valid,
         CASE WHEN s.TOTAL_CHOLESTEROL_FIRST IS NULL OR (s.TOTAL_CHOLESTEROL_FIRST >= (SELECT total_cholesterol_min FROM num_ranges) AND s.TOTAL_CHOLESTEROL_FIRST <= (SELECT total_cholesterol_max FROM num_ranges)) THEN 1 ELSE 0 END as total_cholesterol_valid,
-        -- Check if ALL rules pass
+        -- [7c] Check if ALL rules pass (must include all categorical + numeric checks)
         CASE WHEN
             s.GENDER IN (SELECT value FROM valid_genders)
             AND s.ETHNICITY_GROUPED IN (SELECT value FROM valid_ethnicities)
