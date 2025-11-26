@@ -62,7 +62,9 @@ num_ranges AS (
         MIN(SYSBP_FIRST) as sysbp_min, MAX(SYSBP_FIRST) as sysbp_max,
         MIN(DIASBP_FIRST) as diasbp_min, MAX(DIASBP_FIRST) as diasbp_max,
         MIN(RESPRATE_FIRST) as resprate_min, MAX(RESPRATE_FIRST) as resprate_max,
+        MIN(NTPROBNP_FIRST) as ntprobnp_min, MAX(NTPROBNP_FIRST) as ntprobnp_max,
         MIN(CREATININE_FIRST) as creatinine_min, MAX(CREATININE_FIRST) as creatinine_max,
+        MIN(BUN_FIRST) as bun_min, MAX(BUN_FIRST) as bun_max,
         MIN(POTASSIUM_FIRST) as potassium_min, MAX(POTASSIUM_FIRST) as potassium_max,
         MIN(TOTAL_CHOLESTEROL_FIRST) as total_cholesterol_min, MAX(TOTAL_CHOLESTEROL_FIRST) as total_cholesterol_max
     FROM population
@@ -85,7 +87,9 @@ population_binned AS (
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN,
         bin_numeric(RESPRATE_FIRST, r.resprate_min, r.resprate_max, 20) as RESPRATE_BIN,
+        bin_numeric(NTPROBNP_FIRST, r.ntprobnp_min, r.ntprobnp_max, 20) as NTPROBNP_BIN,
         bin_numeric(CREATININE_FIRST, r.creatinine_min, r.creatinine_max, 20) as CREATININE_BIN,
+        bin_numeric(BUN_FIRST, r.bun_min, r.bun_max, 20) as BUN_BIN,
         bin_numeric(POTASSIUM_FIRST, r.potassium_min, r.potassium_max, 20) as POTASSIUM_BIN,
         bin_numeric(TOTAL_CHOLESTEROL_FIRST, r.total_cholesterol_min, r.total_cholesterol_max, 20) as TOTAL_CHOLESTEROL_BIN
     FROM population, num_ranges r
@@ -104,7 +108,9 @@ training_binned AS (
         bin_numeric(SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN,
         bin_numeric(RESPRATE_FIRST, r.resprate_min, r.resprate_max, 20) as RESPRATE_BIN,
+        bin_numeric(NTPROBNP_FIRST, r.ntprobnp_min, r.ntprobnp_max, 20) as NTPROBNP_BIN,
         bin_numeric(CREATININE_FIRST, r.creatinine_min, r.creatinine_max, 20) as CREATININE_BIN,
+        bin_numeric(BUN_FIRST, r.bun_min, r.bun_max, 20) as BUN_BIN,
         bin_numeric(POTASSIUM_FIRST, r.potassium_min, r.potassium_max, 20) as POTASSIUM_BIN,
         bin_numeric(TOTAL_CHOLESTEROL_FIRST, r.total_cholesterol_min, r.total_cholesterol_max, 20) as TOTAL_CHOLESTEROL_BIN
     FROM training, num_ranges r
@@ -124,7 +130,9 @@ synthetic_binned AS (
         bin_numeric(s.SYSBP_FIRST, r.sysbp_min, r.sysbp_max, 20) as SYSBP_BIN,
         bin_numeric(s.DIASBP_FIRST, r.diasbp_min, r.diasbp_max, 20) as DIASBP_BIN,
         bin_numeric(s.RESPRATE_FIRST, r.resprate_min, r.resprate_max, 20) as RESPRATE_BIN,
+        bin_numeric(s.NTPROBNP_FIRST, r.ntprobnp_min, r.ntprobnp_max, 20) as NTPROBNP_BIN,
         bin_numeric(s.CREATININE_FIRST, r.creatinine_min, r.creatinine_max, 20) as CREATININE_BIN,
+        bin_numeric(s.BUN_FIRST, r.bun_min, r.bun_max, 20) as BUN_BIN,
         bin_numeric(s.POTASSIUM_FIRST, r.potassium_min, r.potassium_max, 20) as POTASSIUM_BIN,
         bin_numeric(s.TOTAL_CHOLESTEROL_FIRST, r.total_cholesterol_min, r.total_cholesterol_max, 20) as TOTAL_CHOLESTEROL_BIN
     FROM synthetic s, num_ranges r
@@ -137,21 +145,21 @@ synthetic_hashed AS (
     SELECT
         *,
         hash(GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, CREATININE_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
     FROM synthetic_binned
 ),
 
 population_hashes AS (
     SELECT DISTINCT
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, CREATININE_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
     FROM population_binned
 ),
 
 training_hashes AS (
     SELECT DISTINCT
         hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, CREATININE_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
     FROM training_binned
 ),
 
@@ -163,7 +171,7 @@ population_stats AS (
         COUNT(*) as total,
         COUNT(DISTINCT row_hash) as unique_count
     FROM (SELECT hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, CREATININE_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
           FROM population_binned)
 ),
 
@@ -172,7 +180,7 @@ training_stats AS (
         COUNT(*) as total,
         COUNT(DISTINCT row_hash) as unique_count
     FROM (SELECT hash(GENDER, ETHNICITY_GROUPED, ADMISSION_TYPE, IS_READMISSION_30D,
-             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, CREATININE_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
+             AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN) as row_hash
           FROM training_binned)
 ),
 
@@ -292,7 +300,9 @@ synthetic_with_validity AS (
         CASE WHEN s.SYSBP_FIRST IS NULL OR (s.SYSBP_FIRST >= (SELECT sysbp_min FROM num_ranges) AND s.SYSBP_FIRST <= (SELECT sysbp_max FROM num_ranges)) THEN 1 ELSE 0 END as sysbp_valid,
         CASE WHEN s.DIASBP_FIRST IS NULL OR (s.DIASBP_FIRST >= (SELECT diasbp_min FROM num_ranges) AND s.DIASBP_FIRST <= (SELECT diasbp_max FROM num_ranges)) THEN 1 ELSE 0 END as diasbp_valid,
         CASE WHEN s.RESPRATE_FIRST IS NULL OR (s.RESPRATE_FIRST >= (SELECT resprate_min FROM num_ranges) AND s.RESPRATE_FIRST <= (SELECT resprate_max FROM num_ranges)) THEN 1 ELSE 0 END as resprate_valid,
+        CASE WHEN s.NTPROBNP_FIRST IS NULL OR (s.NTPROBNP_FIRST >= (SELECT ntprobnp_min FROM num_ranges) AND s.NTPROBNP_FIRST <= (SELECT ntprobnp_max FROM num_ranges)) THEN 1 ELSE 0 END as ntprobnp_valid,
         CASE WHEN s.CREATININE_FIRST IS NULL OR (s.CREATININE_FIRST >= (SELECT creatinine_min FROM num_ranges) AND s.CREATININE_FIRST <= (SELECT creatinine_max FROM num_ranges)) THEN 1 ELSE 0 END as creatinine_valid,
+        CASE WHEN s.BUN_FIRST IS NULL OR (s.BUN_FIRST >= (SELECT bun_min FROM num_ranges) AND s.BUN_FIRST <= (SELECT bun_max FROM num_ranges)) THEN 1 ELSE 0 END as bun_valid,
         CASE WHEN s.POTASSIUM_FIRST IS NULL OR (s.POTASSIUM_FIRST >= (SELECT potassium_min FROM num_ranges) AND s.POTASSIUM_FIRST <= (SELECT potassium_max FROM num_ranges)) THEN 1 ELSE 0 END as potassium_valid,
         CASE WHEN s.TOTAL_CHOLESTEROL_FIRST IS NULL OR (s.TOTAL_CHOLESTEROL_FIRST >= (SELECT total_cholesterol_min FROM num_ranges) AND s.TOTAL_CHOLESTEROL_FIRST <= (SELECT total_cholesterol_max FROM num_ranges)) THEN 1 ELSE 0 END as total_cholesterol_valid,
         -- Check if ALL rules pass
@@ -306,7 +316,9 @@ synthetic_with_validity AS (
             AND (s.SYSBP_FIRST IS NULL OR (s.SYSBP_FIRST >= (SELECT sysbp_min FROM num_ranges) AND s.SYSBP_FIRST <= (SELECT sysbp_max FROM num_ranges)))
             AND (s.DIASBP_FIRST IS NULL OR (s.DIASBP_FIRST >= (SELECT diasbp_min FROM num_ranges) AND s.DIASBP_FIRST <= (SELECT diasbp_max FROM num_ranges)))
             AND (s.RESPRATE_FIRST IS NULL OR (s.RESPRATE_FIRST >= (SELECT resprate_min FROM num_ranges) AND s.RESPRATE_FIRST <= (SELECT resprate_max FROM num_ranges)))
+            AND (s.NTPROBNP_FIRST IS NULL OR (s.NTPROBNP_FIRST >= (SELECT ntprobnp_min FROM num_ranges) AND s.NTPROBNP_FIRST <= (SELECT ntprobnp_max FROM num_ranges)))
             AND (s.CREATININE_FIRST IS NULL OR (s.CREATININE_FIRST >= (SELECT creatinine_min FROM num_ranges) AND s.CREATININE_FIRST <= (SELECT creatinine_max FROM num_ranges)))
+            AND (s.BUN_FIRST IS NULL OR (s.BUN_FIRST >= (SELECT bun_min FROM num_ranges) AND s.BUN_FIRST <= (SELECT bun_max FROM num_ranges)))
             AND (s.POTASSIUM_FIRST IS NULL OR (s.POTASSIUM_FIRST >= (SELECT potassium_min FROM num_ranges) AND s.POTASSIUM_FIRST <= (SELECT potassium_max FROM num_ranges)))
             AND (s.TOTAL_CHOLESTEROL_FIRST IS NULL OR (s.TOTAL_CHOLESTEROL_FIRST >= (SELECT total_cholesterol_min FROM num_ranges) AND s.TOTAL_CHOLESTEROL_FIRST <= (SELECT total_cholesterol_max FROM num_ranges)))
         THEN 1 ELSE 0 END as passes_all_rules

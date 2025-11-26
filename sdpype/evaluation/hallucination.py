@@ -150,7 +150,7 @@ def execute_validation_queries(
         print(f"   ✓ Saved: {train_output}")
 
         # Export synthetic_binned (without original columns)
-        synth_query = binning_query_base + "\n\nSELECT GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT, HR_BIN, SYSBP_BIN, DIASBP_BIN FROM synthetic_binned"
+        synth_query = binning_query_base + "\n\nSELECT GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT, AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN FROM synthetic_binned"
         synth_binned = con.execute(synth_query).fetchdf()
         synth_output = output_dir / f"synthetic_data_{experiment_name}_for_hallucinations.csv"
         synth_binned.to_csv(synth_output, index=False)
