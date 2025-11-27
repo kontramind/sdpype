@@ -39,6 +39,29 @@ COLUMN_CONFIG = [
 
     # Categorical columns
     {
+        'name': 'GENDER',
+        'category': 'categorical',
+        'sdtype': 'categorical',
+        'transformer': {'type': 'UniformEncoder', 'params': {}},
+        'order': 2,
+    },
+    {
+        'name': 'ETHNICITY_GROUPED',
+        'category': 'categorical',
+        'sdtype': 'categorical',
+        'transformer': {'type': 'UniformEncoder', 'params': {}},
+        'order': 3,
+    },
+    {
+        'name': 'ADMISSION_TYPE',
+        'category': 'categorical',
+        'sdtype': 'categorical',
+        'transformer': {'type': 'UniformEncoder', 'params': {}},
+        'order': 4,
+    },
+
+    # Numeric columns (Int16 representation)
+    {
         'name': 'AGE',
         'category': 'numeric',
         'sdtype': 'numerical',
@@ -47,36 +70,13 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
         },
-        'order': 2,
-    },
-    {
-        'name': 'GENDER',
-        'category': 'categorical',
-        'sdtype': 'categorical',
-        'transformer': {'type': 'UniformEncoder', 'params': {}},
-        'order': 3,
-    },
-    {
-        'name': 'ETHNICITY_GROUPED',
-        'category': 'categorical',
-        'sdtype': 'categorical',
-        'transformer': {'type': 'UniformEncoder', 'params': {}},
-        'order': 4,
-    },
-    {
-        'name': 'ADMISSION_TYPE',
-        'category': 'categorical',
-        'sdtype': 'categorical',
-        'transformer': {'type': 'UniformEncoder', 'params': {}},
         'order': 5,
     },
-
-    # Numeric columns (Int16 representation)
     {
         'name': 'HR_FIRST',
         'category': 'numeric',
@@ -86,7 +86,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -102,7 +102,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -118,7 +118,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -134,7 +134,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -152,7 +152,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int32',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -170,7 +170,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -186,7 +186,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -202,7 +202,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -218,7 +218,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_replacement': 'mean',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
