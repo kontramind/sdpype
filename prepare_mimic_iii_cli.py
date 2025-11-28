@@ -613,12 +613,12 @@ def transform(
             console.print(f"[cyan]Transformed test dataset: {len(test_df):,} rows x {test_df.shape[1]} columns[/cyan]\n")
 
             # Save training data
-            train_output = csv_path.parent / f"{csv_path.stem}_training.csv"
+            train_output = csv_path.parent / f"{csv_path.stem}_transformed_sample{sample}_seed{seed}_training.csv"
             train_df.to_csv(train_output, index=False)
             console.print(f"[green]>[/green] Saved training data to: {train_output}")
 
             # Save test data
-            test_output = csv_path.parent / f"{csv_path.stem}_test.csv"
+            test_output = csv_path.parent / f"{csv_path.stem}_transformed_sample{sample}_seed{seed}_test.csv"
             test_df.to_csv(test_output, index=False)
             console.print(f"[green]>[/green] Saved test data to: {test_output}")
 
