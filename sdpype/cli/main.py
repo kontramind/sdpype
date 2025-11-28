@@ -18,8 +18,10 @@ app = typer.Typer(
 # Import and add model subcommands
 from sdpype.cli.model import model_app
 from sdpype.cli.metrics import metrics_app
+from sdpype.cli.downstream import downstream_app
 app.add_typer(model_app, name="model")
 app.add_typer(metrics_app, name="metrics")
+app.add_typer(downstream_app, name="downstream")
 
 
 @app.command()
