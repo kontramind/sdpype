@@ -444,6 +444,10 @@ def train_readmission_model(
     console.print(f"\n[bold green]✓ Optimization completed![/bold green]")
     console.print(f"  Best CV AUROC: {tuner.best_score:.4f}")
 
+    console.print(f"\n[bold cyan]Best Hyperparameters:[/bold cyan]")
+    for param, value in best_params.items():
+        console.print(f"  {param}: {value}")
+
     # Train final model with validation split
     console.print(f"\n[bold cyan]Training final model...[/bold cyan]")
 
