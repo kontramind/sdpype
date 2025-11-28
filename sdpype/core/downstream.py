@@ -61,6 +61,7 @@ class LGBMBayesianTuner:
         self.best_params = None
         self.best_score = None
         self.study = None
+        self.best_threshold = 0.5  # Default threshold
 
     def _objective(self, trial: optuna.Trial) -> float:
         """
@@ -90,6 +91,20 @@ class LGBMBayesianTuner:
             'random_state': self.random_state,
             'n_jobs': -1
         }
+
+        # Class imbalance handling
+        use_scale_pos_weight = trial.suggest_categorical('use_scale_pos_weight', [True, False])
+        if use_scale_pos_weight:
+            # Scale positive weight: ratio of negative to positive samples
+            neg_count = (self.y_train == 0).sum()
+            pos_count = (self.y_train == 1).sum()
+            scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
+            params['scale_pos_weight'] = scale_pos_weight
+
+        # Alternative: use is_unbalance flag
+        use_is_unbalance = trial.suggest_categorical('use_is_unbalance', [True, False])
+        if use_is_unbalance:
+            params['is_unbalance'] = True
 
         # Early stopping rounds
         early_stopping_rounds = trial.suggest_int('early_stopping_rounds', 7, 30)
@@ -190,6 +205,16 @@ class LGBMBayesianTuner:
             'verbosity': -1
         }
 
+        # Add class imbalance handling if selected
+        if self.best_params.get('use_scale_pos_weight', False):
+            neg_count = (self.y_train == 0).sum()
+            pos_count = (self.y_train == 1).sum()
+            scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
+            lgbm_params['scale_pos_weight'] = scale_pos_weight
+
+        if self.best_params.get('use_is_unbalance', False):
+            lgbm_params['is_unbalance'] = True
+
         preprocessing_flags = {
             'early_stopping_rounds': early_stopping_rounds
         }
@@ -248,6 +273,60 @@ class LGBMBayesianTuner:
         )
 
         return model
+
+    def find_optimal_threshold(
+        self,
+        model: lgb.Booster,
+        X_val: pd.DataFrame,
+        y_val: pd.Series,
+        metric: str = 'f1'
+    ) -> float:
+        """
+        Find optimal classification threshold on validation data
+
+        Parameters:
+        -----------
+        model : lgb.Booster
+            Trained model
+        X_val : pd.DataFrame
+            Validation features
+        y_val : pd.Series
+            Validation labels
+        metric : str
+            Metric to optimize ('f1', 'precision', 'recall')
+
+        Returns:
+        --------
+        float : Optimal threshold
+        """
+        from sklearn.metrics import f1_score, precision_score, recall_score
+
+        # Get predicted probabilities
+        y_pred_proba = model.predict(X_val, num_iteration=model.best_iteration)
+
+        # Try thresholds from 0.1 to 0.9
+        thresholds = np.arange(0.1, 0.9, 0.05)
+        best_score = 0
+        best_threshold = 0.5
+
+        for threshold in thresholds:
+            y_pred = (y_pred_proba >= threshold).astype(int)
+
+            if metric == 'f1':
+                score = f1_score(y_val, y_pred, zero_division=0)
+            elif metric == 'precision':
+                score = precision_score(y_val, y_pred, zero_division=0)
+            elif metric == 'recall':
+                score = recall_score(y_val, y_pred, zero_division=0)
+            else:
+                raise ValueError(f"Unknown metric: {metric}")
+
+            if score > best_score:
+                best_score = score
+                best_threshold = threshold
+
+        self.best_threshold = best_threshold
+        return best_threshold
 
 
 def evaluate_model(
@@ -549,9 +628,17 @@ def train_readmission_model(
     console.print(f"  Best iteration: {final_model.best_iteration}")
     console.print(f"  Total trees: {final_model.num_trees()}")
 
+    # Learn optimal threshold on validation data
+    console.print(f"\n[bold cyan]Finding optimal threshold...[/bold cyan]")
+    optimal_threshold = tuner.find_optimal_threshold(
+        final_model, X_val_final, y_val_final, metric='f1'
+    )
+    console.print(f"[bold green]✓ Optimal threshold found: {optimal_threshold:.3f}[/bold green]")
+    console.print(f"  (Optimized for F1 score on validation set)")
+
     # Evaluate on test set
     console.print(f"\n[bold cyan]Evaluating on test set...[/bold cyan]")
-    test_metrics = evaluate_model(final_model, X_test, y_test)
+    test_metrics = evaluate_model(final_model, X_test, y_test, threshold=optimal_threshold)
 
     console.print(f"\n[bold green]Test Set Performance:[/bold green]")
     console.print(f"  AUROC:     {test_metrics['auroc']:.4f}")
@@ -566,10 +653,14 @@ def train_readmission_model(
     # Package encoder (either RDT or simple label encoders)
     encoder_package = rdt_encoder if rdt_encoder is not None else label_encoders
 
+    # Add optimal threshold to best params for saving
+    best_params_with_threshold = best_params.copy()
+    best_params_with_threshold['optimal_threshold'] = float(optimal_threshold)
+
     model_path, metrics_path = save_model_and_metrics(
         model=final_model,
         metrics=test_metrics,
-        best_params=best_params,
+        best_params=best_params_with_threshold,
         output_dir=output_dir,
         label_encoders=encoder_package,
         prefix="lgbm_readmission"
