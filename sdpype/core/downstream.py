@@ -298,6 +298,7 @@ def save_model_and_metrics(
     metrics: Dict[str, Any],
     best_params: Dict[str, Any],
     output_dir: Path,
+    label_encoders: Optional[Dict[str, Any]] = None,
     prefix: str = "lgbm_readmission"
 ) -> Tuple[Path, Path]:
     """
@@ -313,6 +314,8 @@ def save_model_and_metrics(
         Best hyperparameters found during tuning
     output_dir : Path
         Output directory
+    label_encoders : dict, optional
+        Dictionary of label encoders for categorical features
     prefix : str
         Prefix for output files
 
@@ -326,10 +329,14 @@ def save_model_and_metrics(
     # Generate timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Save model
+    # Save model along with label encoders
     model_path = output_dir / f"{prefix}_{timestamp}.pkl"
+    model_package = {
+        'model': model,
+        'label_encoders': label_encoders
+    }
     with open(model_path, 'wb') as f:
-        pickle.dump(model, f)
+        pickle.dump(model_package, f)
 
     # Prepare metrics output
     metrics_output = {
@@ -339,6 +346,9 @@ def save_model_and_metrics(
         'model_info': {
             'num_trees': model.num_trees(),
             'best_iteration': model.best_iteration
+        },
+        'preprocessing': {
+            'encoded_features': list(label_encoders.keys()) if label_encoders else []
         }
     }
 
@@ -411,7 +421,27 @@ def train_readmission_model(
     X_test = test_df.drop(columns=[target_column])
     y_test = test_df[target_column]
 
+    # Encode categorical columns
+    from sklearn.preprocessing import LabelEncoder
+    categorical_cols = X_train.select_dtypes(include=['object']).columns.tolist()
+    label_encoders = {}
+
+    if categorical_cols:
+        console.print(f"\n[bold cyan]Encoding categorical features...[/bold cyan]")
+
+        for col in categorical_cols:
+            le = LabelEncoder()
+            # Fit on training data
+            X_train[col] = le.fit_transform(X_train[col].astype(str))
+            # Transform test data (handle unseen categories)
+            X_test[col] = X_test[col].astype(str).map(
+                lambda x: le.transform([x])[0] if x in le.classes_ else -1
+            )
+            label_encoders[col] = le
+            console.print(f"  ✓ {col}: {len(le.classes_)} categories")
+
     # Display data info
+    console.print(f"\n[bold cyan]Data Summary:[/bold cyan]")
     console.print(f"  Training samples: {len(X_train):,}")
     console.print(f"  Test samples: {len(X_test):,}")
     console.print(f"  Features: {X_train.shape[1]}")
@@ -487,6 +517,7 @@ def train_readmission_model(
         metrics=test_metrics,
         best_params=best_params,
         output_dir=output_dir,
+        label_encoders=label_encoders,
         prefix="lgbm_readmission"
     )
 
