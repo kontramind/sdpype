@@ -92,19 +92,21 @@ class LGBMBayesianTuner:
             'n_jobs': -1
         }
 
-        # Class imbalance handling
-        use_scale_pos_weight = trial.suggest_categorical('use_scale_pos_weight', [True, False])
-        if use_scale_pos_weight:
+        # Class imbalance handling (mutually exclusive options)
+        imbalance_method = trial.suggest_categorical(
+            'imbalance_method',
+            ['none', 'scale_pos_weight', 'is_unbalance']
+        )
+
+        if imbalance_method == 'scale_pos_weight':
             # Scale positive weight: ratio of negative to positive samples
             neg_count = (self.y_train == 0).sum()
             pos_count = (self.y_train == 1).sum()
             scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
             params['scale_pos_weight'] = scale_pos_weight
-
-        # Alternative: use is_unbalance flag
-        use_is_unbalance = trial.suggest_categorical('use_is_unbalance', [True, False])
-        if use_is_unbalance:
+        elif imbalance_method == 'is_unbalance':
             params['is_unbalance'] = True
+        # else: no imbalance handling
 
         # Early stopping rounds
         early_stopping_rounds = trial.suggest_int('early_stopping_rounds', 7, 30)
@@ -206,13 +208,13 @@ class LGBMBayesianTuner:
         }
 
         # Add class imbalance handling if selected
-        if self.best_params.get('use_scale_pos_weight', False):
+        imbalance_method = self.best_params.get('imbalance_method', 'none')
+        if imbalance_method == 'scale_pos_weight':
             neg_count = (self.y_train == 0).sum()
             pos_count = (self.y_train == 1).sum()
             scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
             lgbm_params['scale_pos_weight'] = scale_pos_weight
-
-        if self.best_params.get('use_is_unbalance', False):
+        elif imbalance_method == 'is_unbalance':
             lgbm_params['is_unbalance'] = True
 
         preprocessing_flags = {
