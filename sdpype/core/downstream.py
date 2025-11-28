@@ -439,6 +439,12 @@ def train_readmission_model(
         # Load encoding config
         enc_config = load_encoding_config(encoding_config)
 
+        # Filter out target column from encoding config (it's not a feature)
+        if target_column in enc_config['sdtypes']:
+            enc_config['sdtypes'] = {k: v for k, v in enc_config['sdtypes'].items() if k != target_column}
+        if target_column in enc_config['transformers']:
+            enc_config['transformers'] = {k: v for k, v in enc_config['transformers'].items() if k != target_column}
+
         # Create and fit encoder on training data
         rdt_encoder = RDTDatasetEncoder(enc_config)
         rdt_encoder.fit(X_train)
