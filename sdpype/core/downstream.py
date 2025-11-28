@@ -92,6 +92,16 @@ class LGBMBayesianTuner:
             'n_jobs': -1
         }
 
+        # Regularization parameters (helps with overfitting)
+        params['reg_alpha'] = trial.suggest_float('reg_alpha', 0.0, 10.0)  # L1 regularization
+        params['reg_lambda'] = trial.suggest_float('reg_lambda', 0.0, 10.0)  # L2 regularization
+
+        # Feature sampling (column subsampling - helps generalization)
+        params['feature_fraction'] = trial.suggest_float('feature_fraction', 0.5, 1.0)
+
+        # Leaf constraints (prevents too-specific leaves)
+        params['min_data_in_leaf'] = trial.suggest_int('min_data_in_leaf', 10, 50)
+
         # Class imbalance handling (mutually exclusive options)
         imbalance_method = trial.suggest_categorical(
             'imbalance_method',
@@ -204,7 +214,14 @@ class LGBMBayesianTuner:
             'n_estimators': 1000,
             'random_state': self.random_state,
             'n_jobs': -1,
-            'verbosity': -1
+            'verbosity': -1,
+            # Regularization
+            'reg_alpha': self.best_params.get('reg_alpha', 0.0),
+            'reg_lambda': self.best_params.get('reg_lambda', 0.0),
+            # Feature sampling
+            'feature_fraction': self.best_params.get('feature_fraction', 1.0),
+            # Leaf constraints
+            'min_data_in_leaf': self.best_params.get('min_data_in_leaf', 20),
         }
 
         # Add class imbalance handling if selected
