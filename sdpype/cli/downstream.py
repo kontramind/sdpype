@@ -42,6 +42,15 @@ def train_mimic_iii_readmission(
         "-c",
         help="Name of target column for readmission prediction",
     ),
+    encoding_config: Optional[Path] = typer.Option(
+        None,
+        "--encoding-config",
+        help="Path to RDT encoding config YAML (same format as SDG pipeline)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
     n_trials: int = typer.Option(
         100,
         "--n-trials",
@@ -119,6 +128,7 @@ def train_mimic_iii_readmission(
             random_state=random_state,
             output_dir=output_dir,
             val_split=val_split,
+            encoding_config=encoding_config,
         )
 
         console.print("\n" + "=" * 60)

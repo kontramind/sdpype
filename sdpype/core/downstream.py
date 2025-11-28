@@ -369,7 +369,8 @@ def train_readmission_model(
     timeout: Optional[int] = None,
     random_state: int = 42,
     output_dir: Path = Path("experiments/models/downstream"),
-    val_split: float = 0.2
+    val_split: float = 0.2,
+    encoding_config: Optional[Path] = None
 ) -> Dict[str, Any]:
     """
     Main function to train LGBM readmission prediction model
@@ -394,6 +395,9 @@ def train_readmission_model(
         Output directory for models and metrics
     val_split : float
         Fraction of training data to use for validation in final model
+    encoding_config : Path, optional
+        Path to RDT encoding config YAML (same format as SDG pipeline)
+        If provided, uses RDT encoding. If None, uses simple LabelEncoder.
 
     Returns:
     --------
@@ -422,23 +426,47 @@ def train_readmission_model(
     y_test = test_df[target_column]
 
     # Encode categorical columns
-    from sklearn.preprocessing import LabelEncoder
-    categorical_cols = X_train.select_dtypes(include=['object']).columns.tolist()
+    rdt_encoder = None
     label_encoders = {}
 
-    if categorical_cols:
-        console.print(f"\n[bold cyan]Encoding categorical features...[/bold cyan]")
+    if encoding_config is not None:
+        # Use RDT encoding (consistent with SDG pipeline)
+        console.print(f"\n[bold cyan]Using RDT encoding from config...[/bold cyan]")
+        console.print(f"  Config: {encoding_config}")
 
-        for col in categorical_cols:
-            le = LabelEncoder()
-            # Fit on training data
-            X_train[col] = le.fit_transform(X_train[col].astype(str))
-            # Transform test data (handle unseen categories)
-            X_test[col] = X_test[col].astype(str).map(
-                lambda x: le.transform([x])[0] if x in le.classes_ else -1
-            )
-            label_encoders[col] = le
-            console.print(f"  ✓ {col}: {len(le.classes_)} categories")
+        from sdpype.encoding import load_encoding_config, RDTDatasetEncoder
+
+        # Load encoding config
+        enc_config = load_encoding_config(encoding_config)
+
+        # Create and fit encoder on training data
+        rdt_encoder = RDTDatasetEncoder(enc_config)
+        rdt_encoder.fit(X_train)
+
+        # Transform both datasets
+        X_train = rdt_encoder.transform(X_train)
+        X_test = rdt_encoder.transform(X_test)
+
+        console.print(f"  ✓ Encoded {X_train.shape[1]} features using RDT transformers")
+
+    else:
+        # Fall back to simple LabelEncoder for categorical columns
+        from sklearn.preprocessing import LabelEncoder
+        categorical_cols = X_train.select_dtypes(include=['object']).columns.tolist()
+
+        if categorical_cols:
+            console.print(f"\n[bold cyan]Encoding categorical features (LabelEncoder)...[/bold cyan]")
+
+            for col in categorical_cols:
+                le = LabelEncoder()
+                # Fit on training data
+                X_train[col] = le.fit_transform(X_train[col].astype(str))
+                # Transform test data (handle unseen categories)
+                X_test[col] = X_test[col].astype(str).map(
+                    lambda x: le.transform([x])[0] if x in le.classes_ else -1
+                )
+                label_encoders[col] = le
+                console.print(f"  ✓ {col}: {len(le.classes_)} categories")
 
     # Display data info
     console.print(f"\n[bold cyan]Data Summary:[/bold cyan]")
@@ -512,12 +540,16 @@ def train_readmission_model(
 
     # Save model and metrics
     console.print(f"\n[bold cyan]Saving model and metrics...[/bold cyan]")
+
+    # Package encoder (either RDT or simple label encoders)
+    encoder_package = rdt_encoder if rdt_encoder is not None else label_encoders
+
     model_path, metrics_path = save_model_and_metrics(
         model=final_model,
         metrics=test_metrics,
         best_params=best_params,
         output_dir=output_dir,
-        label_encoders=label_encoders,
+        label_encoders=encoder_package,
         prefix="lgbm_readmission"
     )
 
