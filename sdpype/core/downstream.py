@@ -298,6 +298,7 @@ def save_model_and_metrics(
     metrics: Dict[str, Any],
     best_params: Dict[str, Any],
     output_dir: Path,
+    label_encoders: Optional[Dict[str, Any]] = None,
     prefix: str = "lgbm_readmission"
 ) -> Tuple[Path, Path]:
     """
@@ -313,6 +314,8 @@ def save_model_and_metrics(
         Best hyperparameters found during tuning
     output_dir : Path
         Output directory
+    label_encoders : dict, optional
+        Dictionary of label encoders for categorical features
     prefix : str
         Prefix for output files
 
@@ -326,10 +329,14 @@ def save_model_and_metrics(
     # Generate timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Save model
+    # Save model along with label encoders
     model_path = output_dir / f"{prefix}_{timestamp}.pkl"
+    model_package = {
+        'model': model,
+        'label_encoders': label_encoders
+    }
     with open(model_path, 'wb') as f:
-        pickle.dump(model, f)
+        pickle.dump(model_package, f)
 
     # Prepare metrics output
     metrics_output = {
@@ -339,6 +346,9 @@ def save_model_and_metrics(
         'model_info': {
             'num_trees': model.num_trees(),
             'best_iteration': model.best_iteration
+        },
+        'preprocessing': {
+            'encoded_features': list(label_encoders.keys()) if label_encoders else []
         }
     }
 
@@ -359,7 +369,8 @@ def train_readmission_model(
     timeout: Optional[int] = None,
     random_state: int = 42,
     output_dir: Path = Path("experiments/models/downstream"),
-    val_split: float = 0.2
+    val_split: float = 0.2,
+    encoding_config: Optional[Path] = None
 ) -> Dict[str, Any]:
     """
     Main function to train LGBM readmission prediction model
@@ -384,6 +395,9 @@ def train_readmission_model(
         Output directory for models and metrics
     val_split : float
         Fraction of training data to use for validation in final model
+    encoding_config : Path, optional
+        Path to RDT encoding config YAML (same format as SDG pipeline)
+        If provided, uses RDT encoding. If None, uses simple LabelEncoder.
 
     Returns:
     --------
@@ -411,7 +425,51 @@ def train_readmission_model(
     X_test = test_df.drop(columns=[target_column])
     y_test = test_df[target_column]
 
+    # Encode categorical columns
+    rdt_encoder = None
+    label_encoders = {}
+
+    if encoding_config is not None:
+        # Use RDT encoding (consistent with SDG pipeline)
+        console.print(f"\n[bold cyan]Using RDT encoding from config...[/bold cyan]")
+        console.print(f"  Config: {encoding_config}")
+
+        from sdpype.encoding import load_encoding_config, RDTDatasetEncoder
+
+        # Load encoding config
+        enc_config = load_encoding_config(encoding_config)
+
+        # Create and fit encoder on training data
+        rdt_encoder = RDTDatasetEncoder(enc_config)
+        rdt_encoder.fit(X_train)
+
+        # Transform both datasets
+        X_train = rdt_encoder.transform(X_train)
+        X_test = rdt_encoder.transform(X_test)
+
+        console.print(f"  ✓ Encoded {X_train.shape[1]} features using RDT transformers")
+
+    else:
+        # Fall back to simple LabelEncoder for categorical columns
+        from sklearn.preprocessing import LabelEncoder
+        categorical_cols = X_train.select_dtypes(include=['object']).columns.tolist()
+
+        if categorical_cols:
+            console.print(f"\n[bold cyan]Encoding categorical features (LabelEncoder)...[/bold cyan]")
+
+            for col in categorical_cols:
+                le = LabelEncoder()
+                # Fit on training data
+                X_train[col] = le.fit_transform(X_train[col].astype(str))
+                # Transform test data (handle unseen categories)
+                X_test[col] = X_test[col].astype(str).map(
+                    lambda x: le.transform([x])[0] if x in le.classes_ else -1
+                )
+                label_encoders[col] = le
+                console.print(f"  ✓ {col}: {len(le.classes_)} categories")
+
     # Display data info
+    console.print(f"\n[bold cyan]Data Summary:[/bold cyan]")
     console.print(f"  Training samples: {len(X_train):,}")
     console.print(f"  Test samples: {len(X_test):,}")
     console.print(f"  Features: {X_train.shape[1]}")
@@ -482,11 +540,16 @@ def train_readmission_model(
 
     # Save model and metrics
     console.print(f"\n[bold cyan]Saving model and metrics...[/bold cyan]")
+
+    # Package encoder (either RDT or simple label encoders)
+    encoder_package = rdt_encoder if rdt_encoder is not None else label_encoders
+
     model_path, metrics_path = save_model_and_metrics(
         model=final_model,
         metrics=test_metrics,
         best_params=best_params,
         output_dir=output_dir,
+        label_encoders=encoder_package,
         prefix="lgbm_readmission"
     )
 
