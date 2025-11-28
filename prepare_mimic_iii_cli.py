@@ -625,13 +625,13 @@ def transform(
             # Generate encoding config and metadata if requested
             if encoding_config:
                 config = generate_encoding_config()
-                encoding_path = csv_path.parent / f"{csv_path.stem}_encoding.yaml"
+                encoding_path = csv_path.parent / f"{csv_path.stem}_transformed_sample{sample}_seed{seed}_encoding.yaml"
                 with open(encoding_path, 'w') as f:
                     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
                 console.print(f"[green]>[/green] Saved encoding config to: {encoding_path}")
 
                 metadata = generate_metadata()
-                metadata_path = csv_path.parent / f"{csv_path.stem}_metadata.json"
+                metadata_path = csv_path.parent / f"{csv_path.stem}_transformed_sample{sample}_seed{seed}_metadata.json"
                 with open(metadata_path, 'w') as f:
                     json.dump(metadata, f, indent=2)
                 console.print(f"[green]>[/green] Saved metadata to: {metadata_path}")
