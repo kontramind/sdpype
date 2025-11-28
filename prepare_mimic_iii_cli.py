@@ -10,6 +10,7 @@ import json
 import typer
 import yaml
 import pandas as pd
+import numpy as np
 from pathlib import Path
 from rich.console import Console
 from typing import Optional
@@ -450,16 +451,118 @@ def generate_metadata() -> dict:
     }
 
 
+def apply_all_transformations(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply all transformations to the dataframe."""
+    # Drop ID columns first
+    df = drop_id_columns(df)
+
+    # Uppercase all column names
+    df = uppercase_columns(df)
+
+    # Categorical/string columns
+    df = transform_age(df)
+    df = transform_gender(df)
+    df = transform_ethnicity_grouped(df)
+    df = transform_admission_type(df)
+
+    # Boolean columns (as categorical strings: '0'/'1'/'Missing')
+    boolean_columns = get_columns_by_category('boolean')
+    for col in boolean_columns:
+        df = transform_boolean_column(df, col)
+
+    # Numeric columns (allow NULLs)
+    numeric_columns = get_columns_by_category('numeric')
+    for col in numeric_columns:
+        df = transform_numeric_column(df, col)
+
+    # Keep only selected columns (from COLUMN_CONFIG)
+    columns_to_keep = get_all_column_names()
+    df = df[[col for col in columns_to_keep if col in df.columns]]
+    console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
+
+    # Convert numeric columns to Int16 (nullable integer type)
+    int16_columns = get_columns_by_representation('Int16')
+    for col in int16_columns:
+        if col in df.columns:
+            df[col] = df[col].round().astype('Int16')
+            console.print(f"  [green]>[/green] Converted {col} to Int16")
+
+    # Convert numeric columns to Int32 (nullable integer type)
+    int32_columns = get_columns_by_representation('Int32')
+    for col in int32_columns:
+        if col in df.columns:
+            df[col] = df[col].round().astype('Int32')
+            console.print(f"  [green]>[/green] Converted {col} to Int32")
+
+    # Round float columns to 2 decimal places
+    float_columns = get_columns_by_representation('Float')
+    for col in float_columns:
+        if col in df.columns:
+            df[col] = df[col].round(2)
+            console.print(f"  [green]>[/green] Rounded {col} to 2 decimal places")
+
+    return df
+
+
+def split_by_icustay_id(df: pd.DataFrame, train_size: int, test_size: int, seed: int) -> tuple:
+    """
+    Split dataset into train and test sets at ICUSTAY_ID level to avoid leakage.
+
+    Groups by ICUSTAY_ID, shuffles groups randomly, and splits them 50/50.
+    Then samples rows from each group to reach target sizes.
+
+    Args:
+        df: DataFrame with ICUSTAY_ID column
+        train_size: Target number of rows for training set
+        test_size: Target number of rows for test set
+        seed: Random seed for reproducibility
+
+    Returns:
+        Tuple of (train_df, test_df)
+    """
+    if 'ICUSTAY_ID' not in df.columns:
+        console.print("[red]Error: ICUSTAY_ID column not found for splitting[/red]")
+        raise typer.Exit(1)
+
+    # Get unique ICUSTAY_IDs and shuffle them
+    unique_ids = df['ICUSTAY_ID'].unique()
+    rng = np.random.RandomState(seed)
+    shuffled_ids = rng.permutation(unique_ids)
+
+    # Split IDs 50/50
+    split_point = len(shuffled_ids) // 2
+    train_ids = shuffled_ids[:split_point]
+    test_ids = shuffled_ids[split_point:]
+
+    # Get rows for each set
+    train_df = df[df['ICUSTAY_ID'].isin(train_ids)].copy()
+    test_df = df[df['ICUSTAY_ID'].isin(test_ids)].copy()
+
+    # Sample to target sizes if needed
+    if len(train_df) > train_size:
+        train_df = train_df.sample(n=train_size, random_state=seed)
+    if len(test_df) > test_size:
+        test_df = test_df.sample(n=test_size, random_state=seed)
+
+    console.print(f"  [green]>[/green] Split by ICUSTAY_ID (50/50 groups)")
+    console.print(f"      Training: {len(train_df):,} rows from {len(train_ids):,} unique ICU stays")
+    console.print(f"      Test: {len(test_df):,} rows from {len(test_ids):,} unique ICU stays")
+
+    return train_df, test_df
+
+
 @app.command()
 def transform(
     csv_path: Path = typer.Argument(..., help="Path to CSV file"),
-    output: Optional[Path] = typer.Argument(None, help="Output file path (default: <input>_transformed.csv)"),
-    sample: Optional[int] = typer.Option(None, "--sample", "-s", help="Randomly sample N records after transformation (requires --seed)"),
-    seed: Optional[int] = typer.Option(None, "--seed", help="Random seed for sampling (required with --sample)"),
+    sample: Optional[int] = typer.Option(None, "--sample", "-s", help="Total sample size to split into train/test (e.g., 10000 creates 5k train + 5k test, requires --seed)"),
+    seed: Optional[int] = typer.Option(None, "--seed", help="Random seed for train/test split (required with --sample)"),
     encoding_config: bool = typer.Option(False, "--encoding-config", "-e", help="Generate RDT encoding config YAML file"),
 ):
     """
     Apply transformations to MIMIC-III ICU stay dataset.
+
+    When --sample is used, creates train/test split at ICUSTAY_ID level to avoid leakage.
+    Output files are named: <input>_training.csv and <input>_test.csv
 
     Transformations are defined in COLUMN_CONFIG at the top of this file.
     To exclude a column from export, simply comment it out in COLUMN_CONFIG.
@@ -482,14 +585,6 @@ def transform(
         console.print(f"[red]Error: --sample and --seed must be used together[/red]")
         raise typer.Exit(1)
 
-    # Output is required when sampling
-    if sample is not None and output is None:
-        console.print(f"[red]Error: output path is required when using --sample[/red]")
-        raise typer.Exit(1)
-
-    if output is None:
-        output = csv_path.parent / f"{csv_path.stem}_transformed.csv"
-
     try:
         console.print(f"[blue]Loading CSV file: {csv_path}[/blue]")
         df = pd.read_csv(csv_path, low_memory=False)
@@ -498,90 +593,73 @@ def transform(
         original_rows, original_cols = df.shape
         console.print(f"[cyan]Original dataset: {original_rows:,} rows x {original_cols} columns[/cyan]\n")
 
-        console.print("[bold cyan]Applying transformations:[/bold cyan]")
-
-        # Drop ID columns first
-        df = drop_id_columns(df)
-
-        # Uppercase all column names
-        df = uppercase_columns(df)
-
-        # Categorical/string columns
-        df = transform_age(df)
-        df = transform_gender(df)
-        df = transform_ethnicity_grouped(df)
-        df = transform_admission_type(df)
-
-        # Boolean columns (as categorical strings: '0'/'1'/'Missing')
-        boolean_columns = get_columns_by_category('boolean')
-        for col in boolean_columns:
-            df = transform_boolean_column(df, col)
-
-        # Numeric columns (allow NULLs)
-        numeric_columns = get_columns_by_category('numeric')
-        for col in numeric_columns:
-            df = transform_numeric_column(df, col)
-
-        # Datetime columns
-        # df = transform_datetime_column(df, 'DOD', allow_nulls=True)
-        # df = transform_datetime_column(df, 'ICU_INTIME', allow_nulls=False)
-        # df = transform_datetime_column(df, 'ICU_OUTTIME', allow_nulls=True)
-
-        # Keep only selected columns (from COLUMN_CONFIG)
-        columns_to_keep = get_all_column_names()
-        df = df[[col for col in columns_to_keep if col in df.columns]]
-        console.print(f"  [green]>[/green] Kept {len(df.columns)} columns")
-
-        # Convert numeric columns to Int16 (nullable integer type)
-        int16_columns = get_columns_by_representation('Int16')
-        for col in int16_columns:
-            if col in df.columns:
-                df[col] = df[col].round().astype('Int16')
-                console.print(f"  [green]>[/green] Converted {col} to Int16")
-
-        # Convert numeric columns to Int32 (nullable integer type)
-        int32_columns = get_columns_by_representation('Int32')
-        for col in int32_columns:
-            if col in df.columns:
-                df[col] = df[col].round().astype('Int32')
-                console.print(f"  [green]>[/green] Converted {col} to Int32")
-
-        # Round float columns to 2 decimal places
-        float_columns = get_columns_by_representation('Float')
-        for col in float_columns:
-            if col in df.columns:
-                df[col] = df[col].round(2)
-                console.print(f"  [green]>[/green] Rounded {col} to 2 decimal places")
-
-        console.print()
-        final_rows, final_cols = df.shape
-        console.print(f"[cyan]Transformed dataset: {final_rows:,} rows x {final_cols} columns[/cyan]")
-
-        # Apply sampling if requested
+        # Handle train/test split if sampling is requested
         if sample is not None:
-            if sample > len(df):
-                console.print(f"[yellow]Warning: sample size ({sample}) > dataset size ({len(df)}), using full dataset[/yellow]")
-                sample = len(df)
-            df = df.sample(n=sample, random_state=seed)
-            console.print(f"[cyan]Sampled dataset: {len(df):,} rows (seed={seed})[/cyan]")
+            console.print("[bold cyan]Splitting into train/test sets:[/bold cyan]")
+            target_size_per_set = sample // 2
+            train_df, test_df = split_by_icustay_id(df, target_size_per_set, target_size_per_set, seed)
+            console.print()
 
-        # Save transformed data
-        df.to_csv(output, index=False)
-        console.print(f"[green]>[/green] Saved transformed data to: {output}")
+            # Apply transformations to training set
+            console.print("[bold cyan]Applying transformations to training set:[/bold cyan]")
+            train_df = apply_all_transformations(train_df)
+            console.print()
+            console.print(f"[cyan]Transformed training dataset: {len(train_df):,} rows x {train_df.shape[1]} columns[/cyan]\n")
 
-        # Generate encoding config and metadata if requested
-        if encoding_config:
-            config = generate_encoding_config()
-            encoding_path = output.parent / f"{output.stem}_encoding.yaml"
-            with open(encoding_path, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-            console.print(f"[green]>[/green] Saved encoding config to: {encoding_path}")
+            # Apply transformations to test set
+            console.print("[bold cyan]Applying transformations to test set:[/bold cyan]")
+            test_df = apply_all_transformations(test_df)
+            console.print()
+            console.print(f"[cyan]Transformed test dataset: {len(test_df):,} rows x {test_df.shape[1]} columns[/cyan]\n")
 
-            metadata = generate_metadata()
-            metadata_path = output.parent / f"{output.stem}_metadata.json"
-            with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
-            console.print(f"[green]>[/green] Saved metadata to: {metadata_path}")
+            # Save training data
+            train_output = csv_path.parent / f"{csv_path.stem}_transformed_sample{sample}_seed{seed}_training.csv"
+            train_df.to_csv(train_output, index=False)
+            console.print(f"[green]>[/green] Saved training data to: {train_output}")
+
+            # Save test data
+            test_output = csv_path.parent / f"{csv_path.stem}_transformed_sample{sample}_seed{seed}_test.csv"
+            test_df.to_csv(test_output, index=False)
+            console.print(f"[green]>[/green] Saved test data to: {test_output}")
+
+            # Generate encoding config and metadata if requested
+            if encoding_config:
+                config = generate_encoding_config()
+                encoding_path = csv_path.parent / f"{csv_path.stem}_encoding.yaml"
+                with open(encoding_path, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                console.print(f"[green]>[/green] Saved encoding config to: {encoding_path}")
+
+                metadata = generate_metadata()
+                metadata_path = csv_path.parent / f"{csv_path.stem}_metadata.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                console.print(f"[green]>[/green] Saved metadata to: {metadata_path}")
+
+        else:
+            # Standard transformation without splitting
+            console.print("[bold cyan]Applying transformations:[/bold cyan]")
+            df = apply_all_transformations(df)
+            console.print()
+            console.print(f"[cyan]Transformed dataset: {len(df):,} rows x {df.shape[1]} columns[/cyan]\n")
+
+            output = csv_path.parent / f"{csv_path.stem}_transformed.csv"
+            df.to_csv(output, index=False)
+            console.print(f"[green]>[/green] Saved transformed data to: {output}")
+
+            # Generate encoding config and metadata if requested
+            if encoding_config:
+                config = generate_encoding_config()
+                encoding_path = csv_path.parent / f"{csv_path.stem}_encoding.yaml"
+                with open(encoding_path, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                console.print(f"[green]>[/green] Saved encoding config to: {encoding_path}")
+
+                metadata = generate_metadata()
+                metadata_path = csv_path.parent / f"{csv_path.stem}_metadata.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                console.print(f"[green]>[/green] Saved metadata to: {metadata_path}")
 
         console.print()
 
