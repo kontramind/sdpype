@@ -339,6 +339,21 @@ def save_model_and_metrics(
         pickle.dump(model_package, f)
 
     # Prepare metrics output
+    # Determine encoding type and features
+    if label_encoders is not None:
+        # Check if it's RDTDatasetEncoder or dict of LabelEncoders
+        if hasattr(label_encoders, 'sdtypes'):
+            # RDT encoder
+            encoding_type = 'RDT'
+            encoded_features = list(label_encoders.sdtypes.keys())
+        else:
+            # Simple LabelEncoder dict
+            encoding_type = 'LabelEncoder'
+            encoded_features = list(label_encoders.keys()) if isinstance(label_encoders, dict) else []
+    else:
+        encoding_type = 'None'
+        encoded_features = []
+
     metrics_output = {
         'timestamp': timestamp,
         'test_metrics': metrics,
@@ -348,7 +363,8 @@ def save_model_and_metrics(
             'best_iteration': model.best_iteration
         },
         'preprocessing': {
-            'encoded_features': list(label_encoders.keys()) if label_encoders else []
+            'encoding_type': encoding_type,
+            'encoded_features': encoded_features
         }
     }
 
