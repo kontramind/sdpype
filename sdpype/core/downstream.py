@@ -353,7 +353,7 @@ def evaluate_model(
     X_test: pd.DataFrame,
     y_test: pd.Series,
     threshold: float = 0.5
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     """
     Evaluate model on test set with multiple metrics
 
@@ -370,13 +370,19 @@ def evaluate_model(
 
     Returns:
     --------
-    dict : Dictionary of evaluation metrics
+    dict : Dictionary of evaluation metrics including confusion matrix
     """
+    from sklearn.metrics import confusion_matrix
+
     # Predict probabilities
     y_pred_proba = model.predict(X_test, num_iteration=model.best_iteration)
 
     # Binary predictions
     y_pred = (y_pred_proba >= threshold).astype(int)
+
+    # Calculate confusion matrix
+    cm = confusion_matrix(y_test, y_pred)
+    tn, fp, fn, tp = cm.ravel()
 
     # Calculate metrics
     metrics = {
@@ -385,10 +391,221 @@ def evaluate_model(
         'precision': float(precision_score(y_test, y_pred, zero_division=0)),
         'recall': float(recall_score(y_test, y_pred, zero_division=0)),
         'f1_score': float(f1_score(y_test, y_pred, zero_division=0)),
-        'threshold': threshold
+        'threshold': threshold,
+        'confusion_matrix': {
+            'tn': int(tn),
+            'fp': int(fp),
+            'fn': int(fn),
+            'tp': int(tp)
+        }
     }
 
     return metrics
+
+
+def display_confusion_matrix(
+    cm_dict: Dict[str, int],
+    console
+) -> None:
+    """
+    Display confusion matrix using Rich Table
+
+    Parameters:
+    -----------
+    cm_dict : dict
+        Dictionary with keys: tn, fp, fn, tp
+    console : Console
+        Rich console object
+    """
+    from rich.table import Table
+
+    tn, fp, fn, tp = cm_dict['tn'], cm_dict['fp'], cm_dict['fn'], cm_dict['tp']
+    total = tn + fp + fn + tp
+
+    table = Table(title="Confusion Matrix", show_header=True, header_style="bold cyan")
+    table.add_column("", style="cyan", width=12)
+    table.add_column("Predicted: No", justify="right", width=18)
+    table.add_column("Predicted: Yes", justify="right", width=18)
+    table.add_column("Total", justify="right", width=12, style="bold")
+
+    table.add_row(
+        "Actual: No",
+        f"{tn:,} (TN)",
+        f"[red]{fp:,} (FP)[/red]",
+        f"{tn+fp:,}"
+    )
+    table.add_row(
+        "Actual: Yes",
+        f"[red]{fn:,} (FN)[/red]",
+        f"[green]{tp:,} (TP)[/green]",
+        f"{fn+tp:,}"
+    )
+    table.add_row(
+        "Total",
+        f"{tn+fn:,}",
+        f"{fp+tp:,}",
+        f"{total:,}",
+        style="bold"
+    )
+
+    console.print("\n")
+    console.print(table)
+
+    # Add legend
+    console.print("\nWhere:")
+    console.print("  [green]TP (True Positives)[/green]:  Correctly identified readmissions")
+    console.print("  [red]FP (False Positives)[/red]: False alarms (predicted readmission, didn't happen)")
+    console.print("  TN (True Negatives):   Correctly identified non-readmissions")
+    console.print("  [red]FN (False Negatives)[/red]: Missed readmissions (predicted no readmission, but happened)")
+
+
+def display_clinical_performance(
+    cm_dict: Dict[str, int],
+    console
+) -> None:
+    """
+    Display clinical performance summary using Rich Panel
+
+    Parameters:
+    -----------
+    cm_dict : dict
+        Dictionary with keys: tn, fp, fn, tp
+    console : Console
+        Rich console object
+    """
+    from rich.panel import Panel
+
+    tn, fp, fn, tp = cm_dict['tn'], cm_dict['fp'], cm_dict['fn'], cm_dict['tp']
+    total = tn + fp + fn + tp
+    actual_positives = tp + fn
+    flagged = tp + fp
+
+    # Calculate rates
+    catch_rate = 100 * tp / actual_positives if actual_positives > 0 else 0
+    miss_rate = 100 * fn / actual_positives if actual_positives > 0 else 0
+    hit_rate = 100 * tp / flagged if flagged > 0 else 0
+    false_alarm_rate = 100 * fp / flagged if flagged > 0 else 0
+    nns = flagged / tp if tp > 0 else float('inf')
+
+    # Calculate additional clinical metrics
+    specificity = 100 * tn / (tn + fp) if (tn + fp) > 0 else 0
+    npv = 100 * tn / (tn + fn) if (tn + fn) > 0 else 0
+    ppv = hit_rate  # Same as precision
+
+    content = f"""[bold]Patient Cohort:[/bold]
+  Total Patients:              {total:,}
+  Actual Readmissions:         {actual_positives:,} ({100*actual_positives/total:.1f}%)
+  Non-Readmissions:            {tn+fp:,} ({100*(tn+fp)/total:.1f}%)
+
+[bold green]Detection Performance:[/bold green]
+  Readmissions CAUGHT:         {tp:,} ({catch_rate:.1f}%) ✓
+  Readmissions MISSED:         {fn:,} ({miss_rate:.1f}%) ✗
+
+[bold yellow]Intervention Load:[/bold yellow]
+  Patients Flagged:            {flagged:,} ({100*flagged/total:.1f}%)
+    └─ True Positives:         {tp:,} ({hit_rate:.1f}% hit rate)
+    └─ False Alarms:           {fp:,} ({false_alarm_rate:.1f}%)
+
+[bold]Clinical Efficiency:[/bold]
+  Number Needed to Screen:     {nns:.1f}
+  (Intervene on {nns:.0f} patients to catch 1 readmission)
+
+[bold]Additional Metrics:[/bold]
+  Sensitivity (Recall):        {catch_rate:.1f}%
+  Specificity:                 {specificity:.1f}%
+  PPV (Precision):             {ppv:.1f}%
+  NPV:                         {npv:.1f}%
+"""
+
+    panel = Panel(content, title="Clinical Impact Summary", border_style="blue", expand=False)
+    console.print("\n")
+    console.print(panel)
+
+
+def display_transfer_gap_comparison(
+    cv_auroc: float,
+    test_auroc: float,
+    test_recall: float,
+    console
+) -> None:
+    """
+    Display performance comparison showing transfer gap
+
+    Parameters:
+    -----------
+    cv_auroc : float
+        Cross-validation AUROC (on synthetic/training data)
+    test_auroc : float
+        Test AUROC (on real data)
+    test_recall : float
+        Test recall percentage
+    console : Console
+        Rich console object
+    """
+    from rich.table import Table
+    from rich.panel import Panel
+
+    transfer_gap = cv_auroc - test_auroc
+
+    # Determine gap severity
+    if transfer_gap < 0.05:
+        gap_status = "[green]Excellent[/green]"
+        gap_icon = "✓"
+    elif transfer_gap < 0.15:
+        gap_status = "[yellow]Acceptable[/yellow]"
+        gap_icon = "⚠️"
+    elif transfer_gap < 0.25:
+        gap_status = "[orange1]Concerning[/orange1]"
+        gap_icon = "⚠️"
+    else:
+        gap_status = "[red]Poor Transfer[/red]"
+        gap_icon = "❌"
+
+    table = Table(show_header=True, header_style="bold cyan", title="Performance Comparison: Synthetic vs Real Data")
+    table.add_column("Metric", style="cyan", width=20)
+    table.add_column("Training/CV", justify="right", width=15)
+    table.add_column("Test (Real)", justify="right", width=15)
+    table.add_column("Difference", justify="right", width=15)
+
+    # AUROC row
+    diff_auroc = test_auroc - cv_auroc
+    table.add_row(
+        "AUROC",
+        f"{cv_auroc:.4f}",
+        f"{test_auroc:.4f}",
+        f"[red]{diff_auroc:+.4f}[/red]" if diff_auroc < 0 else f"[green]{diff_auroc:+.4f}[/green]"
+    )
+
+    # Recall row (only test available)
+    table.add_row(
+        "Recall",
+        "N/A",
+        f"{test_recall:.1f}%",
+        "-"
+    )
+
+    console.print("\n")
+    console.print(table)
+
+    # Transfer gap panel
+    gap_content = f"""[bold]Transfer Gap:[/bold] {transfer_gap:.4f} (CV AUROC - Test AUROC)
+
+[bold]Status:[/bold] {gap_status} {gap_icon}
+
+[bold]Interpretation:[/bold]
+"""
+
+    if transfer_gap < 0.05:
+        gap_content += "  Model patterns transfer excellently to real data.\n  Predictions are reliable and deployment-ready."
+    elif transfer_gap < 0.15:
+        gap_content += "  Model shows acceptable transfer to real data.\n  Some synthetic-specific patterns, but generally reliable."
+    elif transfer_gap < 0.25:
+        gap_content += "  Concerning transfer gap. Model may have learned\n  synthetic-specific patterns. Use with caution."
+    else:
+        gap_content += "  [bold red]Poor transfer![/bold red] Model learned unrealistic patterns\n  from synthetic data. Not recommended for deployment.\n  High CV performance is misleading."
+
+    gap_panel = Panel(gap_content, title="Transfer Gap Analysis", border_style="yellow", expand=False)
+    console.print(gap_panel)
 
 
 def save_model_and_metrics(
@@ -665,6 +882,20 @@ def train_readmission_model(
     console.print(f"  Precision: {test_metrics['precision']:.4f}")
     console.print(f"  Recall:    {test_metrics['recall']:.4f}")
     console.print(f"  F1 Score:  {test_metrics['f1_score']:.4f}")
+
+    # Display confusion matrix
+    display_confusion_matrix(test_metrics['confusion_matrix'], console)
+
+    # Display clinical performance summary
+    display_clinical_performance(test_metrics['confusion_matrix'], console)
+
+    # Display transfer gap comparison (shows how well synthetic patterns transfer to real data)
+    display_transfer_gap_comparison(
+        cv_auroc=tuner.best_score,
+        test_auroc=test_metrics['auroc'],
+        test_recall=test_metrics['recall'] * 100,
+        console=console
+    )
 
     # Save model and metrics
     console.print(f"\n[bold cyan]Saving model and metrics...[/bold cyan]")
