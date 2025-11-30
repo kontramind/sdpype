@@ -160,6 +160,7 @@ class LGBMDataValuator:
     def compute_shapley_values(
         self,
         num_samples: int = 100,
+        max_coalition_size: Optional[int] = None,
         show_progress: bool = True
     ) -> np.ndarray:
         """
@@ -170,6 +171,10 @@ class LGBMDataValuator:
         num_samples : int
             Number of random permutations to sample (default: 100)
             Higher = more accurate but slower
+        max_coalition_size : int, optional
+            Maximum coalition size per permutation (early truncation)
+            If None, uses all training samples
+            Lower = faster but less accurate
         show_progress : bool
             Show progress during computation
 
@@ -183,6 +188,12 @@ class LGBMDataValuator:
         console = Console()
         n_train = len(self.X_train)
 
+        # Determine coalition size
+        if max_coalition_size is None:
+            coalition_size = n_train
+        else:
+            coalition_size = min(max_coalition_size, n_train)
+
         # Initialize Shapley values
         shapley_values = np.zeros(n_train)
 
@@ -191,6 +202,9 @@ class LGBMDataValuator:
             console.print(f"  Training samples: {n_train:,}")
             console.print(f"  Test samples: {len(self.X_test):,}")
             console.print(f"  Monte Carlo samples: {num_samples}")
+            console.print(f"  Coalition size: {coalition_size:,}")
+            if coalition_size < n_train:
+                console.print(f"  [yellow]Early truncation enabled ({coalition_size}/{n_train} = {100*coalition_size/n_train:.1f}%)[/yellow]")
             console.print(f"  Metric: AUROC on real test data\n")
 
         # Truncated Monte Carlo Shapley (TMCS)
@@ -211,7 +225,10 @@ class LGBMDataValuator:
                     # Track marginal contributions
                     prev_score = 0.0
 
-                    for j, idx in enumerate(perm):
+                    # Truncate to max_coalition_size
+                    for j in range(coalition_size):
+                        idx = perm[j]
+
                         # Indices before current point (including current)
                         subset_indices = perm[:j+1]
 
@@ -233,7 +250,10 @@ class LGBMDataValuator:
                 # Track marginal contributions
                 prev_score = 0.0
 
-                for j, idx in enumerate(perm):
+                # Truncate to max_coalition_size
+                for j in range(coalition_size):
+                    idx = perm[j]
+
                     # Indices before current point (including current)
                     subset_indices = perm[:j+1]
 
@@ -319,6 +339,7 @@ def run_data_valuation(
     test_file: Path,
     target_column: str = "IS_READMISSION_30D",
     num_samples: int = 100,
+    max_coalition_size: Optional[int] = None,
     random_state: int = 42,
     output_dir: Path = Path("experiments/data_valuation"),
     lgbm_params: Optional[Dict[str, Any]] = None,
@@ -338,6 +359,9 @@ def run_data_valuation(
         Name of the target column
     num_samples : int
         Number of Monte Carlo samples for Shapley approximation
+    max_coalition_size : int, optional
+        Maximum coalition size per permutation (early truncation)
+        If None, uses all training samples
     random_state : int
         Random seed
     output_dir : Path
@@ -435,6 +459,7 @@ def run_data_valuation(
     # Compute Shapley values
     shapley_values = valuator.compute_shapley_values(
         num_samples=num_samples,
+        max_coalition_size=max_coalition_size,
         show_progress=True
     )
 

@@ -183,6 +183,13 @@ def data_valuation_mimic_iii(
         help="Number of Monte Carlo samples for Shapley approximation (higher=more accurate but slower)",
         min=10,
     ),
+    max_coalition_size: Optional[int] = typer.Option(
+        None,
+        "--max-coalition-size",
+        "-m",
+        help="Maximum coalition size per permutation (early truncation). None = use all training samples. Lower = faster but less accurate.",
+        min=10,
+    ),
     random_state: int = typer.Option(
         42,
         "--seed",
@@ -230,18 +237,19 @@ def data_valuation_mimic_iii(
             --test-data experiments/data/real/test.csv \\
             --num-samples 100
 
+        # Fast computation with early truncation (recommended for large datasets)
+        sdpype downstream mimic-iii-valuation \\
+            --train-data experiments/data/synthetic/train.csv \\
+            --test-data experiments/data/real/test.csv \\
+            --num-samples 50 \\
+            --max-coalition-size 500
+
         # Using optimized hyperparameters from training (auto-loads encoding config)
         sdpype downstream mimic-iii-valuation \\
             --train-data experiments/data/synthetic/train.csv \\
             --test-data experiments/data/real/test.csv \\
-            --lgbm-params-json experiments/models/downstream/lgbm_readmission_*.json
-
-        # Explicit encoding config (overrides auto-loaded one)
-        sdpype downstream mimic-iii-valuation \\
-            --train-data experiments/data/synthetic/train.csv \\
-            --test-data experiments/data/real/test.csv \\
             --lgbm-params-json experiments/models/downstream/lgbm_readmission_*.json \\
-            --encoding-config path/to/custom_encoding.yaml
+            --max-coalition-size 500
 
     The method uses:
     - Data Shapley with Truncated Monte Carlo Sampling (TMCS)
@@ -296,6 +304,7 @@ def data_valuation_mimic_iii(
             test_file=test_data,
             target_column=target_column,
             num_samples=num_samples,
+            max_coalition_size=max_coalition_size,
             random_state=random_state,
             output_dir=output_dir,
             lgbm_params=lgbm_params,
