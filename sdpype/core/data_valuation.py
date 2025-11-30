@@ -1,30 +1,25 @@
 """
 Data Valuation Module
-Uses Data Shapley to identify hallucinations in synthetic training data
+Uses Data Shapley (Truncated Monte Carlo) to identify hallucinations in synthetic training data
 """
 
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 
 import numpy as np
 import pandas as pd
-import lightgbm as lgb
+from lightgbm import LGBMClassifier
 from sklearn.metrics import roc_auc_score
 import warnings
-
-# OpenDataVal imports
-from opendataval.dataval import DataShapley
-from opendataval.model import ClassifierSkLearnWrapper
-from opendataval.dataloader import DataFetcher
 
 warnings.filterwarnings('ignore')
 
 
 class LGBMDataValuator:
     """
-    Data Shapley valuator for LGBM models
+    Data Shapley valuator for LGBM models using Truncated Monte Carlo Sampling
 
     Measures the marginal contribution of each synthetic training point
     to the model's performance on real test data.
@@ -65,6 +60,7 @@ class LGBMDataValuator:
         self.X_test = X_test
         self.y_test = y_test
         self.random_state = random_state
+        self.rng = np.random.RandomState(random_state)
 
         # Default LGBM parameters if not provided
         if lgbm_params is None:
@@ -131,41 +127,35 @@ class LGBMDataValuator:
 
         return processed_params
 
-    def _create_lgbm_sklearn_wrapper(self):
+    def _train_and_evaluate(self, indices: np.ndarray) -> float:
         """
-        Create sklearn-compatible LGBM classifier for opendataval
-
-        Returns:
-        --------
-        lgb.LGBMClassifier : Sklearn-compatible LGBM model
-        """
-        from lightgbm import LGBMClassifier
-
-        # Extract parameters for sklearn interface
-        params = self.lgbm_params.copy()
-
-        return LGBMClassifier(**params)
-
-    def _auc_metric(self, y_true: np.ndarray, y_pred_proba: np.ndarray) -> float:
-        """
-        AUC metric for opendataval
+        Train LGBM on subset of data and evaluate on test set
 
         Parameters:
         -----------
-        y_true : np.ndarray
-            True labels
-        y_pred_proba : np.ndarray
-            Predicted probabilities (2D array for binary classification)
+        indices : np.ndarray
+            Indices of training samples to use
 
         Returns:
         --------
-        float : AUROC score
+        float : AUROC on test set
         """
-        # Handle both 1D and 2D probability arrays
-        if len(y_pred_proba.shape) == 2:
-            y_pred_proba = y_pred_proba[:, 1]
+        if len(indices) == 0:
+            return 0.0
 
-        return roc_auc_score(y_true, y_pred_proba)
+        # Get subset of training data
+        X_subset = self.X_train.iloc[indices]
+        y_subset = self.y_train.iloc[indices]
+
+        # Train model
+        model = LGBMClassifier(**self.lgbm_params)
+        model.fit(X_subset, y_subset)
+
+        # Evaluate on test set
+        y_pred_proba = model.predict_proba(self.X_test)[:, 1]
+        auroc = roc_auc_score(self.y_test, y_pred_proba)
+
+        return auroc
 
     def compute_shapley_values(
         self,
@@ -173,15 +163,13 @@ class LGBMDataValuator:
         show_progress: bool = True
     ) -> np.ndarray:
         """
-        Compute Data Shapley values for each training point
-
-        Uses Truncated Monte Carlo Sampling (TMCS) to approximate Shapley values.
+        Compute Data Shapley values using Truncated Monte Carlo Sampling
 
         Parameters:
         -----------
         num_samples : int
-            Number of random samples for TMCS approximation
-            Higher = more accurate but slower (default: 100)
+            Number of random permutations to sample (default: 100)
+            Higher = more accurate but slower
         show_progress : bool
             Show progress during computation
 
@@ -190,108 +178,92 @@ class LGBMDataValuator:
         np.ndarray : Shapley value for each training point
         """
         from rich.console import Console
-        from rich.progress import Progress, SpinnerColumn, TextColumn
+        from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 
         console = Console()
+        n_train = len(self.X_train)
 
-        # Create sklearn-compatible model
-        lgbm_model = self._create_lgbm_sklearn_wrapper()
-
-        # Wrap model for opendataval
-        pred_model = ClassifierSkLearnWrapper(
-            model=lgbm_model,
-            num_classes=2
-        )
-
-        # Create custom DataFetcher with our data
-        # opendataval expects data in specific format
-        fetcher = self._create_data_fetcher()
+        # Initialize Shapley values
+        shapley_values = np.zeros(n_train)
 
         if show_progress:
             console.print(f"\n[bold cyan]Computing Data Shapley Values[/bold cyan]")
-            console.print(f"  Training samples: {len(self.X_train):,}")
+            console.print(f"  Training samples: {n_train:,}")
             console.print(f"  Test samples: {len(self.X_test):,}")
             console.print(f"  Monte Carlo samples: {num_samples}")
             console.print(f"  Metric: AUROC on real test data\n")
 
-        # Compute Data Shapley values
+        # Truncated Monte Carlo Shapley (TMCS)
         if show_progress:
             with Progress(
-                SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn(),
                 console=console
             ) as progress:
-                task = progress.add_task("Computing Shapley values...", total=None)
+                task = progress.add_task("Computing Shapley values...", total=num_samples)
 
-                dataval_evaluator = DataShapley(
-                    num_rand_samp=num_samples
-                ).train(
-                    fetcher=fetcher,
-                    pred_model=pred_model,
-                    metric=self._auc_metric
-                )
+                for _ in range(num_samples):
+                    # Random permutation of training indices
+                    perm = self.rng.permutation(n_train)
 
-                self.shapley_values = dataval_evaluator.evaluate_data_values()
+                    # Track marginal contributions
+                    prev_score = 0.0
+
+                    for j, idx in enumerate(perm):
+                        # Indices before current point (including current)
+                        subset_indices = perm[:j+1]
+
+                        # Train and evaluate with this subset
+                        current_score = self._train_and_evaluate(subset_indices)
+
+                        # Marginal contribution of adding point idx
+                        marginal_contribution = current_score - prev_score
+                        shapley_values[idx] += marginal_contribution
+
+                        prev_score = current_score
+
+                    progress.update(task, advance=1)
         else:
-            dataval_evaluator = DataShapley(
-                num_rand_samp=num_samples
-            ).train(
-                fetcher=fetcher,
-                pred_model=pred_model,
-                metric=self._auc_metric
-            )
+            for _ in range(num_samples):
+                # Random permutation of training indices
+                perm = self.rng.permutation(n_train)
 
-            self.shapley_values = dataval_evaluator.evaluate_data_values()
+                # Track marginal contributions
+                prev_score = 0.0
+
+                for j, idx in enumerate(perm):
+                    # Indices before current point (including current)
+                    subset_indices = perm[:j+1]
+
+                    # Train and evaluate with this subset
+                    current_score = self._train_and_evaluate(subset_indices)
+
+                    # Marginal contribution of adding point idx
+                    marginal_contribution = current_score - prev_score
+                    shapley_values[idx] += marginal_contribution
+
+                    prev_score = current_score
+
+        # Average over all permutations
+        shapley_values /= num_samples
+
+        self.shapley_values = shapley_values
 
         if show_progress:
             console.print(f"\n[bold green]✓ Shapley values computed![/bold green]")
-            console.print(f"  Mean value: {self.shapley_values.mean():.6f}")
-            console.print(f"  Std value: {self.shapley_values.std():.6f}")
-            console.print(f"  Min value: {self.shapley_values.min():.6f}")
-            console.print(f"  Max value: {self.shapley_values.max():.6f}")
+            console.print(f"  Mean value: {shapley_values.mean():.6f}")
+            console.print(f"  Std value: {shapley_values.std():.6f}")
+            console.print(f"  Min value: {shapley_values.min():.6f}")
+            console.print(f"  Max value: {shapley_values.max():.6f}")
 
             # Count negative values (potential hallucinations)
-            negative_count = (self.shapley_values < 0).sum()
-            negative_pct = 100 * negative_count / len(self.shapley_values)
+            negative_count = (shapley_values < 0).sum()
+            negative_pct = 100 * negative_count / len(shapley_values)
             console.print(f"\n  Negative values (potential hallucinations): {negative_count:,} ({negative_pct:.1f}%)")
 
-        return self.shapley_values
-
-    def _create_data_fetcher(self) -> DataFetcher:
-        """
-        Create DataFetcher for opendataval
-
-        Returns:
-        --------
-        DataFetcher : Custom data fetcher with our train/test split
-        """
-        # Convert to numpy arrays
-        X_train_np = self.X_train.values if isinstance(self.X_train, pd.DataFrame) else self.X_train
-        y_train_np = self.y_train.values if isinstance(self.y_train, pd.Series) else self.y_train
-        X_test_np = self.X_test.values if isinstance(self.X_test, pd.DataFrame) else self.X_test
-        y_test_np = self.y_test.values if isinstance(self.y_test, pd.Series) else self.y_test
-
-        # Create fetcher with custom data
-        # Note: opendataval's DataFetcher expects (X, y, X_val, y_val, X_test, y_test)
-        # We use synthetic data as training, real data as test
-        fetcher = DataFetcher(
-            dataset_name='custom_synthetic',
-            train_count=len(X_train_np),
-            valid_count=0,  # No validation split needed
-            random_state=self.random_state
-        )
-
-        # Manually set the data
-        fetcher.datapoints = (
-            X_train_np,
-            y_train_np,
-            None,  # No validation set
-            None,
-            X_test_np,
-            y_test_np
-        )
-
-        return fetcher
+        return shapley_values
 
     def save_results(
         self,

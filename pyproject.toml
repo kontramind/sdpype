@@ -20,7 +20,6 @@ dependencies = [
     # Downstream ML
     "lightgbm>=4.0.0",
     "optuna>=3.0.0",
-    "opendataval>=0.1.0",
     # Pipeline & Config
     "dvc>=3.0.0",
     "hydra-core>=1.3.2",
