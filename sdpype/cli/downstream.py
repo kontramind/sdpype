@@ -137,3 +137,117 @@ def train_mimic_iii_readmission(
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {str(e)}")
         raise typer.Exit(code=1)
+
+
+@downstream_app.command(name="mimic-iii-valuation")
+def data_valuation_mimic_iii(
+    train_data: Path = typer.Option(
+        ...,
+        "--train-data",
+        "-t",
+        help="Path to synthetic training data CSV file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    test_data: Path = typer.Option(
+        ...,
+        "--test-data",
+        "-e",
+        help="Path to real test data CSV file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    target_column: str = typer.Option(
+        "IS_READMISSION_30D",
+        "--target",
+        "-c",
+        help="Name of target column for readmission prediction",
+    ),
+    encoding_config: Optional[Path] = typer.Option(
+        None,
+        "--encoding-config",
+        help="Path to RDT encoding config YAML (same format as SDG pipeline)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    num_samples: int = typer.Option(
+        100,
+        "--num-samples",
+        "-n",
+        help="Number of Monte Carlo samples for Shapley approximation (higher=more accurate but slower)",
+        min=10,
+    ),
+    random_state: int = typer.Option(
+        42,
+        "--seed",
+        "-s",
+        help="Random seed for reproducibility",
+    ),
+    output_dir: Path = typer.Option(
+        Path("experiments/data_valuation"),
+        "--output-dir",
+        "-o",
+        help="Output directory for valuation results",
+    ),
+    include_features: bool = typer.Option(
+        True,
+        "--include-features/--no-include-features",
+        help="Include all features in output CSV (useful for analysis)",
+    ),
+):
+    """
+    Data Shapley valuation for synthetic training data
+
+    This command computes Data Shapley values for each synthetic training sample
+    to identify potential hallucinations. A negative Shapley value indicates that
+    a sample hurts model performance on real test data.
+
+    The output CSV contains each synthetic record with its Shapley value, sorted
+    by harmfulness (most harmful first). You can use this to:
+    - Identify and remove hallucinations
+    - Understand which synthetic samples are valuable
+    - Analyze data quality at a granular level
+
+    Example usage:
+        sdpype downstream mimic-iii-valuation \\
+            --train-data experiments/data/synthetic/train.csv \\
+            --test-data experiments/data/real/test.csv \\
+            --num-samples 100 \\
+            --output-dir experiments/data_valuation
+
+    The method uses:
+    - Data Shapley with Truncated Monte Carlo Sampling (TMCS)
+    - LightGBM as the base model
+    - AUROC on real test data as the utility metric
+    """
+    from sdpype.core.data_valuation import run_data_valuation
+
+    try:
+        console.print("\n[bold]MIMIC-III Data Shapley Valuation[/bold]")
+        console.print("=" * 60)
+
+        # Run data valuation
+        results = run_data_valuation(
+            train_file=train_data,
+            test_file=test_data,
+            target_column=target_column,
+            num_samples=num_samples,
+            random_state=random_state,
+            output_dir=output_dir,
+            lgbm_params=None,  # Use defaults
+            encoding_config=encoding_config,
+            include_features=include_features,
+        )
+
+        console.print("\n" + "=" * 60)
+        console.print("[bold green]✓ Data valuation completed successfully![/bold green]\n")
+
+    except Exception as e:
+        console.print(f"\n[bold red]Error:[/bold red] {str(e)}")
+        raise typer.Exit(code=1)
