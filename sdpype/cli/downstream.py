@@ -137,3 +137,175 @@ def train_mimic_iii_readmission(
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {str(e)}")
         raise typer.Exit(code=1)
+
+
+@downstream_app.command(name="mimic-iii-valuation")
+def data_valuation_mimic_iii(
+    train_data: Path = typer.Option(
+        ...,
+        "--train-data",
+        "-t",
+        help="Path to synthetic training data CSV file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    test_data: Path = typer.Option(
+        ...,
+        "--test-data",
+        "-e",
+        help="Path to real test data CSV file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    target_column: str = typer.Option(
+        "IS_READMISSION_30D",
+        "--target",
+        "-c",
+        help="Name of target column for readmission prediction",
+    ),
+    encoding_config: Optional[Path] = typer.Option(
+        None,
+        "--encoding-config",
+        help="Path to RDT encoding config YAML (same format as SDG pipeline)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    num_samples: int = typer.Option(
+        100,
+        "--num-samples",
+        "-n",
+        help="Number of Monte Carlo samples for Shapley approximation (higher=more accurate but slower)",
+        min=10,
+    ),
+    random_state: int = typer.Option(
+        42,
+        "--seed",
+        "-s",
+        help="Random seed for reproducibility",
+    ),
+    output_dir: Path = typer.Option(
+        Path("experiments/data_valuation"),
+        "--output-dir",
+        "-o",
+        help="Output directory for valuation results",
+    ),
+    include_features: bool = typer.Option(
+        True,
+        "--include-features/--no-include-features",
+        help="Include all features in output CSV (useful for analysis)",
+    ),
+    lgbm_params_json: Optional[Path] = typer.Option(
+        None,
+        "--lgbm-params-json",
+        help="Path to LGBM hyperparameters JSON from training (uses best_hyperparameters)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+):
+    """
+    Data Shapley valuation for synthetic training data
+
+    This command computes Data Shapley values for each synthetic training sample
+    to identify potential hallucinations. A negative Shapley value indicates that
+    a sample hurts model performance on real test data.
+
+    The output CSV contains each synthetic record with its Shapley value, sorted
+    by harmfulness (most harmful first). You can use this to:
+    - Identify and remove hallucinations
+    - Understand which synthetic samples are valuable
+    - Analyze data quality at a granular level
+
+    Example usage:
+        # Basic usage with default LGBM parameters
+        sdpype downstream mimic-iii-valuation \\
+            --train-data experiments/data/synthetic/train.csv \\
+            --test-data experiments/data/real/test.csv \\
+            --num-samples 100
+
+        # Using optimized hyperparameters from training (auto-loads encoding config)
+        sdpype downstream mimic-iii-valuation \\
+            --train-data experiments/data/synthetic/train.csv \\
+            --test-data experiments/data/real/test.csv \\
+            --lgbm-params-json experiments/models/downstream/lgbm_readmission_*.json
+
+        # Explicit encoding config (overrides auto-loaded one)
+        sdpype downstream mimic-iii-valuation \\
+            --train-data experiments/data/synthetic/train.csv \\
+            --test-data experiments/data/real/test.csv \\
+            --lgbm-params-json experiments/models/downstream/lgbm_readmission_*.json \\
+            --encoding-config path/to/custom_encoding.yaml
+
+    The method uses:
+    - Data Shapley with Truncated Monte Carlo Sampling (TMCS)
+    - LightGBM as the base model
+    - AUROC on real test data as the utility metric
+    """
+    import json
+    from sdpype.core.data_valuation import run_data_valuation
+
+    try:
+        console.print("\n[bold]MIMIC-III Data Shapley Valuation[/bold]")
+        console.print("=" * 60)
+
+        # Load LGBM parameters if provided
+        lgbm_params = None
+        if lgbm_params_json is not None:
+            console.print(f"\n[bold cyan]Loading LGBM parameters...[/bold cyan]")
+            console.print(f"  From: {lgbm_params_json}")
+
+            with open(lgbm_params_json, 'r') as f:
+                metrics_data = json.load(f)
+
+            if 'best_hyperparameters' in metrics_data:
+                lgbm_params = metrics_data['best_hyperparameters']
+                console.print(f"  ✓ Loaded {len(lgbm_params)} hyperparameters")
+            else:
+                console.print(f"  [yellow]⚠ 'best_hyperparameters' not found in JSON, using defaults[/yellow]")
+                lgbm_params = None
+
+            # Auto-load encoding config if not explicitly provided
+            if encoding_config is None:
+                if 'preprocessing' in metrics_data and 'encoding_config_path' in metrics_data['preprocessing']:
+                    auto_encoding_path = metrics_data['preprocessing']['encoding_config_path']
+                    if auto_encoding_path:
+                        auto_encoding_path = Path(auto_encoding_path)
+                        if auto_encoding_path.exists():
+                            encoding_config = auto_encoding_path
+                            console.print(f"\n[bold cyan]Auto-loading encoding config...[/bold cyan]")
+                            console.print(f"  From training: {encoding_config}")
+                            console.print(f"  ✓ Encoding config loaded for consistency")
+                        else:
+                            console.print(f"\n[yellow]⚠ Encoding config from training not found: {auto_encoding_path}[/yellow]")
+                            console.print(f"  Consider providing --encoding-config manually")
+            else:
+                console.print(f"\n[bold cyan]Using explicit encoding config[/bold cyan]")
+                console.print(f"  From: {encoding_config}")
+                console.print(f"  (Overrides training config if different)")
+
+        # Run data valuation
+        results = run_data_valuation(
+            train_file=train_data,
+            test_file=test_data,
+            target_column=target_column,
+            num_samples=num_samples,
+            random_state=random_state,
+            output_dir=output_dir,
+            lgbm_params=lgbm_params,
+            encoding_config=encoding_config,
+            include_features=include_features,
+        )
+
+        console.print("\n" + "=" * 60)
+        console.print("[bold green]✓ Data valuation completed successfully![/bold green]\n")
+
+    except Exception as e:
+        console.print(f"\n[bold red]Error:[/bold red] {str(e)}")
+        raise typer.Exit(code=1)

@@ -614,7 +614,8 @@ def save_model_and_metrics(
     best_params: Dict[str, Any],
     output_dir: Path,
     label_encoders: Optional[Dict[str, Any]] = None,
-    prefix: str = "lgbm_readmission"
+    prefix: str = "lgbm_readmission",
+    encoding_config_path: Optional[Path] = None
 ) -> Tuple[Path, Path]:
     """
     Save trained model and metrics to disk
@@ -633,6 +634,8 @@ def save_model_and_metrics(
         Dictionary of label encoders for categorical features
     prefix : str
         Prefix for output files
+    encoding_config_path : Path, optional
+        Path to encoding config file (saved for reproducibility)
 
     Returns:
     --------
@@ -679,7 +682,8 @@ def save_model_and_metrics(
         },
         'preprocessing': {
             'encoding_type': encoding_type,
-            'encoded_features': encoded_features
+            'encoded_features': encoded_features,
+            'encoding_config_path': str(encoding_config_path) if encoding_config_path else None
         }
     }
 
@@ -913,7 +917,8 @@ def train_readmission_model(
         best_params=best_params_with_threshold,
         output_dir=output_dir,
         label_encoders=encoder_package,
-        prefix="lgbm_readmission"
+        prefix="lgbm_readmission",
+        encoding_config_path=encoding_config
     )
 
     console.print(f"[bold green]✓ Saved successfully![/bold green]")
