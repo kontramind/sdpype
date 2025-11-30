@@ -80,9 +80,56 @@ class LGBMDataValuator:
                 'verbosity': -1
             }
         else:
-            self.lgbm_params = lgbm_params
+            # Process provided parameters
+            self.lgbm_params = self._process_lgbm_params(lgbm_params.copy())
 
         self.shapley_values = None
+
+    def _process_lgbm_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process loaded LGBM parameters and handle special cases
+
+        Parameters:
+        -----------
+        params : dict
+            Raw parameters from training JSON
+
+        Returns:
+        --------
+        dict : Processed LGBM parameters ready for LGBMClassifier
+        """
+        processed_params = params.copy()
+
+        # Set required parameters
+        processed_params['objective'] = 'binary'
+        processed_params['metric'] = 'auc'
+        processed_params['random_state'] = self.random_state
+        processed_params['n_jobs'] = -1
+        processed_params['verbosity'] = -1
+
+        # Handle imbalance_method (convert to LGBM params)
+        if 'imbalance_method' in processed_params:
+            imbalance_method = processed_params.pop('imbalance_method')
+
+            if imbalance_method == 'scale_pos_weight':
+                # Calculate scale_pos_weight from training data
+                neg_count = (self.y_train == 0).sum()
+                pos_count = (self.y_train == 1).sum()
+                scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
+                processed_params['scale_pos_weight'] = scale_pos_weight
+            elif imbalance_method == 'is_unbalance':
+                processed_params['is_unbalance'] = True
+            # else: 'none' - no special handling
+
+        # Remove early_stopping_rounds (not used in sklearn interface during fit)
+        if 'early_stopping_rounds' in processed_params:
+            processed_params.pop('early_stopping_rounds')
+
+        # Remove optimal_threshold if present (not an LGBM param)
+        if 'optimal_threshold' in processed_params:
+            processed_params.pop('optimal_threshold')
+
+        return processed_params
 
     def _create_lgbm_sklearn_wrapper(self):
         """

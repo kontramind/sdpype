@@ -200,6 +200,15 @@ def data_valuation_mimic_iii(
         "--include-features/--no-include-features",
         help="Include all features in output CSV (useful for analysis)",
     ),
+    lgbm_params_json: Optional[Path] = typer.Option(
+        None,
+        "--lgbm-params-json",
+        help="Path to LGBM hyperparameters JSON from training (uses best_hyperparameters)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
 ):
     """
     Data Shapley valuation for synthetic training data
@@ -215,22 +224,45 @@ def data_valuation_mimic_iii(
     - Analyze data quality at a granular level
 
     Example usage:
+        # Basic usage with default LGBM parameters
         sdpype downstream mimic-iii-valuation \\
             --train-data experiments/data/synthetic/train.csv \\
             --test-data experiments/data/real/test.csv \\
-            --num-samples 100 \\
-            --output-dir experiments/data_valuation
+            --num-samples 100
+
+        # Using optimized hyperparameters from training
+        sdpype downstream mimic-iii-valuation \\
+            --train-data experiments/data/synthetic/train.csv \\
+            --test-data experiments/data/real/test.csv \\
+            --lgbm-params-json experiments/models/downstream/lgbm_readmission_*.json
 
     The method uses:
     - Data Shapley with Truncated Monte Carlo Sampling (TMCS)
     - LightGBM as the base model
     - AUROC on real test data as the utility metric
     """
+    import json
     from sdpype.core.data_valuation import run_data_valuation
 
     try:
         console.print("\n[bold]MIMIC-III Data Shapley Valuation[/bold]")
         console.print("=" * 60)
+
+        # Load LGBM parameters if provided
+        lgbm_params = None
+        if lgbm_params_json is not None:
+            console.print(f"\n[bold cyan]Loading LGBM parameters...[/bold cyan]")
+            console.print(f"  From: {lgbm_params_json}")
+
+            with open(lgbm_params_json, 'r') as f:
+                metrics_data = json.load(f)
+
+            if 'best_hyperparameters' in metrics_data:
+                lgbm_params = metrics_data['best_hyperparameters']
+                console.print(f"  ✓ Loaded {len(lgbm_params)} hyperparameters")
+            else:
+                console.print(f"  [yellow]⚠ 'best_hyperparameters' not found in JSON, using defaults[/yellow]")
+                lgbm_params = None
 
         # Run data valuation
         results = run_data_valuation(
@@ -240,7 +272,7 @@ def data_valuation_mimic_iii(
             num_samples=num_samples,
             random_state=random_state,
             output_dir=output_dir,
-            lgbm_params=None,  # Use defaults
+            lgbm_params=lgbm_params,
             encoding_config=encoding_config,
             include_features=include_features,
         )
