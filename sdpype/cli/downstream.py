@@ -230,11 +230,18 @@ def data_valuation_mimic_iii(
             --test-data experiments/data/real/test.csv \\
             --num-samples 100
 
-        # Using optimized hyperparameters from training
+        # Using optimized hyperparameters from training (auto-loads encoding config)
         sdpype downstream mimic-iii-valuation \\
             --train-data experiments/data/synthetic/train.csv \\
             --test-data experiments/data/real/test.csv \\
             --lgbm-params-json experiments/models/downstream/lgbm_readmission_*.json
+
+        # Explicit encoding config (overrides auto-loaded one)
+        sdpype downstream mimic-iii-valuation \\
+            --train-data experiments/data/synthetic/train.csv \\
+            --test-data experiments/data/real/test.csv \\
+            --lgbm-params-json experiments/models/downstream/lgbm_readmission_*.json \\
+            --encoding-config path/to/custom_encoding.yaml
 
     The method uses:
     - Data Shapley with Truncated Monte Carlo Sampling (TMCS)
@@ -263,6 +270,25 @@ def data_valuation_mimic_iii(
             else:
                 console.print(f"  [yellow]⚠ 'best_hyperparameters' not found in JSON, using defaults[/yellow]")
                 lgbm_params = None
+
+            # Auto-load encoding config if not explicitly provided
+            if encoding_config is None:
+                if 'preprocessing' in metrics_data and 'encoding_config_path' in metrics_data['preprocessing']:
+                    auto_encoding_path = metrics_data['preprocessing']['encoding_config_path']
+                    if auto_encoding_path:
+                        auto_encoding_path = Path(auto_encoding_path)
+                        if auto_encoding_path.exists():
+                            encoding_config = auto_encoding_path
+                            console.print(f"\n[bold cyan]Auto-loading encoding config...[/bold cyan]")
+                            console.print(f"  From training: {encoding_config}")
+                            console.print(f"  ✓ Encoding config loaded for consistency")
+                        else:
+                            console.print(f"\n[yellow]⚠ Encoding config from training not found: {auto_encoding_path}[/yellow]")
+                            console.print(f"  Consider providing --encoding-config manually")
+            else:
+                console.print(f"\n[bold cyan]Using explicit encoding config[/bold cyan]")
+                console.print(f"  From: {encoding_config}")
+                console.print(f"  (Overrides training config if different)")
 
         # Run data valuation
         results = run_data_valuation(
