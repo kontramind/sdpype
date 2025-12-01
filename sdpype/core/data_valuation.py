@@ -81,6 +81,10 @@ class LGBMDataValuator:
             self.lgbm_params = self._process_lgbm_params(lgbm_params.copy())
 
         self.shapley_values = None
+        self.shapley_std = None
+        self.shapley_se = None
+        self.shapley_ci_lower = None
+        self.shapley_ci_upper = None
 
     def _process_lgbm_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -195,8 +199,10 @@ class LGBMDataValuator:
         else:
             coalition_size = min(max_coalition_size, n_train)
 
-        # Initialize Shapley values
+        # Initialize Shapley values and contribution tracking
         shapley_values = np.zeros(n_train)
+        # Track all contributions for uncertainty quantification
+        contributions_per_point = [[] for _ in range(n_train)]
 
         if show_progress:
             console.print(f"\n[bold cyan]Computing Data Shapley Values[/bold cyan]")
@@ -223,8 +229,9 @@ class LGBMDataValuator:
                     # Random permutation of training indices
                     perm = self.rng.permutation(n_train)
 
-                    # Track marginal contributions
+                    # Track marginal contributions for this permutation
                     prev_score = 0.0
+                    contributions_this_perm = np.zeros(n_train)
 
                     # Truncate to max_coalition_size
                     for j in range(coalition_size):
@@ -238,9 +245,14 @@ class LGBMDataValuator:
 
                         # Marginal contribution of adding point idx
                         marginal_contribution = current_score - prev_score
+                        contributions_this_perm[idx] = marginal_contribution
                         shapley_values[idx] += marginal_contribution
 
                         prev_score = current_score
+
+                    # Store contributions for uncertainty quantification
+                    for idx in range(n_train):
+                        contributions_per_point[idx].append(contributions_this_perm[idx])
 
                     progress.update(task, advance=1)
         else:
@@ -248,8 +260,9 @@ class LGBMDataValuator:
                 # Random permutation of training indices
                 perm = self.rng.permutation(n_train)
 
-                # Track marginal contributions
+                # Track marginal contributions for this permutation
                 prev_score = 0.0
+                contributions_this_perm = np.zeros(n_train)
 
                 # Truncate to max_coalition_size
                 for j in range(coalition_size):
@@ -263,14 +276,37 @@ class LGBMDataValuator:
 
                     # Marginal contribution of adding point idx
                     marginal_contribution = current_score - prev_score
+                    contributions_this_perm[idx] = marginal_contribution
                     shapley_values[idx] += marginal_contribution
 
                     prev_score = current_score
 
+                # Store contributions for uncertainty quantification
+                for idx in range(n_train):
+                    contributions_per_point[idx].append(contributions_this_perm[idx])
+
         # Average over all permutations
         shapley_values /= num_samples
 
+        # Compute uncertainty metrics for each data point
+        shapley_std = np.zeros(n_train)
+        shapley_se = np.zeros(n_train)
+        shapley_ci_lower = np.zeros(n_train)
+        shapley_ci_upper = np.zeros(n_train)
+
+        for idx in range(n_train):
+            contributions = np.array(contributions_per_point[idx])
+            shapley_std[idx] = np.std(contributions, ddof=1)  # Sample std
+            shapley_se[idx] = shapley_std[idx] / np.sqrt(num_samples)  # Standard error
+            # 95% confidence interval (1.96 * SE)
+            shapley_ci_lower[idx] = shapley_values[idx] - 1.96 * shapley_se[idx]
+            shapley_ci_upper[idx] = shapley_values[idx] + 1.96 * shapley_se[idx]
+
         self.shapley_values = shapley_values
+        self.shapley_std = shapley_std
+        self.shapley_se = shapley_se
+        self.shapley_ci_lower = shapley_ci_lower
+        self.shapley_ci_upper = shapley_ci_upper
 
         if show_progress:
             console.print(f"\n[bold green]✓ Shapley values computed![/bold green]")
@@ -278,11 +314,22 @@ class LGBMDataValuator:
             console.print(f"  Std value: {shapley_values.std():.6f}")
             console.print(f"  Min value: {shapley_values.min():.6f}")
             console.print(f"  Max value: {shapley_values.max():.6f}")
+            console.print(f"\n[bold cyan]Uncertainty Metrics:[/bold cyan]")
+            console.print(f"  Mean standard error: {shapley_se.mean():.6f}")
+            console.print(f"  Max standard error: {shapley_se.max():.6f}")
+
+            # Count reliably negative values (CI upper bound < 0)
+            reliable_negative_count = (shapley_ci_upper < 0).sum()
+            reliable_negative_pct = 100 * reliable_negative_count / len(shapley_values)
 
             # Count negative values (potential hallucinations)
             negative_count = (shapley_values < 0).sum()
             negative_pct = 100 * negative_count / len(shapley_values)
-            console.print(f"\n  Negative values (potential hallucinations): {negative_count:,} ({negative_pct:.1f}%)")
+
+            console.print(f"\n  [bold yellow]Negative values (potential hallucinations):[/bold yellow]")
+            console.print(f"    Total negative: {negative_count:,} ({negative_pct:.1f}%)")
+            console.print(f"    Reliably negative (CI upper < 0): {reliable_negative_count:,} ({reliable_negative_pct:.1f}%)")
+            console.print(f"    These are definitively harmful with 95% confidence")
 
         return shapley_values
 
@@ -292,7 +339,7 @@ class LGBMDataValuator:
         include_features: bool = True
     ) -> Path:
         """
-        Save Shapley values to CSV
+        Save Shapley values with uncertainty metrics to CSV
 
         Parameters:
         -----------
@@ -300,11 +347,20 @@ class LGBMDataValuator:
             Output CSV file path
         include_features : bool
             If True, includes all features in the output CSV
-            If False, only includes Shapley value and index
+            If False, only includes Shapley metrics and index
 
         Returns:
         --------
         Path : Path to saved CSV file
+
+        Output columns:
+        ---------------
+        - shapley_value: Mean Shapley value
+        - shapley_std: Standard deviation across permutations
+        - shapley_se: Standard error (std / sqrt(n))
+        - shapley_ci_lower: Lower bound of 95% CI
+        - shapley_ci_upper: Upper bound of 95% CI
+        - sample_index: Original index in training data
         """
         if self.shapley_values is None:
             raise ValueError("Must call compute_shapley_values() first")
@@ -318,8 +374,12 @@ class LGBMDataValuator:
             # Only index
             results_df = pd.DataFrame()
 
-        # Add Shapley value
+        # Add Shapley value and uncertainty metrics
         results_df['shapley_value'] = self.shapley_values
+        results_df['shapley_std'] = self.shapley_std
+        results_df['shapley_se'] = self.shapley_se
+        results_df['shapley_ci_lower'] = self.shapley_ci_lower
+        results_df['shapley_ci_upper'] = self.shapley_ci_upper
 
         # Add index for reference
         results_df['sample_index'] = range(len(self.shapley_values))
@@ -535,10 +595,20 @@ def run_data_valuation(
     # Compute 95% confidence interval for negative percentage
     ci_lower, ci_upper = _compute_proportion_ci(negative_count, len(shapley_values), confidence_level=0.95)
 
+    # Count reliably negative values (CI upper bound < 0)
+    reliable_negative_count = (valuator.shapley_ci_upper < 0).sum()
+    reliable_negative_pct = 100 * reliable_negative_count / len(shapley_values)
+    reliable_ci_lower, reliable_ci_upper = _compute_proportion_ci(
+        reliable_negative_count, len(shapley_values), confidence_level=0.95
+    )
+
     console.print(f"\n  [bold yellow]Negative values (potential hallucinations):[/bold yellow]")
     console.print(f"    Count: {negative_count:,} ({negative_pct:.1f}%)")
     console.print(f"    95% CI: [{ci_lower:.1f}%, {ci_upper:.1f}%]  (Wilson score interval)")
-    console.print(f"    These samples may harm model performance on real data")
+    console.print(f"\n  [bold red]Reliably negative (CI upper < 0):[/bold red]")
+    console.print(f"    Count: {reliable_negative_count:,} ({reliable_negative_pct:.1f}%)")
+    console.print(f"    95% CI: [{reliable_ci_lower:.1f}%, {reliable_ci_upper:.1f}%]")
+    console.print(f"    These samples are definitively harmful with 95% confidence")
 
     # Return results
     return {
@@ -548,9 +618,15 @@ def run_data_valuation(
         'std_shapley': float(shapley_values.std()),
         'min_shapley': float(shapley_values.min()),
         'max_shapley': float(shapley_values.max()),
+        'mean_shapley_se': float(valuator.shapley_se.mean()),
+        'max_shapley_se': float(valuator.shapley_se.max()),
         'negative_count': int(negative_count),
         'negative_percentage': float(negative_pct),
         'negative_percentage_ci_lower': float(ci_lower),
         'negative_percentage_ci_upper': float(ci_upper),
+        'reliable_negative_count': int(reliable_negative_count),
+        'reliable_negative_percentage': float(reliable_negative_pct),
+        'reliable_negative_ci_lower': float(reliable_ci_lower),
+        'reliable_negative_ci_upper': float(reliable_ci_upper),
         'confidence_level': 0.95
     }
