@@ -74,6 +74,101 @@ SDPype provides statistical similarity evaluation to assess the quality of synth
 uv run sdpype stage statistical_similarity
 ```
 
+### Detecting Hallucinations in Synthetic Data
+
+SDPype includes advanced capabilities for identifying "hallucinations" - synthetic records that contain unrealistic patterns not present in real data.
+
+#### What Are Hallucinations?
+
+When generating synthetic data, the generator may create records that look realistic but contain patterns that don't exist in real data. Training models on these hallucinations can lead to poor predictions on real patients/cases.
+
+**Example**: A synthetic patient record might combine symptoms in ways that never occur in reality. A model trained on this data would learn false patterns.
+
+#### How We Detect Them: Data Shapley
+
+We use **Data Shapley** to measure each synthetic record's contribution to model performance on real test data:
+
+- **Positive Shapley value**: Record improves predictions → valuable data ✓
+- **Zero**: Record has negligible impact
+- **Negative Shapley value**: Record harms predictions → hallucination! ⚠️
+
+**Core concept**: Like measuring team members' contributions - add people one at a time and see if the team improves or gets worse.
+
+#### Running Hallucination Detection
+
+```bash
+# Basic usage
+uv run sdpype downstream mimic-iii-valuation \
+  --train-data experiments/data/synthetic/train.csv \
+  --test-data experiments/data/real/test.csv \
+  --num-samples 20 \
+  --max-coalition-size 1500
+
+# Using optimized parameters from training (auto-loads encoding)
+uv run sdpype downstream mimic-iii-valuation \
+  --train-data experiments/data/synthetic/train.csv \
+  --test-data experiments/data/real/test.csv \
+  --lgbm-params-json experiments/models/downstream/lgbm_readmission_*.json \
+  --num-samples 20 \
+  --max-coalition-size 1500
+```
+
+#### Understanding the Output
+
+**Console Output:**
+```
+Negative values (potential hallucinations): 1,234 (17.3%)
+  95% CI: [16.4%, 18.2%]  (Wilson score interval)
+```
+
+**Interpretation**: 17.3% of synthetic records have negative Shapley values (hallucinations), with 95% confidence the true percentage is between 16.4-18.2%.
+
+**CSV Output** (`experiments/data_valuation/data_valuation_*.csv`):
+
+| Features... | target | shapley_value | sample_index |
+|-------------|--------|---------------|--------------|
+| [data]      | 1      | -0.00347      | 0            |
+| [data]      | 0      | +0.00123      | 1            |
+
+Sorted by Shapley value (most harmful first) for easy identification and removal.
+
+#### Controlling Speed vs Accuracy
+
+Two key parameters control the tradeoff:
+
+**`--num-samples`** (Number of random shuffles)
+- Controls **variance** (stability of estimates)
+- Higher = smoother estimates, lower = noisier but faster
+- **Recommended**: 10-50
+
+**`--max-coalition-size`** (Early truncation)
+- Controls **bias** (completeness of evaluation)
+- How many records to test together per shuffle
+- Larger = more thorough, smaller = faster but may miss patterns
+- **Recommended**: 20-30% of dataset size
+
+**Which matters more?** For hallucination detection, **coalition size is more important** than num samples. A record might look harmless in small groups but become obviously bad in larger coalitions.
+
+**Recommended settings for 5,000-10,000 records:**
+
+| Use Case | `--num-samples` | `--max-coalition-size` | Time | Quality |
+|----------|-----------------|------------------------|------|---------|
+| Quick test | 10 | 1000 | 1-3 hours | Good for initial screening |
+| **Balanced (recommended)** | **20** | **1500** | **4-8 hours** | **Best speed/accuracy** |
+| Thorough | 50 | 2000 | 12-20 hours | Highest accuracy |
+
+**Rule of thumb**:
+- Coalition size should be 20-30% of your dataset
+- Num samples should be at least 10-20
+- Prioritize larger coalition size over more samples
+
+#### Using the Results
+
+1. **Identify hallucinations**: Filter for `shapley_value < 0`
+2. **Remove them**: Create cleaned dataset excluding bottom 10-20%
+3. **Retrain**: Train final model on cleaned synthetic data
+4. **Improved performance**: Better predictions on real data
+
 ## Configuration
 
 Edit `params.yaml` to configure experiments:
