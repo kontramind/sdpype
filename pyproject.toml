@@ -28,9 +28,9 @@ dependencies = [
     "rich>=13.0.0",
     # Synthetic Data Libraries
     "opacus<1.5.0",
-    "torch>=2.0.0",
-    "torchaudio>=2.0.0",
-    "torchvision>=0.16.0",
+    "torch==2.2.2",
+    "torchaudio==2.2.2",
+    "torchvision==0.17.2",
     "sdv>=1.0.0",
     "synthcity>=0.2.12",
     "openpyxl>=3.1.0",
