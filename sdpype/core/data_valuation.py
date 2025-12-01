@@ -36,7 +36,8 @@ class LGBMDataValuator:
         X_test: pd.DataFrame,
         y_test: pd.Series,
         lgbm_params: Optional[Dict[str, Any]] = None,
-        random_state: int = 42
+        random_state: int = 42,
+        X_train_original: Optional[pd.DataFrame] = None
     ):
         """
         Initialize the data valuator
@@ -44,22 +45,25 @@ class LGBMDataValuator:
         Parameters:
         -----------
         X_train : pd.DataFrame
-            Synthetic training features
+            Synthetic training features (encoded)
         y_train : pd.Series
             Synthetic training labels
         X_test : pd.DataFrame
-            Real test features
+            Real test features (encoded)
         y_test : pd.Series
             Real test labels
         lgbm_params : dict, optional
             LightGBM parameters (if None, uses defaults)
         random_state : int
             Random seed for reproducibility
+        X_train_original : pd.DataFrame, optional
+            Original unencoded training features for output
         """
         self.X_train = X_train
         self.y_train = y_train
         self.X_test = X_test
         self.y_test = y_test
+        self.X_train_original = X_train_original if X_train_original is not None else X_train
         self.random_state = random_state
         self.rng = np.random.RandomState(random_state)
 
@@ -346,7 +350,7 @@ class LGBMDataValuator:
         output_path : Path
             Output CSV file path
         include_features : bool
-            If True, includes all features in the output CSV
+            If True, includes all features in the output CSV (decoded/original values)
             If False, only includes Shapley metrics and index
 
         Returns:
@@ -355,6 +359,8 @@ class LGBMDataValuator:
 
         Output columns:
         ---------------
+        - [Original feature columns]: Unencoded/human-readable values (if include_features=True)
+        - target: Target variable
         - shapley_value: Mean Shapley value
         - shapley_std: Standard deviation across permutations
         - shapley_se: Standard error (std / sqrt(n))
@@ -367,8 +373,8 @@ class LGBMDataValuator:
 
         # Create output dataframe
         if include_features:
-            # Include all features
-            results_df = self.X_train.copy()
+            # Include all features (use original unencoded data)
+            results_df = self.X_train_original.copy()
             results_df['target'] = self.y_train.values
         else:
             # Only index
@@ -504,6 +510,9 @@ def run_data_valuation(
     X_test = test_df.drop(columns=[target_column])
     y_test = test_df[target_column]
 
+    # Store original unencoded data for output
+    X_train_original = X_train.copy()
+
     # Encode categorical columns (same as downstream.py)
     if encoding_config is not None:
         console.print(f"\n[bold cyan]Using RDT encoding from config...[/bold cyan]")
@@ -559,7 +568,8 @@ def run_data_valuation(
         X_test=X_test,
         y_test=y_test,
         lgbm_params=lgbm_params,
-        random_state=random_state
+        random_state=random_state,
+        X_train_original=X_train_original
     )
 
     # Compute Shapley values
