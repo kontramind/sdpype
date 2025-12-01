@@ -6,12 +6,13 @@ Uses Data Shapley (Truncated Monte Carlo) to identify hallucinations in syntheti
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
 from sklearn.metrics import roc_auc_score
+from scipy import stats
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -334,6 +335,51 @@ class LGBMDataValuator:
         return output_path
 
 
+def _compute_proportion_ci(
+    count: int,
+    total: int,
+    confidence_level: float = 0.95
+) -> Tuple[float, float]:
+    """
+    Compute Wilson score confidence interval for a proportion
+
+    This is more accurate than the normal approximation, especially for
+    small samples or proportions near 0 or 1.
+
+    Parameters:
+    -----------
+    count : int
+        Number of successes (e.g., negative Shapley values)
+    total : int
+        Total number of samples
+    confidence_level : float
+        Confidence level (default: 0.95 for 95% CI)
+
+    Returns:
+    --------
+    tuple : (lower_bound, upper_bound) as percentages (0-100)
+    """
+    if total == 0:
+        return (0.0, 0.0)
+
+    # Observed proportion
+    p = count / total
+
+    # Z-score for confidence level
+    alpha = 1 - confidence_level
+    z = stats.norm.ppf(1 - alpha / 2)
+
+    # Wilson score interval
+    denominator = 1 + z**2 / total
+    center = (p + z**2 / (2 * total)) / denominator
+    margin = z * np.sqrt(p * (1 - p) / total + z**2 / (4 * total**2)) / denominator
+
+    lower = max(0.0, (center - margin) * 100)
+    upper = min(100.0, (center + margin) * 100)
+
+    return (lower, upper)
+
+
 def run_data_valuation(
     train_file: Path,
     test_file: Path,
@@ -485,8 +531,13 @@ def run_data_valuation(
 
     negative_count = (shapley_values < 0).sum()
     negative_pct = 100 * negative_count / len(shapley_values)
+
+    # Compute 95% confidence interval for negative percentage
+    ci_lower, ci_upper = _compute_proportion_ci(negative_count, len(shapley_values), confidence_level=0.95)
+
     console.print(f"\n  [bold yellow]Negative values (potential hallucinations):[/bold yellow]")
     console.print(f"    Count: {negative_count:,} ({negative_pct:.1f}%)")
+    console.print(f"    95% CI: [{ci_lower:.1f}%, {ci_upper:.1f}%]  (Wilson score interval)")
     console.print(f"    These samples may harm model performance on real data")
 
     # Return results
@@ -498,5 +549,8 @@ def run_data_valuation(
         'min_shapley': float(shapley_values.min()),
         'max_shapley': float(shapley_values.max()),
         'negative_count': int(negative_count),
-        'negative_percentage': float(negative_pct)
+        'negative_percentage': float(negative_pct),
+        'negative_percentage_ci_lower': float(ci_lower),
+        'negative_percentage_ci_upper': float(ci_upper),
+        'confidence_level': 0.95
     }
