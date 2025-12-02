@@ -208,6 +208,9 @@ class LGBMDataValuator:
         # Track all contributions for uncertainty quantification
         contributions_per_point = [[] for _ in range(n_train)]
 
+        # Calculate total models to be trained
+        total_models = num_samples * coalition_size
+
         if show_progress:
             console.print(f"\n[bold cyan]Computing Data Shapley Values[/bold cyan]")
             console.print(f"  Training samples: {n_train:,}")
@@ -216,6 +219,7 @@ class LGBMDataValuator:
             console.print(f"  Coalition size: {coalition_size:,}")
             if coalition_size < n_train:
                 console.print(f"  [yellow]Early truncation enabled ({coalition_size}/{n_train} = {100*coalition_size/n_train:.1f}%)[/yellow]")
+            console.print(f"  Total models to train: {total_models:,}")
             console.print(f"  Metric: AUROC on real test data\n")
 
         # Truncated Monte Carlo Shapley (TMCS)
@@ -227,9 +231,13 @@ class LGBMDataValuator:
                 TimeRemainingColumn(),
                 console=console
             ) as progress:
-                task = progress.add_task("Computing Shapley values...", total=num_samples)
+                task = progress.add_task(
+                    f"Training models: 0 / {total_models:,}",
+                    total=num_samples
+                )
 
-                for _ in range(num_samples):
+                models_trained = 0
+                for perm_idx in range(num_samples):
                     # Random permutation of training indices
                     perm = self.rng.permutation(n_train)
 
@@ -253,12 +261,19 @@ class LGBMDataValuator:
                         shapley_values[idx] += marginal_contribution
 
                         prev_score = current_score
+                        models_trained += 1
 
                     # Store contributions for uncertainty quantification
                     for idx in range(n_train):
                         contributions_per_point[idx].append(contributions_this_perm[idx])
 
-                    progress.update(task, advance=1)
+                    # Update progress with models trained count
+                    models_remaining = total_models - models_trained
+                    progress.update(
+                        task,
+                        advance=1,
+                        description=f"Training models: {models_trained:,} / {total_models:,} ({models_remaining:,} remaining)"
+                    )
         else:
             for _ in range(num_samples):
                 # Random permutation of training indices
