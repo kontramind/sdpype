@@ -193,7 +193,7 @@ def _convert_to_dataloader(df: pd.DataFrame, metadata: SingleTableMetadata,
 
 def get_synthcity_evaluator(method_name: str, parameters: Dict[str, Any]):
     """Factory function to create synthcity detection evaluators"""
-    
+
     # Only use parameters that synthcity DetectionEvaluator actually accepts
     synthcity_params = {}
 
@@ -204,13 +204,20 @@ def get_synthcity_evaluator(method_name: str, parameters: Dict[str, Any]):
         synthcity_params["random_state"] = parameters["random_state"]
     if "reduction" in parameters:
         synthcity_params["reduction"] = parameters["reduction"]
-    
+
+    # Force CPU mode for MLP (PyTorch-based) to avoid GPU compatibility issues
+    import os
+    force_cpu = os.environ.get('CUDA_VISIBLE_DEVICES') == ''
+
     match method_name:
         case "detection_gmm":
             return SyntheticDetectionGMM(**synthcity_params)
         case "detection_xgb":
             return SyntheticDetectionXGB(**synthcity_params)
         case "detection_mlp":
+            # MLP uses PyTorch, force CPU if GPU is incompatible
+            if force_cpu:
+                synthcity_params["device"] = "cpu"
             return SyntheticDetectionMLP(**synthcity_params)
         case "detection_linear":
             return SyntheticDetectionLinear(**synthcity_params)
