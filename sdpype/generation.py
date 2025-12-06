@@ -27,6 +27,54 @@ from sdpype.metadata import load_csv_with_metadata
 # Import post-processing for fixing invalid categories
 from sdpype.post_processing import fix_invalid_categories, get_categorical_columns
 
+import torch
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _check_gpu_compatibility() -> bool:
+    """Check if GPU is compatible with current PyTorch version.
+
+    Returns True if GPU should be used, False if CPU fallback is needed.
+    """
+    if not torch.cuda.is_available():
+        return False
+
+    try:
+        # Get GPU compute capability
+        capability = torch.cuda.get_device_capability(0)
+        device_name = torch.cuda.get_device_name(0)
+
+        # PyTorch 2.5.1 doesn't fully support sm_120 (RTX 50 series)
+        if capability[0] >= 10:
+            logger.warning(
+                f"GPU {device_name} with compute capability sm_{capability[0]}{capability[1]} "
+                f"is not fully supported by PyTorch {torch.__version__}. "
+                f"Falling back to CPU mode for generation."
+            )
+            return False
+
+        return True
+    except Exception as e:
+        logger.warning(f"Error checking GPU compatibility: {e}. Falling back to CPU.")
+        return False
+
+
+def _move_model_to_cpu(model, library: str):
+    """Move model to CPU if it's a neural network model."""
+    if library == "sdv":
+        # SDV models (TVAE, CTGAN, CopulaGAN) have internal _model attribute
+        if hasattr(model, '_model'):
+            if hasattr(model._model, 'to'):
+                model._model.to('cpu')
+                logger.info("Moved SDV model to CPU")
+    elif library == "synthcity":
+        # Synthcity models might have different structure
+        if hasattr(model, 'to'):
+            model.to('cpu')
+            logger.info("Moved synthcity model to CPU")
+
 
 def _get_config_hash() -> str:
     """Get config hash from temporary file created during pipeline execution"""
@@ -149,6 +197,11 @@ def main(cfg: DictConfig) -> None:
 
         print(f"📋 Loaded {library} {model_type} model")
         print(f"📋 Experiment: {experiment_info.get('id', 'unknown')}")
+
+        # Check GPU compatibility and move to CPU if needed
+        if not _check_gpu_compatibility():
+            print("⚠️  GPU incompatible, moving model to CPU for generation")
+            _move_model_to_cpu(model, library)
 
     except FileNotFoundError as e:
         print(f"❌ {e}")
