@@ -63,17 +63,41 @@ def _check_gpu_compatibility() -> bool:
 
 def _move_model_to_cpu(model, library: str):
     """Move model to CPU if it's a neural network model."""
-    if library == "sdv":
-        # SDV models (TVAE, CTGAN, CopulaGAN) have internal _model attribute
-        if hasattr(model, '_model'):
-            if hasattr(model._model, 'to'):
-                model._model.to('cpu')
-                logger.info("Moved SDV model to CPU")
-    elif library == "synthcity":
-        # Synthcity models might have different structure
-        if hasattr(model, 'to'):
-            model.to('cpu')
-            logger.info("Moved synthcity model to CPU")
+    try:
+        if library == "sdv":
+            # SDV models (TVAE, CTGAN, CopulaGAN) have internal _model attribute
+            if hasattr(model, '_model'):
+                # Move all submodules to CPU explicitly
+                if hasattr(model._model, 'encoder'):
+                    model._model.encoder.to('cpu')
+                    print("   ✓ Moved encoder to CPU")
+                if hasattr(model._model, 'decoder'):
+                    model._model.decoder.to('cpu')
+                    print("   ✓ Moved decoder to CPU")
+                if hasattr(model._model, 'generator'):
+                    model._model.generator.to('cpu')
+                    print("   ✓ Moved generator to CPU")
+                if hasattr(model._model, 'discriminator'):
+                    model._model.discriminator.to('cpu')
+                    print("   ✓ Moved discriminator to CPU")
+
+                # Move the entire model as fallback
+                if hasattr(model._model, 'to'):
+                    model._model.to('cpu')
+
+                # Set device attribute if it exists
+                if hasattr(model._model, 'device'):
+                    model._model.device = 'cpu'
+
+                print("   ✓ Successfully moved all model components to CPU")
+        elif library == "synthcity":
+            # Synthcity models might have different structure
+            if hasattr(model, 'to'):
+                model.to('cpu')
+                print("   ✓ Moved synthcity model to CPU")
+    except Exception as e:
+        logger.error(f"Error moving model to CPU: {e}")
+        raise
 
 
 def _get_config_hash() -> str:
