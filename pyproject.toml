@@ -29,9 +29,9 @@ dependencies = [
     "rich>=13.0.0",
     # Synthetic Data Libraries
     "opacus<1.5.0",
-    "torch==2.2.2",
-    "torchaudio==2.2.2",
-    "torchvision==0.17.2",
+    "torch==2.5.1",
+    "torchaudio==2.5.1",
+    "torchvision==0.20.1",
     "sdv>=1.0.0",
     "synthcity>=0.2.12",
     "openpyxl>=3.1.0",
@@ -57,3 +57,10 @@ explicit = true
 torch = { index = "pytorch-cu121" }
 torchvision = { index = "pytorch-cu121" }
 torchaudio = { index = "pytorch-cu121" }
+
+# Override synthcity's PyTorch constraint since we don't use time series models (tsai)
+# synthcity requires torch<2.3 due to tsai, but we only use tabular models (ARF, etc.)
+[tool.uv]
+override-dependencies = [
+    "torch>=2.1",
+]
