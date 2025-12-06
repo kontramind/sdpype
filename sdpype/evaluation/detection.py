@@ -3,6 +3,7 @@ Detection-based evaluation metrics for synthetic data quality assessment.
 Using synthcity's proven real-vs-synthetic detection approach.
 """
 
+import os
 import time
 import json
 from datetime import datetime
@@ -10,6 +11,16 @@ from typing import Dict, Any, List
 import numpy as np
 import pandas as pd
 from sdv.metadata import SingleTableMetadata
+
+# Force CPU mode for PyTorch-based detection if GPU is incompatible
+if os.environ.get('CUDA_VISIBLE_DEVICES') == '':
+    try:
+        import torch
+        torch.set_default_device('cpu')
+        # Ensure all tensors are created on CPU
+        torch.set_default_tensor_type(torch.FloatTensor)
+    except Exception:
+        pass
 
 # Import synthcity detection evaluators
 from synthcity.metrics.eval_detection import (
