@@ -3,6 +3,7 @@
 Enhanced synthetic data generation using centralized serialization
 """
 
+import os
 import json
 import time
 from pathlib import Path
@@ -192,9 +193,16 @@ def _apply_post_processing(
 def main(cfg: DictConfig) -> None:
     """Generate synthetic data with unified model loading"""
 
+    # Check GPU compatibility early and force CPU mode if needed
+    # This must be done BEFORE loading any pickled models
+    gpu_compatible = _check_gpu_compatibility()
+    if not gpu_compatible:
+        print("⚠️  Incompatible GPU detected, forcing CPU-only mode for generation")
+        os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
     # Set all random seeds for reproducibility across libraries
     np.random.seed(cfg.experiment.seed)
-    
+
     # Set PyTorch seed (SDV models use PyTorch)
     try:
         import torch
@@ -203,7 +211,7 @@ def main(cfg: DictConfig) -> None:
             torch.cuda.manual_seed_all(cfg.experiment.seed)
     except ImportError:
         pass
-    
+
     # Set Python's built-in random seed
     import random
     random.seed(cfg.experiment.seed)
