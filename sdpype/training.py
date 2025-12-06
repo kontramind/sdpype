@@ -34,6 +34,41 @@ from sdpype.metadata import load_csv_with_metadata
 from synthpop.method import CARTMethod
 from sdpype.label_encoding import SimpleLabelEncoder
 
+import torch
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _check_gpu_compatibility() -> bool:
+    """Check if GPU is compatible with current PyTorch version.
+
+    Returns True if GPU should be used, False if CPU fallback is needed.
+    """
+    if not torch.cuda.is_available():
+        return False
+
+    try:
+        # Get GPU compute capability
+        capability = torch.cuda.get_device_capability(0)
+        device_name = torch.cuda.get_device_name(0)
+
+        # PyTorch 2.2.2 supports up to sm_90 (compute capability 9.0)
+        # RTX 50 series (Blackwell) has sm_120 (12.0) which is not supported
+        if capability[0] >= 10:
+            logger.warning(
+                f"GPU {device_name} with compute capability sm_{capability[0]}{capability[1]} "
+                f"is not fully supported by PyTorch {torch.__version__}. "
+                f"Falling back to CPU mode for training. "
+                f"To use GPU, upgrade to PyTorch 2.5+ (requires removing synthcity dependency)."
+            )
+            return False
+
+        return True
+    except Exception as e:
+        logger.warning(f"Error checking GPU compatibility: {e}. Falling back to CPU.")
+        return False
+
 
 def _get_config_hash() -> str:
     """Get config hash from temporary file created during pipeline execution"""
@@ -95,6 +130,12 @@ def create_sdv_model(cfg: DictConfig, metadata: SingleTableMetadata):
         'dp_max_grad_norm', 'dp_secure_mode',
     }
     model_params = {k: v for k, v in all_params.items() if k not in synthcity_only_params}
+
+    # Check GPU compatibility and override cuda parameter if needed
+    gpu_compatible = _check_gpu_compatibility()
+    if not gpu_compatible and model_params.get("cuda", True):
+        logger.info("GPU incompatible or unavailable, forcing CPU mode for SDV training")
+        model_params["cuda"] = False
 
     match cfg.sdg.model_type:
         case "gaussiancopula":
