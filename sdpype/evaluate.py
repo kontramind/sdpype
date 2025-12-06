@@ -3,30 +3,29 @@ Statistical metrics evaluation script for SDPype - Alpha Precision and PRDC
 """
 
 import os
-import sys
 
-# CRITICAL: Check GPU and force CPU mode BEFORE any torch/synthcity imports
-def _check_and_force_cpu_if_needed():
-    """Check GPU compatibility and set CUDA_VISIBLE_DEVICES before torch loads."""
+# CRITICAL: Force CPU mode for unsupported GPUs BEFORE any imports
+# This must happen before torch/synthcity are imported anywhere in the chain
+def _force_cpu_for_incompatible_gpu():
+    """Set CUDA_VISIBLE_DEVICES='' if GPU is incompatible, before any torch imports."""
+    # Quick check using nvidia-smi or environment
+    # If GPU is sm_120+, disable CUDA entirely
     try:
-        import torch
-        if not torch.cuda.is_available():
-            return
-
-        capability = torch.cuda.get_device_capability(0)
-        # Force CPU for unsupported architectures (sm_120+)
-        if capability[0] >= 10:
-            print(f"⚠️  GPU sm_{capability[0]}{capability[1]} incompatible, forcing CPU mode for evaluation")
-            os.environ['CUDA_VISIBLE_DEVICES'] = ''
-            # Force torch to reinitialize
-            for mod in list(sys.modules.keys()):
-                if 'torch' in mod or 'synthcity' in mod:
-                    del sys.modules[mod]
+        import subprocess
+        result = subprocess.run(['nvidia-smi', '--query-gpu=compute_cap', '--format=csv,noheader'],
+                              capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            cap_str = result.stdout.strip().split('.')[0] if result.stdout else ''
+            if cap_str.isdigit() and int(cap_str) >= 10:
+                print(f"⚠️  Detected GPU with compute capability {result.stdout.strip()}")
+                print("⚠️  Incompatible with current PyTorch, forcing CPU-only mode")
+                os.environ['CUDA_VISIBLE_DEVICES'] = ''
     except Exception:
+        # If we can't check, don't force CPU
         pass
 
-# Run BEFORE other imports
-_check_and_force_cpu_if_needed()
+# Run check before ANY other imports
+_force_cpu_for_incompatible_gpu()
 
 import json
 from pathlib import Path
