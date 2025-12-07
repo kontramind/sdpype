@@ -268,14 +268,14 @@ def main(cfg: DictConfig) -> None:
 
     # Save statistical similarity results
     Path("experiments/metrics").mkdir(parents=True, exist_ok=True)
-    with open(f"experiments/metrics/statistical_similarity_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.json", "w") as f:
-        json.dump(statistical_results, f, indent=2)
+    with open(f"experiments/metrics/statistical_similarity_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.json", "w", encoding="utf-8") as f:
+        json.dump(statistical_results, f, indent=2, ensure_ascii=False)
 
     print(f"📊 Statistical metrics results saved: experiments/metrics/statistical_similarity_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.json")
 
     # Generate and save human-readable report
     report = generate_statistical_report(statistical_results)
-    with open(f"experiments/metrics/statistical_report_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.txt", "w") as f:
+    with open(f"experiments/metrics/statistical_report_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.txt", "w", encoding="utf-8") as f:
         f.write(report)
 
     print(f"📋 Statistical metrics report saved: experiments/metrics/statistical_report_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.txt")

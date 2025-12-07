@@ -115,15 +115,15 @@ def main(cfg: DictConfig) -> None:
     from sdpype.evaluation.detection import ensure_json_serializable
     detection_results = ensure_json_serializable(detection_results)
 
-    with open(results_file, 'w') as f:
-        json.dump(detection_results, f, indent=2)
+    with open(results_file, 'w', encoding='utf-8') as f:
+        json.dump(detection_results, f, indent=2, ensure_ascii=False)
 
     # Generate human-readable report
     report_file = f"experiments/metrics/detection_report_{cfg.experiment.name}_{config_hash}_{cfg.experiment.seed}.txt"
     report_content = generate_detection_report(detection_results)
     
     print(f"📋 Generating detection report: {report_file}")
-    with open(report_file, 'w') as f:
+    with open(report_file, 'w', encoding='utf-8') as f:
         f.write(report_content)
 
     # Display detection results table
