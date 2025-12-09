@@ -787,8 +787,8 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
     ax_js.grid(True, alpha=0.3)
     ax_js.set_xlim(left=-0.5)
 
-    # FIFTH SUBPLOT: Hallucination Metrics (DDR + Plausibility)
-    ax_halluc.set_title('Hallucination Metrics (DDR + Plausibility)', fontsize=12, fontweight='bold', pad=10)
+    # FIFTH SUBPLOT: Hallucination Metrics (DDR)
+    ax_halluc.set_title('Hallucination Metrics (DDR)', fontsize=12, fontweight='bold', pad=10)
 
     # Plot hallucination metrics (all should be high - higher is better)
     if any(x is not None for x in ddr):
@@ -1572,7 +1572,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     # Layout for Plot 5
     fig5.update_layout(
         title={
-            'text': 'Hallucination Metrics (DDR + Plausibility)',
+            'text': 'Hallucination Metrics (DDR)',
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18, 'family': 'Arial, sans-serif'}
