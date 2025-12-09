@@ -95,7 +95,7 @@ def parse_model_id(model_id: str) -> Dict[str, str]:
         raise ValueError(f"Failed to parse model_id '{model_id}': {e}") from e
 
 
-def read_metrics(model_id: str, generation: int) -> Dict:
+def read_metrics(model_id: str, generation: int, experiments_root: str) -> Dict:
     """
     Read key metrics from generation's output files.
 
@@ -104,6 +104,7 @@ def read_metrics(model_id: str, generation: int) -> Dict:
     Args:
         model_id: Full model identifier
         generation: Generation number to read metrics for
+        experiments_root: Root directory containing experiments/metrics and experiments/models
 
     Returns:
         Dict with metrics: α (Alpha Precision), PRDC (avg), Det (avg), Hallucination metrics
@@ -118,9 +119,7 @@ def read_metrics(model_id: str, generation: int) -> Dict:
     metrics = {}
 
     # Statistical similarity metrics
-    stat_file = Path(
-        f"experiments/metrics/statistical_similarity_{experiment_name}_{config_hash}_{seed}.json"
-    )
+    stat_file = Path(experiments_root) / "metrics" / f"statistical_similarity_{experiment_name}_{config_hash}_{seed}.json"
     
     if stat_file.exists():
         with stat_file.open() as f:
@@ -222,9 +221,7 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                         metrics['new_row_synthesis'] = nrs_score
 
     # Detection metrics
-    det_file = Path(
-        f"experiments/metrics/detection_evaluation_{experiment_name}_{config_hash}_{seed}.json"
-    )
+    det_file = Path(experiments_root) / "metrics" / f"detection_evaluation_{experiment_name}_{config_hash}_{seed}.json"
 
     if det_file.exists():
         with det_file.open() as f:
@@ -242,9 +239,7 @@ def read_metrics(model_id: str, generation: int) -> Dict:
                     metrics['detection_avg'] = sum(det_scores) / len(det_scores)
 
     # Hallucination metrics (DDR + Plausibility)
-    halluc_file = Path(
-        f"experiments/metrics/hallucination_{experiment_name}_{config_hash}_{seed}.json"
-    )
+    halluc_file = Path(experiments_root) / "metrics" / f"hallucination_{experiment_name}_{config_hash}_{seed}.json"
 
     if halluc_file.exists():
         with halluc_file.open() as f:
@@ -305,45 +300,49 @@ def read_metrics(model_id: str, generation: int) -> Dict:
     return metrics
 
 
-def trace_chain(model_id: str, max_generations: int = 100) -> List[Dict]:
+def trace_chain(model_id: str, max_generations: int = 100, experiments_root: str = None) -> List[Dict]:
     """
     Trace all generations in a recursive training chain.
-    
+
     Strategy:
     1. Parse input model_id to get root_hash and seed
     2. For each generation (0 to max), glob for metrics files
     3. Extract model_id from metrics filename
     4. Read metrics for that generation
     5. Stop when no more generations found
-    
+
     Args:
         model_id: Any model_id from the chain
         max_generations: Maximum generations to search for (default: 100)
-        
+        experiments_root: Root directory containing experiments/metrics and experiments/models
+
     Returns:
         List of dicts with generation data, sorted by generation number
     """
+    if experiments_root is None:
+        raise ValueError("experiments_root must be provided")
+
     # Parse input model_id
     try:
         parsed = parse_model_id(model_id)
         library = parsed['library']
         model_type = parsed['model_type']
-        ref_hash = parsed['ref_hash']        
+        ref_hash = parsed['ref_hash']
         root_hash = parsed['root_hash']
         seed = parsed['seed']
     except ValueError as e:
         console.print(f"[red]Error parsing model_id: {e}[/red]")
         raise typer.Exit(1)
-    
+
     console.print(f"[cyan]Tracing chain:[/cyan] {library}/{model_type}, ref_hash={ref_hash}, root_hash={root_hash}, seed={seed}")
-    
+
     results = []
-    
+
     # Search for each generation
     for gen in range(max_generations):
         # Glob broadly for generation + seed
         # Note: root_hash and training_hash change each generation in recursive training
-        pattern = f"experiments/metrics/statistical_similarity_*_gen_{gen}_*_{seed}.json"
+        pattern = str(Path(experiments_root) / "metrics" / f"statistical_similarity_*_gen_{gen}_*_{seed}.json")
         metric_files = list(Path().glob(pattern))
 
         if not metric_files:
@@ -374,14 +373,14 @@ def trace_chain(model_id: str, max_generations: int = 100) -> List[Dict]:
         
         if not matching_model_id:
             break
-        
+
         model_id_for_gen = matching_model_id
 
         # Read metrics
-        metrics = read_metrics(model_id_for_gen, gen)
-        
+        metrics = read_metrics(model_id_for_gen, gen, experiments_root)
+
         # Get model file info if exists
-        model_file = Path(f"experiments/models/sdg_model_{model_id_for_gen}.pkl")
+        model_file = Path(experiments_root) / "models" / f"sdg_model_{model_id_for_gen}.pkl"
         model_exists = model_file.exists()
         model_size_mb = model_file.stat().st_size / (1024 * 1024) if model_exists else 0
         
@@ -1808,6 +1807,12 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
 @app.command()
 def main(
     model_id: str = typer.Argument(..., help="Model ID from any generation in the chain"),
+    experiments_root: str = typer.Option(
+        ...,
+        "--experiments-root",
+        "-r",
+        help="Root directory containing experiments/metrics and experiments/models (required)"
+    ),
     format: Optional[str] = typer.Option(
         None,
         "--format",
@@ -1839,17 +1844,17 @@ def main(
 ):
     """
     Trace all generations in a recursive training chain.
-    
+
     Examples:
-        trace_chain.py MODEL_ID
-        trace_chain.py MODEL_ID --format csv --output chain.csv
-        trace_chain.py MODEL_ID --format json > chain.json
-        trace_chain.py MODEL_ID --plot --plot-output degradation.png
+        trace_chain.py MODEL_ID -r /path/to/experiments
+        trace_chain.py MODEL_ID -r ./experiments --format csv --output chain.csv
+        trace_chain.py MODEL_ID -r ./experiments --format json > chain.json
+        trace_chain.py MODEL_ID -r ./experiments --plot --plot-output degradation.png
     """
-    
+
     # Trace the chain
     try:
-        results = trace_chain(model_id, max_generations)
+        results = trace_chain(model_id, max_generations, experiments_root)
     except Exception as e:
         console.print(f"[red]Error tracing chain: {e}[/red]")
         raise typer.Exit(1)
