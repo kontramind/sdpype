@@ -799,24 +799,30 @@ def plot_chain_static(results: List[Dict], output_file: Optional[str] = None):
         ax_halluc.plot(generations, factual,
                        marker='o', label='Factual (Total)', linewidth=2, color='#1f77b4')
 
-    if any(x is not None for x in plausible):
-        ax_halluc.plot(generations, plausible,
-                       marker='s', label='Plausible (Total)', linewidth=2, color='#ff7f0e')
+    # if any(x is not None for x in plausible):
+    #     ax_halluc.plot(generations, plausible,
+    #                    marker='s', label='Plausible (Total)', linewidth=2, color='#ff7f0e')
 
-    if any(x is not None for x in plausible_novel):
-        ax_halluc.plot(generations, plausible_novel,
-                       marker='^', label='Novel Plausible', linewidth=2, color='#9467bd')
+    # if any(x is not None for x in plausible_novel):
+    #     ax_halluc.plot(generations, plausible_novel,
+    #                    marker='^', label='Novel Plausible', linewidth=2, color='#9467bd')
 
-    if any(x is not None for x in new_row_synthesis):
-        ax_halluc.plot(generations, new_row_synthesis,
-                       marker='D', label='NewRowSynthesis (SDV)', linewidth=2, color='#8c564b', linestyle='--')
+    # if any(x is not None for x in new_row_synthesis):
+    #     ax_halluc.plot(generations, new_row_synthesis,
+    #                    marker='D', label='NewRowSynthesis (SDV)', linewidth=2, color='#8c564b', linestyle='--')
 
     ax_halluc.set_xlabel('Generation', fontsize=12)
     ax_halluc.set_ylabel('Rate (higher is better)', fontsize=12)
     ax_halluc.legend(loc='best', fontsize=9)
     ax_halluc.grid(True, alpha=0.3)
     ax_halluc.set_xlim(left=-0.5)
-    ax_halluc.set_ylim(0, 1.05)
+
+    # Dynamic y-axis: find max value from plotted data
+    max_val = 0
+    for metric_list in [ddr, factual]:
+        max_in_list = max((x for x in metric_list if x is not None), default=0)
+        max_val = max(max_val, max_in_list)
+    ax_halluc.set_ylim(0, min(1.05, max_val * 1.1))  # Add 10% padding, but cap at 1.05
 
     # Add interpretation annotations
     ax_halluc.axhline(y=0.5, color='gray', linestyle='--', alpha=0.3, linewidth=1)
@@ -1502,41 +1508,48 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
             )
         )
 
-    if any(x is not None for x in plausible):
-        fig5.add_trace(
-            go.Scatter(
-                x=generations, y=plausible,
-                mode='lines+markers',
-                name='Plausible (Total)',
-                line=dict(color='#ff7f0e', width=2),
-                marker=dict(size=8, symbol='square'),
-                hovertemplate='Gen %{x}<br>Plausible: %{y:.4f}<extra></extra>'
-            )
-        )
+    # if any(x is not None for x in plausible):
+    #     fig5.add_trace(
+    #         go.Scatter(
+    #             x=generations, y=plausible,
+    #             mode='lines+markers',
+    #             name='Plausible (Total)',
+    #             line=dict(color='#ff7f0e', width=2),
+    #             marker=dict(size=8, symbol='square'),
+    #             hovertemplate='Gen %{x}<br>Plausible: %{y:.4f}<extra></extra>'
+    #         )
+    #     )
 
-    if any(x is not None for x in plausible_novel):
-        fig5.add_trace(
-            go.Scatter(
-                x=generations, y=plausible_novel,
-                mode='lines+markers',
-                name='Novel Plausible',
-                line=dict(color='#9467bd', width=2),
-                marker=dict(size=8, symbol='triangle-up'),
-                hovertemplate='Gen %{x}<br>Novel Plausible: %{y:.4f}<extra></extra>'
-            )
-        )
+    # if any(x is not None for x in plausible_novel):
+    #     fig5.add_trace(
+    #         go.Scatter(
+    #             x=generations, y=plausible_novel,
+    #             mode='lines+markers',
+    #             name='Novel Plausible',
+    #             line=dict(color='#9467bd', width=2),
+    #             marker=dict(size=8, symbol='triangle-up'),
+    #             hovertemplate='Gen %{x}<br>Novel Plausible: %{y:.4f}<extra></extra>'
+    #         )
+    #     )
 
-    if any(x is not None for x in new_row_synthesis):
-        fig5.add_trace(
-            go.Scatter(
-                x=generations, y=new_row_synthesis,
-                mode='lines+markers',
-                name='NewRowSynthesis (SDV)',
-                line=dict(color='#8c564b', width=2, dash='dash'),
-                marker=dict(size=8, symbol='diamond'),
-                hovertemplate='Gen %{x}<br>NewRowSynthesis: %{y:.4f}<extra></extra>'
-            )
-        )
+    # if any(x is not None for x in new_row_synthesis):
+    #     fig5.add_trace(
+    #         go.Scatter(
+    #             x=generations, y=new_row_synthesis,
+    #             mode='lines+markers',
+    #             name='NewRowSynthesis (SDV)',
+    #             line=dict(color='#8c564b', width=2, dash='dash'),
+    #             marker=dict(size=8, symbol='diamond'),
+    #             hovertemplate='Gen %{x}<br>NewRowSynthesis: %{y:.4f}<extra></extra>'
+    #         )
+    #     )
+
+    # Calculate dynamic y-axis range
+    max_halluc = 0
+    for metric_list in [ddr, factual]:
+        max_in_list = max((x for x in metric_list if x is not None), default=0)
+        max_halluc = max(max_halluc, max_in_list)
+    y_max_halluc = min(1.05, max_halluc * 1.1)  # Add 10% padding, cap at 1.05
 
     fig5.update_xaxes(
         title_text="Generation",
@@ -1550,7 +1563,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         showgrid=True,
         gridwidth=1,
         gridcolor='rgba(128, 128, 128, 0.2)',
-        range=[0, 1.05]
+        range=[0, y_max_halluc]
     )
 
     # Add reference line at 0.5
