@@ -20,7 +20,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress
 
-from trace_chain import trace_chain, plot_chain_interactive
+from trace_chain import trace_chain, plot_chain_interactive, export_csv, export_json
 
 app = typer.Typer(help="Batch process experiment folders with trace_chain")
 console = Console()
@@ -91,6 +91,8 @@ def validate_folder(folder: Path) -> Tuple[bool, Optional[str], Optional[str]]:
 def process_folder(
     folder: Path,
     max_generations: int = 100,
+    format: Optional[str] = None,
+    output: Optional[str] = None,
 ) -> Tuple[bool, Optional[Dict]]:
     """
     Process a single experiment folder.
@@ -122,9 +124,32 @@ def process_folder(
                 "error": "trace_chain returned no results"
             }
 
-        # Generate HTML plot in folder
+        # Generate HTML plot in folder (overwrite if exists)
         output_file = folder / f"{folder.name}.html"
+        if output_file.exists():
+            output_file.unlink()
         plot_chain_interactive(results, output_file=str(output_file))
+
+        # Export in requested format if specified
+        exported_files = []
+        if format:
+            output_dir = Path(output) if output else folder
+            if format.lower() == "csv":
+                csv_data = export_csv(results)
+                csv_file = output_dir / f"{folder.name}.csv"
+                csv_file.parent.mkdir(parents=True, exist_ok=True)
+                if csv_file.exists():
+                    csv_file.unlink()
+                csv_file.write_text(csv_data)
+                exported_files.append(str(csv_file))
+            elif format.lower() == "json":
+                json_data = export_json(results)
+                json_file = output_dir / f"{folder.name}.json"
+                json_file.parent.mkdir(parents=True, exist_ok=True)
+                if json_file.exists():
+                    json_file.unlink()
+                json_file.write_text(json_data)
+                exported_files.append(str(json_file))
 
         # Extract gen_0 metrics for summary
         gen_0_metrics = results[0]['metrics'] if results else {}
@@ -135,6 +160,7 @@ def process_folder(
             "model_id": model_id,
             "generations_traced": len(results),
             "output_html": str(output_file),
+            "exported_files": exported_files,
             "gen_0_metrics": {
                 "alpha_precision": gen_0_metrics.get("alpha_precision", "N/A"),
                 "prdc_avg": gen_0_metrics.get("prdc_avg", "N/A"),
@@ -169,6 +195,10 @@ def generate_summary_html(
 
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Remove existing file to ensure clean overwrite
+    if output_path.exists():
+        output_path.unlink()
 
     # Separate successful and failed results
     successful = [r for r in results if "error" not in r]
@@ -307,6 +337,18 @@ def main(
         "-s",
         help="Output path for summary HTML index"
     ),
+    format: Optional[str] = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help="Export format (csv/json) for each folder"
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output directory for exported files (default: same as folder)"
+    ),
 ) -> None:
     """
     Process multiple experiment folders with trace_chain.
@@ -317,6 +359,8 @@ def main(
     Examples:
         python batch_trace.py "./mimic_iii_baseline_*/"
         python batch_trace.py "./exp_*/" --max-generations 50 -s results/index.html
+        python batch_trace.py "./exp_*/" --format csv --output ./exports
+        python batch_trace.py "./exp_*/" --format json
     """
 
     console.print(f"[cyan]Pattern:[/cyan] {pattern}")
@@ -339,7 +383,7 @@ def main(
         for folder in folders:
             progress.update(task, description=f"[cyan]Processing {folder.name}...")
 
-            success, result = process_folder(folder, max_generations)
+            success, result = process_folder(folder, max_generations, format, output)
             results.append(result)
 
             if success:
