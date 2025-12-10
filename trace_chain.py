@@ -469,15 +469,15 @@ def display_chain_table(results: List[Dict]):
 def export_csv(results: List[Dict]) -> str:
     """
     Export chain results as CSV format.
-    
+
     Returns:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,complexity_population,complexity_training,complexity_reference,complexity_synthetic,model_size_mb\n"
+        return "generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb\n"
 
-    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,complexity_population,complexity_training,complexity_reference,complexity_synthetic,model_size_mb"]
-    
+    lines = ["generation,model_id,alpha_precision,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb"]
+
     for r in results:
         gen = r['generation']
         model_id = r['model_id']
@@ -498,13 +498,29 @@ def export_csv(results: List[Dict]) -> str:
         jsd_nm = metrics.get('jsd_nannyml', '')
         det = metrics.get('detection_avg', '')
         nrs = metrics.get('new_row_synthesis', '')
+
+        # Hallucination metrics
+        factual = metrics.get('factual_total', '')
+        ddr = metrics.get('ddr_novel_factual', '')
+        plaus = metrics.get('plausible_total', '')
+        plaus_nov = metrics.get('plausible_novel', '')
+        cat_ddr = metrics.get('category_ddr', '')
+        cat_train_valid = metrics.get('category_train_copy_valid', '')
+        cat_train_prop = metrics.get('category_train_copy_prop', '')
+        cat_halluc = metrics.get('category_new_halluc', '')
+
+        # Complexity metrics
         comp_pop = metrics.get('complexity_population', '')
         comp_train = metrics.get('complexity_training', '')
         comp_ref = metrics.get('complexity_reference', '')
         comp_synth = metrics.get('complexity_synthetic', '')
+        comp_ratio_pop = metrics.get('complexity_ratio_vs_population', '')
+        comp_ratio_train = metrics.get('complexity_ratio_vs_training', '')
+        comp_ratio_ref = metrics.get('complexity_ratio_vs_reference', '')
+
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{nrs},{comp_pop},{comp_train},{comp_ref},{comp_synth},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{nrs},{factual},{ddr},{plaus},{plaus_nov},{cat_ddr},{cat_train_valid},{cat_train_prop},{cat_halluc},{comp_pop},{comp_train},{comp_ref},{comp_synth},{comp_ratio_pop},{comp_ratio_train},{comp_ratio_ref},{size}")
 
     return "\n".join(lines)
 
