@@ -541,7 +541,7 @@ def load_all_generation_results(checkpoint_dir: Path, start_gen: int, end_gen: i
 def run(
     generations: int = typer.Option(5, "--generations", "-n", help="Number of generations to run"),
     params_file: Path = typer.Option("params.yaml", "--params", "-p", help="Path to params.yaml"),
-    checkpoint_dir: Path = typer.Option("checkpoints", "--checkpoint-dir", help="Directory for checkpoints"),
+    checkpoint_dir: Path = typer.Option("experiments/checkpoints", "--checkpoint-dir", help="Directory for checkpoints"),
     resume: bool = typer.Option(False, "--resume", "-r", help="Resume from last checkpoint"),
     resume_from: Optional[str] = typer.Option(
         None,

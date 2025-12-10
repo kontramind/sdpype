@@ -33,8 +33,9 @@ def create_directory_structure():
     """Create the experiments directory structure"""
     dirs = [
         "experiments/data/raw",
-        "experiments/data/processed", 
+        "experiments/data/processed",
         "experiments/data/synthetic",
+        "experiments/checkpoints",
         "experiments/models",
         "experiments/metrics",
         "pipelines"
