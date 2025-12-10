@@ -48,7 +48,7 @@ experiments/data/              # Large data files (manual transfer)
 experiments/models/            # Large model files (manual transfer)
 experiments/metrics/          # Small JSON metrics (commit these)
 experiments/configs/          # Experiment configs (commit these)
-checkpoints/
+experiments/checkpoints/
 
 # Testing
 .pytest_cache/
