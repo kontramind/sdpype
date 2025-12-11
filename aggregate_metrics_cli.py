@@ -244,6 +244,10 @@ def create_plotly_visualization(
         line_color = line_colors[row_idx - 1]  # Darker color for mean line
         light_color = light_colors[row_idx - 1]  # Very light color for outer band
 
+        # Convert colors to rgba with transparency
+        outer_band_color = hex_to_rgba(light_color, alpha=0.35)  # Light outer band with transparency
+        inner_band_color = hex_to_rgba(color, alpha=0.45)  # Medium inner band with transparency
+
         # Outer band (prediction interval / std band) - using lighter color
         fig.add_trace(
             go.Scatter(
@@ -267,14 +271,14 @@ def create_plotly_visualization(
                 mode="lines",
                 line_color="rgba(0,0,0,0)",
                 name=f"{metric}: Mean ± 1.96×SD",
-                fillcolor=light_color,
+                fillcolor=outer_band_color,
                 hovertemplate="<b>Pred. Interval</b><br>Gen %{x}<extra></extra>",
             ),
             row=row,
             col=1,
         )
 
-        # Inner band (bootstrap CI) - using medium color
+        # Inner band (bootstrap CI) - using medium color with transparency
         fig.add_trace(
             go.Scatter(
                 x=generations,
@@ -297,7 +301,7 @@ def create_plotly_visualization(
                 mode="lines",
                 line_color="rgba(0,0,0,0)",
                 name=f"{metric}: 95% Bootstrap CI",
-                fillcolor=color,
+                fillcolor=inner_band_color,
                 hovertemplate="<b>95% CI</b><br>Gen %{x}<extra></extra>",
             ),
             row=row,
