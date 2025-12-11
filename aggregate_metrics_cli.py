@@ -168,6 +168,24 @@ def aggregate_metrics(
     return pd.DataFrame(results)
 
 
+def hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
+    """
+    Convert hex color to rgba format with alpha transparency.
+
+    Args:
+        hex_color: Hex color string (e.g., '#1f77b4')
+        alpha: Transparency value 0-1 (default 0.2)
+
+    Returns:
+        RGBA color string (e.g., 'rgba(31, 119, 180, 0.2)')
+    """
+    hex_color = hex_color.lstrip("#")
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
 def create_plotly_visualization(
     summary_df: pd.DataFrame,
     metrics: List[str] = None
@@ -221,7 +239,7 @@ def create_plotly_visualization(
         pred_uppers = means + 1.96 * stds
 
         color = colors[col_idx - 1]
-        color_light = color + "40"  # Add transparency
+        color_light = hex_to_rgba(color, alpha=0.2)  # Light transparent version
 
         # Outer band (prediction interval / std band)
         fig.add_trace(
