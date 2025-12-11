@@ -301,15 +301,15 @@ def create_plotly_visualization(
             col=col,
         )
 
-        # Mean line
+        # Mean line (drawn last to ensure it's on top)
         fig.add_trace(
             go.Scatter(
                 x=generations,
                 y=means,
                 mode="lines+markers",
                 name=f"{metric}: Mean",
-                line=dict(color=color, width=2.5),
-                marker=dict(size=6, color=color),
+                line=dict(color=color, width=4),
+                marker=dict(size=8, color=color, line=dict(color="white", width=1)),
                 hovertemplate="<b>Mean</b><br>Gen %{x}<br>Value: %{y:.4f}<extra></extra>",
             ),
             row=1,
