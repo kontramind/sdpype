@@ -189,38 +189,32 @@ def hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
 def create_plotly_visualization(
     summary_df: pd.DataFrame,
     metrics: List[str] = None
-) -> go.Figure:
+) -> List[go.Figure]:
     """
-    Create Plotly figure with double-banded CI visualization for each metric.
+    Create individual Plotly figures with double-banded CI visualization for each metric.
 
     Inner band: 95% Bootstrap CI
-    Outer band: Mean ± 1.96 × SD (approximately 95% prediction interval)
+    Outer band: Mean ± 1.96 × SD (approximately 95% prediction interval, in gray)
 
     Args:
         summary_df: Aggregated metrics dataframe
         metrics: List of metrics to plot
 
     Returns:
-        Plotly Figure object
+        List of Plotly Figure objects (one per metric)
     """
     if metrics is None:
         metrics = ["factual_total", "ddr_novel_factual"]
 
-    # Create subplots (vertical layout)
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        subplot_titles=[f"{m.replace('_', ' ').title()}" for m in metrics],
-        specs=[[{"secondary_y": False}], [{"secondary_y": False}]],
-        vertical_spacing=0.12,
-    )
-
     colors = ["#1f77b4", "#ff7f0e"]  # Blue, Orange
     line_colors = ["#0d3b7a", "#d64a0a"]  # Dark blue, Dark orange
-    light_colors = ["#d4e5f7", "#ffe6cc"]  # Very light blue, Very light orange (for outer bands)
+    gray_color = "#a6a6a6"  # Gray for outer bands (neutral across all metrics)
 
-    for row_idx, metric in enumerate(metrics, start=1):
-        row = row_idx
+    figures = []
+
+    for metric_idx, metric in enumerate(metrics):
+        # Create individual figure for each metric
+        fig = go.Figure()
 
         mean_col = f"{metric}_mean"
         std_col = f"{metric}_std"
@@ -240,15 +234,14 @@ def create_plotly_visualization(
         pred_lowers = means - 1.96 * stds
         pred_uppers = means + 1.96 * stds
 
-        color = colors[row_idx - 1]
-        line_color = line_colors[row_idx - 1]  # Darker color for mean line
-        light_color = light_colors[row_idx - 1]  # Very light color for outer band
+        color = colors[metric_idx]
+        line_color = line_colors[metric_idx]  # Darker color for mean line
 
         # Convert colors to rgba with transparency
-        outer_band_color = hex_to_rgba(light_color, alpha=0.35)  # Light outer band with transparency
-        inner_band_color = hex_to_rgba(color, alpha=0.45)  # Medium inner band with transparency
+        outer_band_color = hex_to_rgba(gray_color, alpha=0.75)  # Gray outer band with transparency
+        inner_band_color = hex_to_rgba(color, alpha=0.50)  # Medium inner band with transparency
 
-        # Outer band (prediction interval / std band) - using lighter color
+        # Outer band (prediction interval / std band) - gray color
         fig.add_trace(
             go.Scatter(
                 x=generations,
@@ -259,8 +252,6 @@ def create_plotly_visualization(
                 showlegend=False,
                 hoverinfo="skip",
             ),
-            row=row,
-            col=1,
         )
 
         fig.add_trace(
@@ -270,15 +261,13 @@ def create_plotly_visualization(
                 fill="tonexty",
                 mode="lines",
                 line_color="rgba(0,0,0,0)",
-                name=f"{metric}: Mean ± 1.96×SD",
+                name="Mean ± 1.96×SD",
                 fillcolor=outer_band_color,
                 hovertemplate="<b>Pred. Interval</b><br>Gen %{x}<extra></extra>",
             ),
-            row=row,
-            col=1,
         )
 
-        # Inner band (bootstrap CI) - using medium color with transparency
+        # Inner band (bootstrap CI) - using metric color with transparency
         fig.add_trace(
             go.Scatter(
                 x=generations,
@@ -289,8 +278,6 @@ def create_plotly_visualization(
                 showlegend=False,
                 hoverinfo="skip",
             ),
-            row=row,
-            col=1,
         )
 
         fig.add_trace(
@@ -300,61 +287,60 @@ def create_plotly_visualization(
                 fill="tonexty",
                 mode="lines",
                 line_color="rgba(0,0,0,0)",
-                name=f"{metric}: 95% Bootstrap CI",
+                name="95% Bootstrap CI",
                 fillcolor=inner_band_color,
                 hovertemplate="<b>95% CI</b><br>Gen %{x}<extra></extra>",
             ),
-            row=row,
-            col=1,
         )
 
-        # Mean line (drawn last to ensure it's on top, using darker color for contrast)
+        # Mean line (drawn last to ensure it's on top)
         fig.add_trace(
             go.Scatter(
                 x=generations,
                 y=means,
                 mode="lines+markers",
-                name=f"{metric}: Mean",
+                name="Mean",
                 line=dict(color=line_color, width=4),
                 marker=dict(size=8, color=line_color, line=dict(color="white", width=1)),
                 hovertemplate="<b>Mean</b><br>Gen %{x}<br>Value: %{y:.4f}<extra></extra>",
             ),
-            row=row,
-            col=1,
         )
 
-        # Update axes
-        fig.update_xaxes(title_text="Generation", row=row, col=1)
-        fig.update_yaxes(
-            title_text=metric.replace("_", " ").title(),
-            row=row,
-            col=1,
+        # Update layout for individual figure
+        fig.update_layout(
+            title_text=f"{metric.replace('_', ' ').title()} with 95% Bootstrap Confidence Intervals",
+            xaxis_title="Generation",
+            yaxis_title=metric.replace("_", " ").title(),
+            height=500,
+            hovermode="x unified",
+            template="plotly_white",
+            font=dict(family="Arial, sans-serif", size=11),
+            showlegend=True,
+            legend=dict(
+                x=1.02,
+                y=1,
+                xanchor="left",
+                yanchor="top",
+            ),
         )
 
-    # Update layout (vertical stacked layout)
-    fig.update_layout(
-        title_text="Aggregated Metrics with 95% Bootstrap Confidence Intervals",
-        height=900,
-        hovermode="x unified",
-        template="plotly_white",
-        font=dict(family="Arial, sans-serif", size=11),
-    )
+        figures.append(fig)
 
-    return fig
+    return figures
 
 
 def generate_summary_html(
     summary_df: pd.DataFrame,
-    fig: go.Figure,
+    figures: List[go.Figure],
     num_folders: int,
     output_file: Optional[str] = None
 ) -> str:
     """
-    Generate summary HTML with metrics table and Plotly visualization.
+    Generate summary HTML with metrics table and Plotly visualizations.
 
     Args:
         summary_df: Aggregated metrics dataframe
-        fig: Plotly figure
+        figures: List of Plotly figures (one per metric)
         num_folders: Number of folders processed
         output_file: Output filename
 
@@ -381,8 +367,15 @@ def generate_summary_html(
         border=0,
     )
 
-    # Get Plotly figure as HTML
-    plot_html = fig.to_html(include_plotlyjs="cdn", div_id="metrics_plot")
+    # Get Plotly figures as HTML (only include plotlyjs once)
+    plots_html = []
+    for idx, fig in enumerate(figures):
+        plot_div_id = f"metrics_plot_{idx}"
+        plot_html = fig.to_html(
+            include_plotlyjs="cdn" if idx == 0 else False,
+            div_id=plot_div_id
+        )
+        plots_html.append(plot_html)
 
     # Build complete HTML
     html_parts = [
@@ -420,16 +413,26 @@ def generate_summary_html(
         "    </div>",
         "    <h2>Metrics Overview</h2>",
         summary_table_html,
-        "    <h2>Visualization</h2>",
-        "    <div class='plot-container'>",
-        plot_html,
-        "    </div>",
+        "    <h2>Visualizations</h2>",
+    ]
+
+    # Add each plot in its own container
+    for plot_html in plots_html:
+        html_parts.extend([
+            "    <div class='plot-container'>",
+            plot_html,
+            "    </div>",
+        ])
+
+    # Add visualization note
+    html_parts.extend([
         "    <div class='note'>",
         "      <strong>Visualization Details:</strong><br>",
         "      <ul>",
-        "        <li><strong>Inner band (solid):</strong> 95% percentile bootstrap confidence interval (CI) for the mean</li>",
-        "        <li><strong>Outer band (light):</strong> Mean ± 1.96 × standard deviation (approximately 95% prediction interval)</li>",
-        "        <li><strong>Line with markers:</strong> Mean value at each generation</li>",
+        "        <li><strong>Inner band:</strong> 95% percentile bootstrap confidence interval (CI) for the mean</li>",
+        "        <li><strong>Outer band (gray):</strong> Mean ± 1.96 × standard deviation (approximately 95% prediction interval)</li>",
+        "        <li><strong>Mean line:</strong> Colored line showing mean value at each generation</li>",
+        "        <li><strong>Legend:</strong> Each figure has its own legend with clickable items</li>",
         "      </ul>",
         "      <strong>Bootstrap Method:</strong> 10,000 resamples with empirical percentile-based CI computation",
         "    </div>",
@@ -530,14 +533,14 @@ def main(
     )
     console.print(f"[green]✓[/green] Computed statistics for {len(summary_df)} generations")
 
-    # Create visualization
-    console.print("[cyan]Creating Plotly visualization...[/cyan]")
-    fig = create_plotly_visualization(summary_df)
-    console.print("[green]✓[/green] Visualization created")
+    # Create visualizations
+    console.print("[cyan]Creating Plotly visualizations...[/cyan]")
+    figures = create_plotly_visualization(summary_df)
+    console.print(f"[green]✓[/green] Created {len(figures)} visualizations")
 
     # Generate summary HTML
     console.print("[cyan]Generating summary HTML...[/cyan]")
-    summary_path = generate_summary_html(summary_df, fig, loaded_folders, summary_output)
+    summary_path = generate_summary_html(summary_df, figures, loaded_folders, summary_output)
     console.print(f"[green]✓[/green] Summary HTML generated: {summary_path}")
 
     # Export CSV
