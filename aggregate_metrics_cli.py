@@ -206,20 +206,21 @@ def create_plotly_visualization(
     if metrics is None:
         metrics = ["factual_total", "ddr_novel_factual"]
 
-    # Create subplots
+    # Create subplots (vertical layout)
     fig = make_subplots(
-        rows=1,
-        cols=2,
+        rows=2,
+        cols=1,
         subplot_titles=[f"{m.replace('_', ' ').title()}" for m in metrics],
-        specs=[[{"secondary_y": False}, {"secondary_y": False}]],
-        horizontal_spacing=0.12,
+        specs=[[{"secondary_y": False}], [{"secondary_y": False}]],
+        vertical_spacing=0.12,
     )
 
     colors = ["#1f77b4", "#ff7f0e"]  # Blue, Orange
-    line_colors = ["#0d3b7a", "#d64a0a"]  # Dark blue, Dark orange (darker versions for mean lines)
+    line_colors = ["#0d3b7a", "#d64a0a"]  # Dark blue, Dark orange
+    light_colors = ["#d4e5f7", "#ffe6cc"]  # Very light blue, Very light orange (for outer bands)
 
-    for col_idx, metric in enumerate(metrics, start=1):
-        col = col_idx
+    for row_idx, metric in enumerate(metrics, start=1):
+        row = row_idx
 
         mean_col = f"{metric}_mean"
         std_col = f"{metric}_std"
@@ -239,11 +240,11 @@ def create_plotly_visualization(
         pred_lowers = means - 1.96 * stds
         pred_uppers = means + 1.96 * stds
 
-        color = colors[col_idx - 1]
-        line_color = line_colors[col_idx - 1]  # Darker color for mean line
-        color_light = hex_to_rgba(color, alpha=0.2)  # Light transparent version
+        color = colors[row_idx - 1]
+        line_color = line_colors[row_idx - 1]  # Darker color for mean line
+        light_color = light_colors[row_idx - 1]  # Very light color for outer band
 
-        # Outer band (prediction interval / std band)
+        # Outer band (prediction interval / std band) - using lighter color
         fig.add_trace(
             go.Scatter(
                 x=generations,
@@ -254,8 +255,8 @@ def create_plotly_visualization(
                 showlegend=False,
                 hoverinfo="skip",
             ),
-            row=1,
-            col=col,
+            row=row,
+            col=1,
         )
 
         fig.add_trace(
@@ -266,14 +267,14 @@ def create_plotly_visualization(
                 mode="lines",
                 line_color="rgba(0,0,0,0)",
                 name=f"{metric}: Mean ± 1.96×SD",
-                fillcolor=color_light,
+                fillcolor=light_color,
                 hovertemplate="<b>Pred. Interval</b><br>Gen %{x}<extra></extra>",
             ),
-            row=1,
-            col=col,
+            row=row,
+            col=1,
         )
 
-        # Inner band (bootstrap CI)
+        # Inner band (bootstrap CI) - using medium color
         fig.add_trace(
             go.Scatter(
                 x=generations,
@@ -284,8 +285,8 @@ def create_plotly_visualization(
                 showlegend=False,
                 hoverinfo="skip",
             ),
-            row=1,
-            col=col,
+            row=row,
+            col=1,
         )
 
         fig.add_trace(
@@ -299,8 +300,8 @@ def create_plotly_visualization(
                 fillcolor=color,
                 hovertemplate="<b>95% CI</b><br>Gen %{x}<extra></extra>",
             ),
-            row=1,
-            col=col,
+            row=row,
+            col=1,
         )
 
         # Mean line (drawn last to ensure it's on top, using darker color for contrast)
@@ -314,22 +315,22 @@ def create_plotly_visualization(
                 marker=dict(size=8, color=line_color, line=dict(color="white", width=1)),
                 hovertemplate="<b>Mean</b><br>Gen %{x}<br>Value: %{y:.4f}<extra></extra>",
             ),
-            row=1,
-            col=col,
+            row=row,
+            col=1,
         )
 
         # Update axes
-        fig.update_xaxes(title_text="Generation", row=1, col=col)
+        fig.update_xaxes(title_text="Generation", row=row, col=1)
         fig.update_yaxes(
             title_text=metric.replace("_", " ").title(),
-            row=1,
-            col=col,
+            row=row,
+            col=1,
         )
 
-    # Update layout
+    # Update layout (vertical stacked layout)
     fig.update_layout(
         title_text="Aggregated Metrics with 95% Bootstrap Confidence Intervals",
-        height=500,
+        height=900,
         hovermode="x unified",
         template="plotly_white",
         font=dict(family="Arial, sans-serif", size=11),
