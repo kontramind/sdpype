@@ -216,6 +216,7 @@ def create_plotly_visualization(
     )
 
     colors = ["#1f77b4", "#ff7f0e"]  # Blue, Orange
+    line_colors = ["#0d3b7a", "#d64a0a"]  # Dark blue, Dark orange (darker versions for mean lines)
 
     for col_idx, metric in enumerate(metrics, start=1):
         col = col_idx
@@ -239,6 +240,7 @@ def create_plotly_visualization(
         pred_uppers = means + 1.96 * stds
 
         color = colors[col_idx - 1]
+        line_color = line_colors[col_idx - 1]  # Darker color for mean line
         color_light = hex_to_rgba(color, alpha=0.2)  # Light transparent version
 
         # Outer band (prediction interval / std band)
@@ -301,15 +303,15 @@ def create_plotly_visualization(
             col=col,
         )
 
-        # Mean line (drawn last to ensure it's on top)
+        # Mean line (drawn last to ensure it's on top, using darker color for contrast)
         fig.add_trace(
             go.Scatter(
                 x=generations,
                 y=means,
                 mode="lines+markers",
                 name=f"{metric}: Mean",
-                line=dict(color=color, width=4),
-                marker=dict(size=8, color=color, line=dict(color="white", width=1)),
+                line=dict(color=line_color, width=4),
+                marker=dict(size=8, color=line_color, line=dict(color="white", width=1)),
                 hovertemplate="<b>Mean</b><br>Gen %{x}<br>Value: %{y:.4f}<extra></extra>",
             ),
             row=1,
