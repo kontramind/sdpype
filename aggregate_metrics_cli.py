@@ -439,7 +439,7 @@ def generate_summary_html(
         "  </div>",
         "</body>",
         "</html>",
-    ]
+    ])
 
     html_content = "\n".join(html_parts)
     output_path.write_text(html_content)
