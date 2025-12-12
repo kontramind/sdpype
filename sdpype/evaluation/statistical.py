@@ -9,6 +9,10 @@ import pandas as pd
 from datetime import datetime
 from typing import Dict, Any, List
 
+import torch
+from sklearn.preprocessing import MinMaxScaler
+from geomloss import SamplesLoss
+
 from sdv.metadata import SingleTableMetadata
 
 # Synthcity imports for statistical metrics
@@ -339,24 +343,73 @@ class PRDCScoreMetric:
             }
 
 
+# --- SIMPLIFIED CPU WASSERSTEIN IMPLEMENTATION ---
+def evaluate_wasserstein(
+    original_encoded_df: pd.DataFrame,
+    synthetic_encoded_df: pd.DataFrame,
+) -> float:
+    """
+    Compute Wasserstein distance using a CPU-only, tensorized Sinkhorn OT backend.
+
+    Assumes input DataFrames are already encoded (all numeric).
+    """
+    X = original_encoded_df.to_numpy(dtype=np.float32)
+    X_syn = synthetic_encoded_df.to_numpy(dtype=np.float32)
+
+    # 1) If synthetic has fewer rows, pad it with zeros
+    if X.shape[0] > X_syn.shape[0]:
+        pad_rows = X.shape[0] - X_syn.shape[0]
+        X_syn = np.concatenate(
+            [X_syn, np.zeros((pad_rows, X.shape[1]), dtype=X_syn.dtype)],
+            axis=0,
+        )
+    # If original has fewer rows, pad it with zeros (unlikely but safe)
+    elif X_syn.shape[0] > X.shape[0]:
+        pad_rows = X_syn.shape[0] - X.shape[0]
+        X = np.concatenate(
+            [X, np.zeros((pad_rows, X.shape[1]), dtype=X.dtype)],
+            axis=0,
+        )
+
+    # 2) MinMax-scale features using real data statistics
+    scaler = MinMaxScaler().fit(X)
+    X_scaled = scaler.transform(X)
+    X_syn_scaled = scaler.transform(X_syn)
+
+    # 3) Convert to CPU tensors
+    X_ten = torch.from_numpy(X_scaled)
+    X_syn_ten = torch.from_numpy(X_syn_scaled)
+
+    # 4) Sinkhorn OT distance, tensorized backend (CPU)
+    OT_solver = SamplesLoss(
+        loss="sinkhorn",
+        backend="tensorized",
+    )
+
+    with torch.no_grad():
+        dist = OT_solver(X_ten, X_syn_ten).cpu().numpy().item()
+
+    return float(dist)
+# --- END SIMPLIFIED CPU WASSERSTEIN IMPLEMENTATION ---
+
 class WassersteinDistanceMetric:
-    """Wasserstein Distance metric implementation"""
+    """Wasserstein Distance metric implementation (now CPU-based)"""
 
     def __init__(self, **parameters):
         self.parameters = parameters
-        self.evaluator = WassersteinDistance()
+        # Removed: self.evaluator = WassersteinDistance()
 
     def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
         """Evaluate Wasserstein Distance metric"""
         start_time = time.time()
 
         try:
-            # Use encoding config as source of truth for which columns are numeric
+            # 1. Use encoding config to identify the correct subset of columns
             if encoding_config:
                 usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
                 log_column_selection("Wasserstein Distance", encoding_config, original, metadata, usable_cols)
             else:
-                # Fallback to old logic if no encoding config provided
+                # Fallback logic (unchanged)
                 numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
                 datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
                 categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
@@ -370,25 +423,23 @@ class WassersteinDistanceMetric:
             if not usable_cols:
                 raise ValueError("No numeric columns found for Wasserstein Distance metric")
 
-            # Select only usable columns
+            # 2. Select only usable columns (which are already encoded/numeric)
             original_numeric = original[usable_cols].copy()
             synthetic_numeric = synthetic[usable_cols].copy()
 
-            # Create data loaders
-            real_loader = GenericDataLoader(original_numeric)
-            synth_loader = GenericDataLoader(synthetic_numeric)
+            # 3. Run evaluation using the CPU function
+            # NOTE: We pass the two pre-processed DataFrames directly
+            joint_distance = evaluate_wasserstein(original_numeric, synthetic_numeric)
 
-            # Run evaluation
-            result = self.evaluator.evaluate(real_loader, synth_loader)
-
-            # Wasserstein returns a dict with joint distance
+            # ... (rest of the return dict is unchanged) ...
             return {
-                "joint_distance": float(result.get("joint", 0.0)),
+                "joint_distance": float(joint_distance),
                 "parameters": self.parameters,
                 "execution_time": time.time() - start_time,
                 "status": "success"
             }
         except Exception as e:
+            # ... (error handling is unchanged) ...
             return {
                 "joint_distance": 0.0,
                 "parameters": self.parameters,
@@ -397,6 +448,64 @@ class WassersteinDistanceMetric:
                 "error_message": str(e)
             }
 
+
+# class WassersteinDistanceMetric:
+#     """Wasserstein Distance metric implementation"""
+
+#     def __init__(self, **parameters):
+#         self.parameters = parameters
+#         self.evaluator = WassersteinDistance()
+
+#     def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
+#         """Evaluate Wasserstein Distance metric"""
+#         start_time = time.time()
+
+#         try:
+#             # Use encoding config as source of truth for which columns are numeric
+#             if encoding_config:
+#                 usable_cols = get_encoded_numeric_columns(encoding_config, original, metadata)
+#                 log_column_selection("Wasserstein Distance", encoding_config, original, metadata, usable_cols)
+#             else:
+#                 # Fallback to old logic if no encoding config provided
+#                 numeric_cols = get_columns_by_sdtype(metadata, ['numerical'])
+#                 datetime_cols = get_columns_by_sdtype(metadata, ['datetime'])
+#                 categorical_cols = get_columns_by_sdtype(metadata, ['categorical'])
+#                 numeric_categorical_cols = [
+#                     col for col in categorical_cols
+#                     if pd.api.types.is_numeric_dtype(original[col])
+#                 ]
+#                 usable_cols = numeric_cols + datetime_cols + numeric_categorical_cols
+#                 print(f"  Wasserstein Distance using {len(usable_cols)} columns (fallback mode)")
+
+#             if not usable_cols:
+#                 raise ValueError("No numeric columns found for Wasserstein Distance metric")
+
+#             # Select only usable columns
+#             original_numeric = original[usable_cols].copy()
+#             synthetic_numeric = synthetic[usable_cols].copy()
+
+#             # Create data loaders
+#             real_loader = GenericDataLoader(original_numeric)
+#             synth_loader = GenericDataLoader(synthetic_numeric)
+
+#             # Run evaluation
+#             result = self.evaluator.evaluate(real_loader, synth_loader)
+
+#             # Wasserstein returns a dict with joint distance
+#             return {
+#                 "joint_distance": float(result.get("joint", 0.0)),
+#                 "parameters": self.parameters,
+#                 "execution_time": time.time() - start_time,
+#                 "status": "success"
+#             }
+#         except Exception as e:
+#             return {
+#                 "joint_distance": 0.0,
+#                 "parameters": self.parameters,
+#                 "execution_time": time.time() - start_time,
+#                 "status": "error",
+#                 "error_message": str(e)
+#             }
 
 class MaximumMeanDiscrepancyMetric:
     """Maximum Mean Discrepancy metric implementation"""
@@ -695,11 +804,14 @@ class NewRowSynthesisMetric:
         start_time = time.time()
 
         try:
+            # Convert the SingleTableMetadata object to a dictionary as required by SDMetrics
+            metadata_dict = metadata.to_dict()
+
             # Run evaluation using SDMetrics
             result = NewRowSynthesis.compute_breakdown(
                 real_data=original,
                 synthetic_data=synthetic,
-                metadata=metadata,
+                metadata=metadata_dict,
                 numerical_match_tolerance=self.numerical_match_tolerance,
                 synthetic_sample_size=self.synthetic_sample_size
             )
