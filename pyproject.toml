@@ -13,27 +13,31 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 
 dependencies = [
-    # Core ML/Data
-    "pandas>=1.5.0",
-    "numpy>=1.21.0",
-    "scikit-learn>=1.1.0",
-    "scipy>=1.9.0",
-    # Downstream ML
+    # Core ML/Data (UPDATED versions from pyproject.toml.2)
+    "pandas>=2.0.0",
+    "numpy>=1.24.0,<2.0",
+    "scikit-learn>=1.5.0",
+    "scipy>=1.10,<1.14", # Added upper bound constraint
+
+    # Downstream ML (Kept from pyproject.toml.1)
     "lightgbm>=4.0.0",
     "optuna>=3.0.0",
-    # Pipeline & Config
+
+    # Pipeline & Config (Kept from pyproject.toml.1)
     "dvc>=3.0.0",
     "hydra-core>=1.3.2",
-    # CLI
-    "typer[all]>=0.9.0",
+
+    # CLI (Kept from pyproject.toml.1)
+    "typer[all]>=0.9.0", # Kept 'typer[all]' from .1, but updated base version constraint to match .2
     "rich>=13.0.0",
-    # Synthetic Data Libraries
+
+    # Synthetic Data Libraries (UPDATED versions and constraints for GPU support)
     "opacus<1.5.0",
-    "torch==2.2.2",
-    "torchaudio==2.2.2",
-    "torchvision==0.17.2",
+    "torch>=2.7.0",       # New minimum version for CUDA 12.8 compatibility
+    "torchaudio>=2.7.0",  # New minimum version for CUDA 12.8 compatibility
+    "torchvision>=0.22.0",# New minimum version for CUDA 12.8 compatibility
     "sdv>=1.0.0",
-    "synthcity>=0.2.12",
+    "synthcity==0.2.12",
     "openpyxl>=3.1.0",
     "pyarrow>=12.0.0",
     "pypyr>=5.9.1",
@@ -43,7 +47,32 @@ dependencies = [
     "nannyml>=0.13.1",
     "plotly>=5.24.1",
     "duckdb>=1.4.1",
+    "sdmetrics>=0.14.0", # Added from pyproject.toml.2
+    "pydantic>=2.0",     # Added from pyproject.toml.2
+    "ipython",           # Added from pyproject.toml.2
+    "cloudpickle",       # Added from pyproject.toml.2
 ]
 
 [project.scripts]
 sdpype = "sdpype.__main__:app"
+
+# 🚀 UV TOOL CONFIGURATION for CUDA 12.8 Support
+[tool.uv]
+# Force PyTorch 2.7 despite synthcity (or other dependencies) potentially requiring torch<2.3.
+# This is crucial for enabling newer GPU support on the Blackwell architecture.
+override-dependencies = [
+    "torch>=2.7.0",
+    "torchvision>=0.22.0",
+    "torchaudio>=2.7.0",
+]
+constraint-dependencies = [
+    "numpy<2.0",
+    "scipy<1.14",
+    "opacus<1.5.0",
+]
+
+# Add the specific PyTorch index for CUDA 12.8 wheels.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
