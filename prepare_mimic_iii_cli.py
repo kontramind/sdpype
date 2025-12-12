@@ -562,8 +562,8 @@ def transform(
     Apply transformations to MIMIC-III ICU stay dataset.
 
     When --sample is used, creates train/test split at ICUSTAY_ID level to avoid leakage.
-    Output files are named: <input>_training.csv, <input>_test.csv, and <input>_excluded.csv
-    The excluded file contains all rows not included in the train/test split.
+    Output files are named: <input>_training.csv, <input>_test.csv, and <input>_unsampled.csv
+    The unsampled file contains all rows not included in the train/test split.
 
     Transformations are defined in COLUMN_CONFIG at the top of this file.
     To exclude a column from export, simply comment it out in COLUMN_CONFIG.
@@ -601,13 +601,13 @@ def transform(
             train_df, test_df = split_by_icustay_id(df, target_size_per_set, target_size_per_set, seed)
             console.print()
 
-            # Get excluded data (rows not in train or test)
+            # Get unsampled data (rows not in train or test)
             train_indices = set(train_df.index)
             test_indices = set(test_df.index)
             sampled_indices = train_indices.union(test_indices)
-            excluded_indices = df.index.difference(sampled_indices)
-            excluded_df = df.loc[excluded_indices].copy()
-            console.print(f"  [green]>[/green] Excluded: {len(excluded_df):,} rows not included in train/test")
+            unsampled_indices = df.index.difference(sampled_indices)
+            unsampled_df = df.loc[unsampled_indices].copy()
+            console.print(f"  [green]>[/green] Unsampled: {len(unsampled_df):,} rows not included in train/test")
             console.print()
 
             # Apply transformations to training set
@@ -622,11 +622,11 @@ def transform(
             console.print()
             console.print(f"[cyan]Transformed test dataset: {len(test_df):,} rows x {test_df.shape[1]} columns[/cyan]\n")
 
-            # Apply transformations to excluded set
-            console.print("[bold cyan]Applying transformations to excluded set:[/bold cyan]")
-            excluded_df = apply_all_transformations(excluded_df)
+            # Apply transformations to unsampled set
+            console.print("[bold cyan]Applying transformations to unsampled set:[/bold cyan]")
+            unsampled_df = apply_all_transformations(unsampled_df)
             console.print()
-            console.print(f"[cyan]Transformed excluded dataset: {len(excluded_df):,} rows x {excluded_df.shape[1]} columns[/cyan]\n")
+            console.print(f"[cyan]Transformed unsampled dataset: {len(unsampled_df):,} rows x {unsampled_df.shape[1]} columns[/cyan]\n")
 
             # Save training data
             train_output = csv_path.parent / f"{csv_path.stem}_transformed_sample{sample}_seed{seed}_training.csv"
@@ -638,10 +638,10 @@ def transform(
             test_df.to_csv(test_output, index=False)
             console.print(f"[green]>[/green] Saved test data to: {test_output}")
 
-            # Save excluded data
-            excluded_output = csv_path.parent / f"{csv_path.stem}_transformed_sample{sample}_seed{seed}_excluded.csv"
-            excluded_df.to_csv(excluded_output, index=False)
-            console.print(f"[green]>[/green] Saved excluded data to: {excluded_output}")
+            # Save unsampled data
+            unsampled_output = csv_path.parent / f"{csv_path.stem}_transformed_sample{sample}_seed{seed}_unsampled.csv"
+            unsampled_df.to_csv(unsampled_output, index=False)
+            console.print(f"[green]>[/green] Saved unsampled data to: {unsampled_output}")
 
             # Generate encoding config and metadata if requested
             if encoding_config:
