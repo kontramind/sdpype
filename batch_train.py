@@ -7,7 +7,8 @@ Enables running recursive_train.py across multiple configuration files:
 2. Copy config file to params.yaml
 3. Run recursive training
 4. Move experiments folder
-5. Restore params.yaml
+5. Delete source config file
+6. Restore params.yaml
 """
 
 import argparse
@@ -64,8 +65,9 @@ def main():
         print(f"  2. Copy config file -> params.yaml")
         print(f"  3. Run: uv run recursive_train.py --generations {args.generations}")
         print(f"  4. Move experiments/ -> {{config_basename}}/")
-        print(f"  5. Restore params.backup.yaml -> params.yaml")
-        print(f"  6. Continue to next file")
+        print(f"  5. Delete source config file")
+        print(f"  6. Restore params.backup.yaml -> params.yaml")
+        print(f"  7. Continue to next file")
         return
 
     # Normal execution
@@ -105,7 +107,11 @@ def main():
                 print(f"  Moving experiments/ -> {output_folder}/")
                 shutil.move(str(experiments_path), str(output_folder))
 
-            # Step 5: Restore params.yaml
+            # Step 5: Delete source config file
+            print(f"  Deleting source config file: {config_file}")
+            config_path.unlink()
+
+            # Step 6: Restore params.yaml
             if backup_path.exists():
                 print(f"  Restoring params.backup.yaml -> params.yaml")
                 shutil.copy2(backup_path, params_path)
