@@ -287,6 +287,213 @@ python trace_chain.py MODEL_ID --format csv --output chain.csv
 python trace_chain.py MODEL_ID --plot --plot-output degradation.png
 ```
 
+## Statistical Analysis
+
+### Aggregating Metrics Across Experiments
+
+When analyzing results from multiple experimental runs, SDPype provides two aggregation tools:
+
+1. **`aggregate_metrics_cli.py`**: Simple bootstrap aggregation for independent runs
+2. **`aggregate_hybrid_stratified_metrics_cli.py`**: Hierarchical aggregation for nested experimental designs
+
+### Hybrid Stratified Aggregation
+
+For experiments with a hierarchical structure (e.g., multiple data subsets × multiple model seeds), use the hybrid stratified approach to avoid pseudoreplication and obtain valid statistical inferences.
+
+#### When to Use This Method
+
+Use `aggregate_hybrid_stratified_metrics_cli.py` when your experimental design has:
+- Multiple **data subsets** (dseeds) - different train/test splits or data samples
+- Multiple **model training seeds** (mseeds) per data subset
+- **Nested structure**: mseeds are nested within dseeds
+
+Example: 6 data subsets × 6 model seeds = 36 total runs
+
+#### The Pseudoreplication Problem
+
+**Problem**: Treating all 36 runs as independent observations inflates statistical confidence because model seeds within the same data subset are correlated (they all train on the same data).
+
+**Solution**: Use hierarchical aggregation that respects the nested structure.
+
+#### Two-Step Aggregation Method
+
+**Step 1: Average across model seeds (mseeds) within each data subset (dseed)**
+- For each dseed, compute the mean across all mseeds
+- This produces one representative value per data subset
+- Smooths out model training variance
+
+**Step 2: Compute t-based confidence intervals on dseed averages**
+- Treat dseed averages as independent observations (n = number of dseeds)
+- Use t-distribution for small sample sizes (critical for n < 30)
+- Calculate both confidence intervals (CI) and prediction intervals (PI)
+
+#### Statistical Formulas
+
+**Confidence Interval (95%):**
+```
+CI = x̄ ± t(α/2, df) × (s / √n)
+```
+where:
+- `x̄` = mean of dseed averages
+- `s` = standard deviation of dseed averages
+- `n` = number of data subsets (dseeds)
+- `df` = n - 1 (degrees of freedom)
+- `t(α/2, df)` = critical value from t-distribution (e.g., 2.571 for n=6, 95% CI)
+
+**Prediction Interval (95%):**
+```
+PI = x̄ ± t(α/2, df) × s × √(1 + 1/n)
+```
+
+#### Interpretation
+
+**Confidence Interval (Inner band, colored):**
+- "Where the true population mean likely is"
+- Quantifies uncertainty about the mean
+- Narrows as sample size increases
+
+**Prediction Interval (Outer band, gray):**
+- "Where a NEW data subset would likely fall"
+- Accounts for both estimation uncertainty AND natural variation
+- Remains wider than CI even with large samples
+- More relevant for predicting future experimental outcomes
+
+**Example (n=6 dseeds):**
+- CI: Mean ± 2.571 × (s / √6) ≈ Mean ± 1.05×s
+- PI: Mean ± 2.571 × s × √(1 + 1/6) ≈ Mean ± 2.82×s
+
+The prediction interval is ~2.7× wider, honestly representing the variation you'd expect in a new experiment.
+
+#### Usage Example
+
+```bash
+# Aggregate results from hierarchical design
+python aggregate_hybrid_stratified_metrics_cli.py \
+  "./mimic_iii_baseline_dseed*_mseed*/" \
+  -s results.html \
+  -c aggregate_metrics.csv \
+  -i dseed_averages.csv
+
+# Output files:
+# - results.html: Interactive visualizations with CI and PI bands
+# - aggregate_metrics.csv: Summary statistics per generation
+# - dseed_averages.csv: Intermediate dseed-level averages
+```
+
+#### Key Advantages
+
+1. **Avoids pseudoreplication**: Properly handles nested structure (Hurlbert, 1984)
+2. **Correct for small samples**: Uses t-distribution instead of normal approximation
+3. **Honest uncertainty**: Prediction intervals show realistic variation
+4. **Statistically valid**: Provides proper basis for scientific claims
+
+#### When NOT to Use This Method
+
+If your experimental runs are truly independent (e.g., completely different datasets, not just different seeds on the same data), use the simpler `aggregate_metrics_cli.py` instead.
+
+## References
+
+### Statistical Methods
+
+1. **Hurlbert, S. H. (1984).** "Pseudoreplication and the design of ecological field experiments." *Ecological Monographs*, 54(2), 187-211.
+   - Foundational paper on pseudoreplication in experimental design
+
+2. **Lazic, S. E. (2010).** "The problem of pseudoreplication in neuroscientific studies: is it affecting your analysis?" *BMC Neuroscience*, 11(5).
+   - Modern application of pseudoreplication concepts
+
+3. **Student (Gosset, W. S.). (1908).** "The probable error of a mean." *Biometrika*, 6(1), 1-25.
+   - Original t-distribution paper for small sample inference
+
+4. **Meeker, W. Q., Hahn, G. J., & Escobar, L. A. (2017).** *Statistical Intervals: A Guide for Practitioners and Researchers* (2nd ed.). Wiley.
+   - Comprehensive guide to confidence and prediction intervals
+
+5. **Quinn, G. P., & Keough, M. J. (2002).** *Experimental Design and Data Analysis for Biologists*. Cambridge University Press.
+   - Practical guide to nested experimental designs
+
+6. **Cumming, G. (2014).** "The new statistics: Why and how." *Psychological Science*, 25(1), 7-29.
+   - Modern perspective on estimation and confidence intervals
+
+### Data Valuation & Shapley Values
+
+7. **Ghorbani, A., & Zou, J. (2019).** "Data Shapley: Equitable valuation of data for machine learning." *Proceedings of the 36th International Conference on Machine Learning (ICML)*, 97, 2242-2251.
+   - Foundational paper on Data Shapley for valuing training examples
+
+8. **Jia, R., et al. (2019).** "Towards efficient data valuation based on the Shapley value." *Proceedings of the 22nd International Conference on Artificial Intelligence and Statistics (AISTATS)*.
+   - Efficient algorithms for computing Data Shapley values
+
+### BibTeX Format
+
+```bibtex
+@article{hurlbert1984pseudoreplication,
+  title={Pseudoreplication and the design of ecological field experiments},
+  author={Hurlbert, Stuart H},
+  journal={Ecological monographs},
+  volume={54},
+  number={2},
+  pages={187--211},
+  year={1984}
+}
+
+@article{lazic2010pseudoreplication,
+  title={The problem of pseudoreplication in neuroscientific studies: is it affecting your analysis?},
+  author={Lazic, Stanley E},
+  journal={BMC neuroscience},
+  volume={11},
+  number={5},
+  year={2010}
+}
+
+@article{student1908probable,
+  title={The probable error of a mean},
+  author={Student},
+  journal={Biometrika},
+  volume={6},
+  number={1},
+  pages={1--25},
+  year={1908}
+}
+
+@book{meeker2017statistical,
+  title={Statistical Intervals: A Guide for Practitioners and Researchers},
+  author={Meeker, William Q and Hahn, Gerald J and Escobar, Luis A},
+  edition={2},
+  year={2017},
+  publisher={Wiley}
+}
+
+@book{quinn2002experimental,
+  title={Experimental Design and Data Analysis for Biologists},
+  author={Quinn, Gerry P and Keough, Michael J},
+  year={2002},
+  publisher={Cambridge University Press}
+}
+
+@article{cumming2014new,
+  title={The new statistics: Why and how},
+  author={Cumming, Geoff},
+  journal={Psychological science},
+  volume={25},
+  number={1},
+  pages={7--29},
+  year={2014}
+}
+
+@inproceedings{ghorbani2019data,
+  title={Data Shapley: Equitable valuation of data for machine learning},
+  author={Ghorbani, Amirata and Zou, James},
+  booktitle={International Conference on Machine Learning},
+  pages={2242--2251},
+  year={2019}
+}
+
+@inproceedings{jia2019towards,
+  title={Towards efficient data valuation based on the Shapley value},
+  author={Jia, Ruoxi and Dao, David and Wang, Boxin and Hubis, Frances Ann and Hynes, Nick and G{\"u}rel, Nezihe Merve and Li, Bo and Zhang, Ce and Song, Dawn and Spanos, Costas J},
+  booktitle={International Conference on Artificial Intelligence and Statistics},
+  year={2019}
+}
+```
+
 ## Model Management
 
 ```bash
