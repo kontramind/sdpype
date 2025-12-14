@@ -295,17 +295,19 @@ def hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
 
 def create_plotly_visualization(
     summary_df: pd.DataFrame,
-    metrics: List[str] = None
+    metrics: List[str] = None,
+    n_dseeds: int = None
 ) -> List[go.Figure]:
     """
     Create individual Plotly figures with double-banded CI visualization for each metric.
 
-    Inner band: 95% t-based CI
-    Outer band: Mean ± 1 SD (gray)
+    Inner band: 95% t-based CI for the mean
+    Outer band: 95% Prediction Interval (where a new dseed would likely fall)
 
     Args:
         summary_df: Aggregated metrics dataframe
         metrics: List of metrics to plot
+        n_dseeds: Number of data subsets (needed for prediction interval calculation)
 
     Returns:
         List of Plotly Figure objects (one per metric)
@@ -326,6 +328,7 @@ def create_plotly_visualization(
         std_col = f"{metric}_std"
         ci_lower_col = f"{metric}_ci_lower"
         ci_upper_col = f"{metric}_ci_upper"
+        t_crit_col = f"{metric}_t_crit"
 
         df_sorted = summary_df.sort_values("generation")
 
@@ -335,10 +338,14 @@ def create_plotly_visualization(
         stds = df_sorted[std_col].values
         ci_lowers = df_sorted[ci_lower_col].values
         ci_uppers = df_sorted[ci_upper_col].values
+        t_crits = df_sorted[t_crit_col].values
 
-        # Compute SD band (mean ± 1×std)
-        sd_lowers = means - stds
-        sd_uppers = means + stds
+        # Compute 95% Prediction Interval
+        # PI = mean ± t_crit × SD × sqrt(1 + 1/n)
+        # This is where a NEW dseed average would likely fall
+        pi_multiplier = np.sqrt(1 + 1/n_dseeds) if n_dseeds else 1.0
+        pred_lowers = means - t_crits * stds * pi_multiplier
+        pred_uppers = means + t_crits * stds * pi_multiplier
 
         color = colors[metric_idx]
         line_color = line_colors[metric_idx]
@@ -347,11 +354,11 @@ def create_plotly_visualization(
         outer_band_color = hex_to_rgba(gray_color, alpha=0.75)  # Gray outer band
         inner_band_color = hex_to_rgba(color, alpha=0.50)  # Medium inner band
 
-        # Outer band (SD band) - gray color
+        # Outer band (Prediction Interval) - gray color
         fig.add_trace(
             go.Scatter(
                 x=generations,
-                y=sd_uppers,
+                y=pred_uppers,
                 fill=None,
                 mode="lines",
                 line_color="rgba(0,0,0,0)",
@@ -363,13 +370,13 @@ def create_plotly_visualization(
         fig.add_trace(
             go.Scatter(
                 x=generations,
-                y=sd_lowers,
+                y=pred_lowers,
                 fill="tonexty",
                 mode="lines",
                 line_color="rgba(0,0,0,0)",
-                name="Mean ± 1 SD",
+                name="95% Prediction Interval",
                 fillcolor=outer_band_color,
-                hovertemplate="<b>SD Band</b><br>Gen %{x}<extra></extra>",
+                hovertemplate="<b>Prediction Interval</b><br>Gen %{x}<extra></extra>",
             ),
         )
 
@@ -551,10 +558,16 @@ def generate_summary_html(
         "    <div class='note'>",
         "      <strong>Visualization Details:</strong><br>",
         "      <ul>",
-        "        <li><strong>Inner band:</strong> 95% t-based confidence interval (CI) for the mean of dseed averages</li>",
-        "        <li><strong>Outer band (gray):</strong> Mean ± 1 standard deviation (shows spread of dseed averages)</li>",
+        "        <li><strong>Inner band (colored):</strong> 95% t-based confidence interval (CI) for the mean - \"Where the true population mean likely is\"</li>",
+        "        <li><strong>Outer band (gray):</strong> 95% Prediction Interval (PI) - \"Where a NEW data subset (dseed) average would likely fall\"</li>",
         "        <li><strong>Mean line:</strong> Colored line showing mean value at each generation</li>",
         "        <li><strong>Legend:</strong> Each figure has its own legend with clickable items</li>",
+        "      </ul>",
+        "      <strong>Statistical Details:</strong><br>",
+        "      <ul>",
+        f"        <li><strong>Confidence Interval:</strong> Mean ± t<sub>crit</sub> × SE, where SE = SD / √{n_dseeds}</li>",
+        f"        <li><strong>Prediction Interval:</strong> Mean ± t<sub>crit</sub> × SD × √(1 + 1/{n_dseeds})</li>",
+        "        <li><strong>Interpretation:</strong> CI narrows as n increases (uncertainty about mean decreases), but PI remains wider (natural variation persists)</li>",
         "      </ul>",
         "    </div>",
         "  </div>",
@@ -685,7 +698,7 @@ def main(
 
     # Create visualizations
     console.print("[cyan]Creating Plotly visualizations...[/cyan]")
-    figures = create_plotly_visualization(summary_df, metrics)
+    figures = create_plotly_visualization(summary_df, metrics, n_dseeds)
     console.print(f"[green]✓[/green] Created {len(figures)} visualizations")
 
     # Generate summary HTML
