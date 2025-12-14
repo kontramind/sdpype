@@ -15,22 +15,24 @@ console = Console()
 
 
 def generate_filename(
+    library: str,
     generator: str,
     data_seed: int,
     experiment_seed: int,
 ) -> str:
     """
     Generate filename according to:
-    mimic_iii_baseline_dseedDATASEED_synthcity_GENERATOR_mseedEXPERIMENTSEED.yaml
+    mimic_iii_baseline_dseedDATASEED_LIBRARY_GENERATOR_mseedEXPERIMENTSEED.yaml
     """
     return (
         f"mimic_iii_baseline_dseed{data_seed}_"
-        f"synthcity_{generator}_mseed{experiment_seed}.yaml"
+        f"{library}_{generator}_mseed{experiment_seed}.yaml"
     )
 
 
 def instantiate_template(
     template: str,
+    library: str,
     generator: str,
     data_seed: int,
     experiment_seed: int,
@@ -38,11 +40,13 @@ def instantiate_template(
     """
     Replace placeholders in the template with concrete values.
     Assumes placeholders:
+      - LIBRARY
       - GENERATOR
       - DATASEED
       - EXPERIMENTSEED
     """
     content = template
+    content = content.replace("LIBRARY", library)
     content = content.replace("GENERATOR", generator)
     content = content.replace("DATASEED", str(data_seed))
     content = content.replace("EXPERIMENTSEED", str(experiment_seed))
@@ -66,6 +70,12 @@ def generate_configs(
         "--output-dir",
         "-o",
         help="Directory where generated YAML files will be written.",
+    ),
+    library: List[str] = typer.Option(
+        ...,
+        "--library",
+        "-l",
+        help="Library name(s) to substitute for LIBRARY (e.g. synthcity).",
     ),
     generator: List[str] = typer.Option(
         ...,
@@ -98,7 +108,7 @@ def generate_configs(
 ) -> None:
     """
     Generate YAML configuration files from a template for all combinations
-    of GENERATOR x DATASEED x EXPERIMENTSEED.
+    of LIBRARY x GENERATOR x DATASEED x EXPERIMENTSEED.
     """
     console.print(
         Panel.fit(
@@ -114,7 +124,7 @@ def generate_configs(
     if not dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    combos = list(itertools.product(generator, data_seed, experiment_seed))
+    combos = list(itertools.product(library, generator, data_seed, experiment_seed))
 
     if not combos:
         console.print("[red]No combinations provided; nothing to do.[/red]")
@@ -122,16 +132,17 @@ def generate_configs(
 
     generated_files = []
 
-    for gen, dseed, eseed in track(
+    for lib, gen, dseed, eseed in track(
         combos,
         description="Generating YAML configs...",
         console=console,
     ):
-        filename = generate_filename(gen, dseed, eseed)
+        filename = generate_filename(lib, gen, dseed, eseed)
         full_path = output_dir / filename
 
         yaml_content = instantiate_template(
             template=template_text,
+            library=lib,
             generator=gen,
             data_seed=dseed,
             experiment_seed=eseed,
@@ -139,7 +150,7 @@ def generate_configs(
 
         if dry_run:
             # Just record what would happen
-            generated_files.append((gen, dseed, eseed, str(full_path), "DRY-RUN"))
+            generated_files.append((lib, gen, dseed, eseed, str(full_path), "DRY-RUN"))
             continue
 
         if full_path.exists() and not overwrite:
@@ -148,18 +159,19 @@ def generate_configs(
             full_path.write_text(yaml_content, encoding="utf-8")
             status = "WRITTEN"
 
-        generated_files.append((gen, dseed, eseed, str(full_path), status))
+        generated_files.append((lib, gen, dseed, eseed, str(full_path), status))
 
     # Summary table
     table = Table(title="Generated configuration files", show_lines=True)
+    table.add_column("LIBRARY", style="blue", no_wrap=True)
     table.add_column("GENERATOR", style="cyan", no_wrap=True)
     table.add_column("DATASEED", style="magenta", justify="right")
     table.add_column("EXPERIMENTSEED", style="magenta", justify="right")
     table.add_column("Path", style="green")
     table.add_column("Status", style="yellow")
 
-    for gen, dseed, eseed, path, status in generated_files:
-        table.add_row(str(gen), str(dseed), str(eseed), path, status)
+    for lib, gen, dseed, eseed, path, status in generated_files:
+        table.add_row(str(lib), str(gen), str(dseed), str(eseed), path, status)
 
     console.print(table)
 
