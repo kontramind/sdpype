@@ -99,7 +99,8 @@ def load_metrics_csv(folder: Path) -> Tuple[bool, Optional[pd.DataFrame], Option
         # Validate required columns
         required_cols = {"generation", "factual_total", "ddr_novel_factual", "ks_complement", "tv_complement",
                          "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
-                         "alpha_delta_coverage_OC", "alpha_authenticity_OC"}
+                         "alpha_delta_coverage_OC", "alpha_authenticity_OC", "prdc_precision",
+                         "prdc_recall", "prdc_density", "prdc_coverage"}
         missing_cols = required_cols - set(df.columns)
 
         if missing_cols:
@@ -317,11 +318,12 @@ def create_plotly_visualization(
     if metrics is None:
         metrics = ["factual_total", "ddr_novel_factual", "ks_complement", "tv_complement",
                    "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
-                   "alpha_delta_coverage_OC", "alpha_authenticity_OC"]
+                   "alpha_delta_coverage_OC", "alpha_authenticity_OC", "prdc_precision",
+                   "prdc_recall", "prdc_density", "prdc_coverage"]
 
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728", "#17becf", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22"]
-    # Blue, Orange, Green, Purple, Red, Cyan, Brown, Pink, Gray, Lime
-    line_colors = ["#0d3b7a", "#d64a0a", "#1a6b1a", "#5a3a7a", "#8b1a1a", "#0a7a8a", "#5a3525", "#a03a82", "#4a4a4a", "#7a7d15"]
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728", "#17becf", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#ff9896", "#9edae5", "#c5b0d5", "#c49c94"]
+    # Blue, Orange, Green, Purple, Red, Cyan, Brown, Pink, Gray, Lime, Light Red, Light Cyan, Light Purple, Light Brown
+    line_colors = ["#0d3b7a", "#d64a0a", "#1a6b1a", "#5a3a7a", "#8b1a1a", "#0a7a8a", "#5a3525", "#a03a82", "#4a4a4a", "#7a7d15", "#cc4c4c", "#5a9aa8", "#8a7aa8", "#8a6a5a"]
     # Dark versions
     gray_color = "#a6a6a6"  # Gray for outer bands
 
@@ -664,7 +666,8 @@ def main(
     data_structure = defaultdict(dict)  # {dseed: {mseed: dataframe}}
     metrics = ["factual_total", "ddr_novel_factual", "ks_complement", "tv_complement",
                "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
-               "alpha_delta_coverage_OC", "alpha_authenticity_OC"]
+               "alpha_delta_coverage_OC", "alpha_authenticity_OC", "prdc_precision",
+               "prdc_recall", "prdc_density", "prdc_coverage"]
 
     with Progress() as progress:
         task = progress.add_task("[cyan]Loading and parsing folders...", total=len(folders))
