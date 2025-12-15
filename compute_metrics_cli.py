@@ -68,129 +68,189 @@ DISPLAY_FUNCTIONS = import_display_functions()
 console = Console()
 
 def display_statistical_metrics(results: Dict[str, Any]):
-    """Display statistical metrics results in terminal"""
+    """Display statistical metrics results in terminal - matches DVC pipeline output"""
     console.print()
-    console.print("=" * 80, style="blue")
-    console.print("  STATISTICAL SIMILARITY RESULTS", style="bold blue")
-    console.print("=" * 80, style="blue")
-    console.print()
+    metrics = results.get("metrics", {})
 
-    metrics_data = results.get("metrics", {})
+    # Alpha Precision
+    if "alpha_precision" in metrics and metrics["alpha_precision"]["status"] == "success":
+        scores = metrics["alpha_precision"]["scores"]
+        params_info = metrics["alpha_precision"]["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
 
-    # Create summary table
-    table = Table(title="📊 Statistical Metrics Summary", show_header=True, header_style="bold magenta")
-    table.add_column("Metric", style="cyan", no_wrap=True, width=30)
-    table.add_column("Score / Values", justify="right", style="green", width=35)
-    table.add_column("Quality", justify="center", width=12)
+        table = Table(title=f"✅ Alpha Precision Results ({params_display})", show_header=True, header_style="bold magenta")
+        table.add_column("Metric", style="cyan", no_wrap=True)
+        table.add_column("OC Variant", style="green", justify="right")
+        table.add_column("Naive Variant", style="yellow", justify="right")
 
-    for metric_name, metric_result in metrics_data.items():
-        if not isinstance(metric_result, dict):
-            continue
+        table.add_row("Delta Precision Alpha", f"{scores['delta_precision_alpha_OC']:.3f}", f"{scores['delta_precision_alpha_naive']:.3f}")
+        table.add_row("Delta Coverage Beta", f"{scores['delta_coverage_beta_OC']:.3f}", f"{scores['delta_coverage_beta_naive']:.3f}")
+        table.add_row("Authenticity", f"{scores['authenticity_OC']:.3f}", f"{scores['authenticity_naive']:.3f}")
 
-        status = metric_result.get('status', 'unknown')
-        if status != 'success':
-            table.add_row(
-                metric_name.replace('_', ' ').title(),
-                f"Error",
-                "✗ Failed",
-                style="red"
-            )
-            continue
+        console.print(table)
+    elif "alpha_precision" in metrics:
+        console.print("❌ Alpha Precision failed", style="bold red")
 
-        # Handle different metric structures
-        display_value = None
-        score_val = None
+    # PRDC Score
+    if "prdc_score" in metrics and metrics["prdc_score"]["status"] == "success":
+        prdc_result = metrics["prdc_score"]
+        params_info = prdc_result["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
 
-        # Check for single score field
-        if 'score' in metric_result:
-            score_val = metric_result['score']
-            display_value = f"{score_val:.4f}" if isinstance(score_val, (int, float)) else str(score_val)
+        prdc_table = Table(title=f"✅ PRDC Score Results ({params_display})", show_header=True, header_style="bold blue")
+        prdc_table.add_column("Metric", style="cyan", no_wrap=True)
+        prdc_table.add_column("Score", style="bright_green", justify="right")
 
-        # Check for aggregate_score (KS/TV Complement)
-        elif 'aggregate_score' in metric_result:
-            score_val = metric_result['aggregate_score']
-            if score_val is not None:
-                display_value = f"{score_val:.4f}"
-                num_cols = metric_result.get('successful_columns', 0)
-                if num_cols:
-                    display_value += f" ({num_cols} cols)"
+        prdc_table.add_row("Precision", f"{prdc_result['precision']:.3f}")
+        prdc_table.add_row("Recall", f"{prdc_result['recall']:.3f}")
+        prdc_table.add_row("Density", f"{prdc_result['density']:.3f}")
+        prdc_table.add_row("Coverage", f"{prdc_result['coverage']:.3f}")
+
+        console.print(prdc_table)
+    elif "prdc_score" in metrics:
+        console.print("❌ PRDC Score failed", style="bold red")
+
+    # Wasserstein Distance
+    if "wasserstein_distance" in metrics and metrics["wasserstein_distance"]["status"] == "success":
+        wd_result = metrics["wasserstein_distance"]
+        params_info = wd_result["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
+
+        wd_table = Table(title=f"✅ Wasserstein Distance Results ({params_display})", show_header=True, header_style="bold blue")
+        wd_table.add_column("Metric", style="cyan", no_wrap=True)
+        wd_table.add_column("Score", style="bright_green", justify="right")
+        wd_table.add_column("Interpretation", style="yellow")
+
+        distance = wd_result['joint_distance']
+        interpretation = "Identical" if distance < 0.01 else "Very Similar" if distance < 0.05 else "Similar" if distance < 0.1 else "Different"
+
+        wd_table.add_row("Joint Distance", f"{distance:.6f}", interpretation)
+        wd_table.add_row("", "", "Lower is better")
+
+        console.print(wd_table)
+    elif "wasserstein_distance" in metrics:
+        console.print("❌ Wasserstein Distance failed", style="bold red")
+
+    # Maximum Mean Discrepancy
+    if "maximum_mean_discrepancy" in metrics and metrics["maximum_mean_discrepancy"]["status"] == "success":
+        mmd_result = metrics["maximum_mean_discrepancy"]
+        params_info = mmd_result["parameters"]
+        kernel = mmd_result.get("kernel", "rbf")
+        params_display = f"kernel={kernel}"
+
+        mmd_table = Table(title=f"✅ Maximum Mean Discrepancy Results ({params_display})", show_header=True, header_style="bold blue")
+        mmd_table.add_column("Metric", style="cyan", no_wrap=True)
+        mmd_table.add_column("Score", style="bright_green", justify="right")
+        mmd_table.add_column("Interpretation", style="yellow")
+
+        distance = mmd_result['joint_distance']
+        interpretation = "Identical" if distance < 0.001 else "Very Similar" if distance < 0.01 else "Similar" if distance < 0.1 else "Different"
+
+        mmd_table.add_row("Joint Distance", f"{distance:.6f}", interpretation)
+        mmd_table.add_row("", "", "Lower is better")
+
+        console.print(mmd_table)
+    elif "maximum_mean_discrepancy" in metrics:
+        console.print("❌ Maximum Mean Discrepancy failed", style="bold red")
+
+    # Jensen-Shannon Distance variants
+    for js_variant in ["jensenshannon_synthcity", "jensenshannon_syndat", "jensenshannon_nannyml"]:
+        if js_variant in metrics and metrics[js_variant]["status"] == "success":
+            jsd_result = metrics[js_variant]
+            params_info = jsd_result["parameters"]
+
+            if js_variant == "jensenshannon_synthcity":
+                normalize = jsd_result.get("normalize", True)
+                n_histogram_bins = jsd_result.get("n_histogram_bins", 10)
+                params_display = f"normalize={normalize}, n_histogram_bins={n_histogram_bins}"
+                title_name = "Jensen-Shannon Distance (Synthcity)"
+            elif js_variant == "jensenshannon_syndat":
+                n_unique_threshold = jsd_result.get("n_unique_threshold", 10)
+                params_display = f"n_unique_threshold={n_unique_threshold}"
+                title_name = "Jensen-Shannon Distance (SYNDAT)"
+            else:  # nannyml
+                params_display = str(params_info) if params_info else "adaptive binning (Doane's formula)"
+                title_name = "Jensen-Shannon Distance (NannyML)"
+
+            jsd_table = Table(title=f"✅ {title_name} Results ({params_display})", show_header=True, header_style="bold blue")
+            jsd_table.add_column("Metric", style="cyan", no_wrap=True)
+            jsd_table.add_column("Score", style="bright_green", justify="right")
+            jsd_table.add_column("Interpretation", style="yellow")
+
+            distance = jsd_result['distance_score']
+            interpretation = "Identical" if distance < 0.01 else "Very Similar" if distance < 0.05 else "Similar" if distance < 0.1 else "Different"
+
+            jsd_table.add_row("Joint Distance", f"{distance:.6f}", interpretation)
+            jsd_table.add_row("", "", "Lower is better")
+
+            console.print(jsd_table)
+        elif js_variant in metrics:
+            console.print(f"❌ {js_variant.replace('_', ' ').title()} failed", style="bold red")
+
+    # KS Complement
+    if "ks_complement" in metrics and metrics["ks_complement"]["status"] == "success":
+        ks_result = metrics["ks_complement"]
+        params_info = ks_result["parameters"]
+        target_cols = params_info.get("target_columns", "all numerical/datetime")
+        params_display = f"target_columns={target_cols}"
+
+        ks_table = Table(title=f"✅ KSComplement Results ({params_display})", show_header=True, header_style="bold blue")
+        ks_table.add_column("Column", style="cyan", no_wrap=True)
+        ks_table.add_column("KS Score", style="bright_green", justify="right")
+        ks_table.add_column("Status", style="yellow", justify="center")
+
+        if ks_result['aggregate_score'] is not None:
+            ks_table.add_row("AGGREGATE", f"{ks_result['aggregate_score']:.3f}", "✓")
+        else:
+            ks_table.add_row("AGGREGATE", "n/a", "ℹ️")
+
+        ks_table.add_section()
+
+        column_scores = ks_result['column_scores']
+        for col in sorted(column_scores.keys()):
+            score = column_scores[col]
+            if score is not None:
+                ks_table.add_row(col, f"{score:.3f}", "✓")
             else:
-                display_value = "N/A"
+                ks_table.add_row(col, "error", "⚠️")
 
-        # Check for PRDC scores (precision, recall, density, coverage)
-        elif all(k in metric_result for k in ['precision', 'recall', 'density', 'coverage']):
-            prec = metric_result['precision']
-            rec = metric_result['recall']
-            dens = metric_result['density']
-            cov = metric_result['coverage']
-            display_value = f"P:{prec:.3f} R:{rec:.3f}\nD:{dens:.3f} C:{cov:.3f}"
-            score_val = (prec + rec) / 2  # Use average for quality
+        console.print(ks_table)
+    elif "ks_complement" in metrics:
+        console.print("❌ KSComplement failed", style="bold red")
 
-        # Check for Alpha Precision scores dict
-        elif 'scores' in metric_result and isinstance(metric_result['scores'], dict):
-            scores_dict = metric_result['scores']
-            if 'authenticity_OC' in scores_dict:
-                auth = scores_dict['authenticity_OC']
-                prec = scores_dict.get('delta_precision_alpha_OC', 0)
-                cov = scores_dict.get('delta_coverage_beta_OC', 0)
-                display_value = f"Auth:{auth:.3f}\nPrec:{prec:.3f} Cov:{cov:.3f}"
-                score_val = auth
+    # TV Complement
+    if "tv_complement" in metrics and metrics["tv_complement"]["status"] == "success":
+        tv_result = metrics["tv_complement"]
+        params_info = tv_result["parameters"]
+        target_cols = params_info.get("target_columns", "all categorical/boolean")
+        params_display = f"target_columns={target_cols}"
+
+        tv_table = Table(title=f"✅ TVComplement Results ({params_display})", show_header=True, header_style="bold blue")
+        tv_table.add_column("Column", style="cyan", no_wrap=True)
+        tv_table.add_column("TV Score", style="bright_green", justify="right")
+        tv_table.add_column("Status", style="yellow", justify="center")
+
+        if tv_result['aggregate_score'] is not None:
+            tv_table.add_row("AGGREGATE", f"{tv_result['aggregate_score']:.3f}", "✓")
+        else:
+            tv_table.add_row("AGGREGATE", "n/a", "ℹ️")
+
+        tv_table.add_section()
+
+        column_scores = tv_result['column_scores']
+        for col in sorted(column_scores.keys()):
+            score = column_scores[col]
+            if score is not None:
+                tv_table.add_row(col, f"{score:.3f}", "✓")
             else:
-                # Show available scores
-                score_items = list(scores_dict.items())[:3]
-                display_value = "\n".join([f"{k.split('_')[-1]}: {v:.3f}" for k, v in score_items])
-                score_val = sum(scores_dict.values()) / len(scores_dict) if scores_dict else None
+                tv_table.add_row(col, "error", "⚠️")
 
-        # Check for mean/std fields (Wasserstein, MMD, Jensen-Shannon)
-        elif 'mean' in metric_result:
-            mean_val = metric_result['mean']
-            std_val = metric_result.get('std', None)
-            if std_val is not None:
-                display_value = f"{mean_val:.4f} ± {std_val:.4f}"
-            else:
-                display_value = f"{mean_val:.4f}"
-            # For distance metrics (lower is better), convert for quality indicator
-            score_val = max(0, 1.0 - mean_val) if mean_val <= 1.0 else 0.5
+        console.print(tv_table)
+    elif "tv_complement" in metrics:
+        console.print("❌ TVComplement failed", style="bold red")
 
-        # Check for distance field (some metrics)
-        elif 'distance' in metric_result:
-            dist_val = metric_result['distance']
-            display_value = f"{dist_val:.4f}"
-            score_val = max(0, 1.0 - dist_val) if dist_val <= 1.0 else 0.5
+    console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
-        if display_value is None:
-            display_value = "N/A"
-
-        # Determine quality indicator
-        quality = "○ Unknown"
-        style = "white"
-        if score_val is not None:
-            if score_val >= 0.8:
-                quality = "✓ Excellent"
-                style = "green"
-            elif score_val >= 0.6:
-                quality = "○ Good"
-                style = "yellow"
-            elif score_val >= 0.4:
-                quality = "△ Fair"
-                style = "yellow"
-            else:
-                quality = "⚠ Poor"
-                style = "red"
-
-        table.add_row(
-            metric_name.replace('_', ' ').title(),
-            display_value,
-            quality,
-            style=style
-        )
-
-    console.print(table)
-    console.print()
-    console.print("=" * 80, style="blue")
-    console.print("✓ Statistical evaluation complete!", style="bold green")
-    console.print("=" * 80, style="blue")
-    console.print()
 app = typer.Typer(
     name="compute_metrics_cli",
     help="Compute metrics on experiment folders post-training",
@@ -564,11 +624,8 @@ def compute_statistical_metrics_post_training(
             encoding_config=encoding_config
         )
 
-        # Display results in terminal - show the text report
-        report = generate_statistical_report(results)
-        console.print("\n" + "="*80, style="blue")
-        console.print(report)
-        console.print("="*80 + "\n", style="blue")
+        # Display results in terminal with Rich tables
+        display_statistical_metrics(results)
 
         return results
     except Exception as e:
