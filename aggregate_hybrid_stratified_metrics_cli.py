@@ -97,7 +97,7 @@ def load_metrics_csv(folder: Path) -> Tuple[bool, Optional[pd.DataFrame], Option
         df = pd.read_csv(csv_path)
 
         # Validate required columns
-        required_cols = {"generation", "factual_total", "ddr_novel_factual"}
+        required_cols = {"generation", "factual_total", "ddr_novel_factual", "KSComplement", "TVComplement"}
         missing_cols = required_cols - set(df.columns)
 
         if missing_cols:
@@ -313,10 +313,10 @@ def create_plotly_visualization(
         List of Plotly Figure objects (one per metric)
     """
     if metrics is None:
-        metrics = ["factual_total", "ddr_novel_factual"]
+        metrics = ["factual_total", "ddr_novel_factual", "KSComplement", "TVComplement"]
 
-    colors = ["#1f77b4", "#ff7f0e"]  # Blue, Orange
-    line_colors = ["#0d3b7a", "#d64a0a"]  # Dark blue, Dark orange
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd"]  # Blue, Orange, Green, Purple
+    line_colors = ["#0d3b7a", "#d64a0a", "#1a6b1a", "#5a3a7a"]  # Dark versions
     gray_color = "#a6a6a6"  # Gray for outer bands
 
     figures = []
@@ -631,7 +631,7 @@ def main(
 
     # Parse folder names and organize by dseed/mseed
     data_structure = defaultdict(dict)  # {dseed: {mseed: dataframe}}
-    metrics = ["factual_total", "ddr_novel_factual"]
+    metrics = ["factual_total", "ddr_novel_factual", "KSComplement", "TVComplement"]
 
     with Progress() as progress:
         task = progress.add_task("[cyan]Loading and parsing folders...", total=len(folders))
