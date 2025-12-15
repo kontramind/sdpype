@@ -32,7 +32,85 @@ from sdpype.metadata import load_csv_with_metadata
 from sdpype.encoding import RDTDatasetEncoder
 from sdpype.encoding import load_encoding_config
 
+# Import display functions from pipeline scripts
+import sys
+import importlib.util
+
+def import_display_functions():
+    """Import display functions from pipeline scripts"""
+    functions = {}
+
+    # Import detection display
+    try:
+        spec = importlib.util.spec_from_file_location("detect_module", "sdpype/detect.py")
+        detect_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(detect_module)
+        functions['detection'] = detect_module._display_detection_tables
+    except Exception as e:
+        console.print(f"[dim]Could not import detection display: {e}[/dim]")
+        functions['detection'] = None
+
+    # Import hallucination display
+    try:
+        spec = importlib.util.spec_from_file_location("halluc_module", "sdpype/hallucination_evaluation.py")
+        halluc_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(halluc_module)
+        functions['hallucination'] = halluc_module._display_hallucination_tables
+    except Exception as e:
+        console.print(f"[dim]Could not import hallucination display: {e}[/dim]")
+        functions['hallucination'] = None
+
+    return functions
+
+# Load display functions once
+DISPLAY_FUNCTIONS = import_display_functions()
+
 console = Console()
+
+def display_statistical_metrics(results: Dict[str, Any]):
+    """Display statistical metrics results in terminal"""
+    console.print()
+    console.print("=" * 80, style="blue")
+    console.print("  STATISTICAL SIMILARITY RESULTS", style="bold blue")
+    console.print("=" * 80, style="blue")
+    console.print()
+
+    metrics_data = results.get("metrics", {})
+
+    # Create summary table
+    table = Table(title="📊 Statistical Metrics Summary", show_header=True, header_style="bold magenta")
+    table.add_column("Metric", style="cyan", no_wrap=True)
+    table.add_column("Score", justify="right", style="green")
+    table.add_column("Quality", justify="center")
+
+    for metric_name, metric_result in metrics_data.items():
+        if isinstance(metric_result, dict) and 'score' in metric_result:
+            score = metric_result['score']
+            if isinstance(score, (int, float)):
+                # Determine quality indicator
+                if score >= 0.8:
+                    quality = "✓ Excellent"
+                    style = "green"
+                elif score >= 0.6:
+                    quality = "○ Good"
+                    style = "yellow"
+                else:
+                    quality = "⚠ Fair"
+                    style = "red"
+
+                table.add_row(
+                    metric_name.replace('_', ' ').title(),
+                    f"{score:.4f}",
+                    quality,
+                    style=style
+                )
+
+    console.print(table)
+    console.print()
+    console.print("=" * 80, style="blue")
+    console.print("✓ Statistical evaluation complete!", style="bold green")
+    console.print("=" * 80, style="blue")
+    console.print()
 app = typer.Typer(
     name="compute_metrics_cli",
     help="Compute metrics on experiment folders post-training",
@@ -406,6 +484,9 @@ def compute_statistical_metrics_post_training(
             encoding_config=encoding_config
         )
 
+        # Display results in terminal
+        display_statistical_metrics(results)
+
         return results
     except Exception as e:
         console.print(f"[red]Error computing statistical metrics: {e}[/red]")
@@ -488,6 +569,10 @@ def compute_detection_metrics_post_training(
         # Ensure JSON serializable
         results = ensure_json_serializable(results)
 
+        # Display results in terminal
+        if DISPLAY_FUNCTIONS['detection']:
+            DISPLAY_FUNCTIONS['detection'](results)
+
         return results
     except Exception as e:
         console.print(f"[red]Error computing detection metrics: {e}[/red]")
@@ -567,6 +652,10 @@ def compute_hallucination_metrics_post_training(
             query_file=query_file_path,
             experiment_name=parsed['experiment_name']
         )
+
+        # Display results in terminal
+        if DISPLAY_FUNCTIONS['hallucination']:
+            DISPLAY_FUNCTIONS['hallucination'](results)
 
         return results
     except Exception as e:
