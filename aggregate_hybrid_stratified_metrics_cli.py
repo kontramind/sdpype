@@ -97,7 +97,9 @@ def load_metrics_csv(folder: Path) -> Tuple[bool, Optional[pd.DataFrame], Option
         df = pd.read_csv(csv_path)
 
         # Validate required columns
-        required_cols = {"generation", "factual_total", "ddr_novel_factual", "ks_complement", "tv_complement", "wasserstein_dist", "jsd_syndat", "mmd"}
+        required_cols = {"generation", "factual_total", "ddr_novel_factual", "ks_complement", "tv_complement",
+                         "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
+                         "alpha_delta_coverage_OC", "alpha_authenticity_OC"}
         missing_cols = required_cols - set(df.columns)
 
         if missing_cols:
@@ -313,10 +315,14 @@ def create_plotly_visualization(
         List of Plotly Figure objects (one per metric)
     """
     if metrics is None:
-        metrics = ["factual_total", "ddr_novel_factual", "ks_complement", "tv_complement", "wasserstein_dist", "jsd_syndat", "mmd"]
+        metrics = ["factual_total", "ddr_novel_factual", "ks_complement", "tv_complement",
+                   "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
+                   "alpha_delta_coverage_OC", "alpha_authenticity_OC"]
 
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728", "#17becf", "#8c564b"]  # Blue, Orange, Green, Purple, Red, Cyan, Brown
-    line_colors = ["#0d3b7a", "#d64a0a", "#1a6b1a", "#5a3a7a", "#8b1a1a", "#0a7a8a", "#5a3525"]  # Dark versions
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728", "#17becf", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22"]
+    # Blue, Orange, Green, Purple, Red, Cyan, Brown, Pink, Gray, Lime
+    line_colors = ["#0d3b7a", "#d64a0a", "#1a6b1a", "#5a3a7a", "#8b1a1a", "#0a7a8a", "#5a3525", "#a03a82", "#4a4a4a", "#7a7d15"]
+    # Dark versions
     gray_color = "#a6a6a6"  # Gray for outer bands
 
     figures = []
@@ -477,10 +483,35 @@ def generate_summary_html(
     # Get degrees of freedom (same for all generations)
     df_value = n_dseeds - 1
 
-    # Build summary table HTML
-    summary_table_html = summary_df.to_html(
+    # Convert summary_df to long format for better readability
+    long_format_data = []
+    for _, row in summary_df.iterrows():
+        generation = row['generation']
+        for col in summary_df.columns:
+            if col == 'generation':
+                continue
+            # Extract metric name and stat type
+            if col.endswith('_mean'):
+                metric_name = col.replace('_mean', '')
+                long_format_data.append({
+                    'Generation': int(generation),
+                    'Metric': metric_name.replace('_', ' ').title(),
+                    'Mean': row[f'{metric_name}_mean'],
+                    'Std': row[f'{metric_name}_std'],
+                    'SE': row[f'{metric_name}_se'],
+                    'CI Lower': row[f'{metric_name}_ci_lower'],
+                    'CI Upper': row[f'{metric_name}_ci_upper'],
+                    'N Dseeds': int(row[f'{metric_name}_n_dseeds']),
+                    'DF': int(row[f'{metric_name}_df']),
+                    'Total Obs': int(row[f'{metric_name}_total_obs'])
+                })
+
+    long_df = pd.DataFrame(long_format_data)
+
+    # Build summary table HTML from long format
+    summary_table_html = long_df.to_html(
         index=False,
-        float_format=lambda x: f"{x:.6f}" if pd.notna(x) else "N/A",
+        float_format=lambda x: f"{x:.6f}" if pd.notna(x) and isinstance(x, float) else (f"{int(x)}" if isinstance(x, (int, float)) and x == int(x) else str(x)),
         border=0,
     )
 
@@ -631,7 +662,9 @@ def main(
 
     # Parse folder names and organize by dseed/mseed
     data_structure = defaultdict(dict)  # {dseed: {mseed: dataframe}}
-    metrics = ["factual_total", "ddr_novel_factual", "ks_complement", "tv_complement", "wasserstein_dist", "jsd_syndat", "mmd"]
+    metrics = ["factual_total", "ddr_novel_factual", "ks_complement", "tv_complement",
+               "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
+               "alpha_delta_coverage_OC", "alpha_authenticity_OC"]
 
     with Progress() as progress:
         task = progress.add_task("[cyan]Loading and parsing folders...", total=len(folders))
