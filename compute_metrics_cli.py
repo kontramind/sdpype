@@ -72,6 +72,269 @@ def display_statistical_metrics(results: Dict[str, Any]):
     console.print()
     metrics = results.get("metrics", {})
 
+    # TableStructure results table
+    if "table_structure" in metrics and metrics["table_structure"]["status"] == "success":
+        ts_result = metrics["table_structure"]
+
+        # Get parameters info for display
+        params_info = ts_result["parameters"]
+        params_display = str(params_info) if params_info else "no parameters"
+
+        # Create TableStructure results table
+        ts_table = Table(title=f"✅ TableStructure Results ({params_display})", show_header=True, header_style="bold blue")
+        ts_table.add_column("Metric", style="cyan", no_wrap=True)
+        ts_table.add_column("Value", style="bright_green", justify="right")
+
+        ts_table.add_row("Overall Score", f"{ts_result['score']:.3f}")
+
+        # Add summary information if available (backward compatible)
+        if 'summary' in ts_result:
+            summary = ts_result['summary']
+            ts_table.add_row("Matching Columns", str(summary['matching_columns']))
+            ts_table.add_row("Dtype Mismatches", str(summary['dtype_mismatches']))
+            ts_table.add_row("Missing in Synthetic", str(summary['missing_in_synthetic']))
+            ts_table.add_row("Only in Synthetic", str(summary['only_in_synthetic']))
+
+        console.print(ts_table)
+
+        # Show full column-by-column comparison table if available
+        if 'comparison_table' in ts_result and ts_result['comparison_table']:
+            comparison_table = ts_result['comparison_table']
+
+            # Create full comparison table
+            full_comparison = Table(
+                title="Column-by-Column Comparison",
+                show_header=True,
+                header_style="bold blue",
+                show_lines=False
+            )
+            full_comparison.add_column("Column", style="cyan", no_wrap=False)
+            full_comparison.add_column("Real dtype", style="green")
+            full_comparison.add_column("Synthetic dtype", style="magenta")
+            full_comparison.add_column("Status", style="white")
+
+            # Status display mapping
+            status_display = {
+                "match": "✓ Match",
+                "dtype_mismatch": "⚠ Dtype mismatch",
+                "missing_in_synthetic": "✗ Missing in synth",
+                "only_in_synthetic": "⚠ Only in synth"
+            }
+
+            # Status colors
+            status_colors = {
+                "match": "bright_green",
+                "dtype_mismatch": "yellow",
+                "missing_in_synthetic": "red",
+                "only_in_synthetic": "yellow"
+            }
+
+            # Add all columns to the table
+            for item in comparison_table:
+                status_text = status_display.get(item['status'], item['status'])
+                status_color = status_colors.get(item['status'], "white")
+
+                full_comparison.add_row(
+                    item['column'],
+                    str(item['real_dtype']) if item['real_dtype'] else '-',
+                    str(item['synthetic_dtype']) if item['synthetic_dtype'] else '-',
+                    f"[{status_color}]{status_text}[/{status_color}]"
+                )
+
+            console.print("\n")
+            console.print(full_comparison)
+    else:
+        console.print("❌ TableStructure failed", style="bold red")
+
+    # SemanticStructure results table
+    if "semantic_structure" in metrics and metrics["semantic_structure"]["status"] == "success":
+        ss_result = metrics["semantic_structure"]
+
+        # Get parameters info for display
+        params_info = ss_result["parameters"]
+        params_display = str(params_info) if params_info else "no parameters"
+
+        # Create SemanticStructure results table
+        ss_table = Table(title=f"✅ SemanticStructure Results ({params_display})", show_header=True, header_style="bold blue")
+        ss_table.add_column("Metric", style="cyan", no_wrap=True)
+        ss_table.add_column("Value", style="bright_green", justify="right")
+
+        ss_table.add_row("Overall Score", f"{ss_result['score']:.3f}")
+
+        # Add summary information if available
+        if 'summary' in ss_result:
+            summary = ss_result['summary']
+            ss_table.add_row("Matching Columns", str(summary['matching_columns']))
+            ss_table.add_row("Sdtype Mismatches", str(summary['sdtype_mismatches']))
+            ss_table.add_row("Missing in Synthetic", str(summary['missing_in_synthetic']))
+            ss_table.add_row("Only in Synthetic", str(summary['only_in_synthetic']))
+
+        console.print(ss_table)
+
+        # Show full column-by-column comparison table if available
+        if 'comparison_table' in ss_result and ss_result['comparison_table']:
+            comparison_table = ss_result['comparison_table']
+
+            # Create full comparison table
+            full_comparison = Table(
+                title="Column-by-Column Comparison (Semantic Types)",
+                show_header=True,
+                header_style="bold blue",
+                show_lines=False
+            )
+            full_comparison.add_column("Column", style="cyan", no_wrap=False)
+            full_comparison.add_column("Real sdtype", style="green")
+            full_comparison.add_column("Synthetic sdtype", style="magenta")
+            full_comparison.add_column("Status", style="white")
+
+            # Status display mapping
+            status_display = {
+                "match": "✓ Match",
+                "sdtype_mismatch": "⚠ Sdtype mismatch",
+                "missing_in_synthetic": "✗ Missing in synth",
+                "only_in_synthetic": "⚠ Only in synth"
+            }
+
+            # Status colors
+            status_colors = {
+                "match": "bright_green",
+                "sdtype_mismatch": "yellow",
+                "missing_in_synthetic": "red",
+                "only_in_synthetic": "yellow"
+            }
+
+            # Add all columns to the table
+            for item in comparison_table:
+                status_text = status_display.get(item['status'], item['status'])
+                status_color = status_colors.get(item['status'], "white")
+
+                full_comparison.add_row(
+                    item['column'],
+                    str(item['real_sdtype']) if item['real_sdtype'] else '-',
+                    str(item['synthetic_sdtype']) if item['synthetic_sdtype'] else '-',
+                    f"[{status_color}]{status_text}[/{status_color}]"
+                )
+
+            console.print("\n")
+            console.print(full_comparison)
+    else:
+        console.print("❌ SemanticStructure failed", style="bold red")
+
+    # NewRowSynthesis results table
+    if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
+        nrs_result = metrics["new_row_synthesis"]
+
+        # Get parameters info for display
+        params_info = nrs_result["parameters"]
+        tolerance = params_info.get("numerical_match_tolerance", 0.01)
+        sample_size = params_info.get("synthetic_sample_size", "all rows")
+        params_display = f"tolerance={tolerance}, sample_size={sample_size}"
+
+        # Create NewRowSynthesis results table
+        nrs_table = Table(title=f"✅ NewRowSynthesis Results ({params_display})", show_header=True, header_style="bold blue")
+        nrs_table.add_column("Metric", style="cyan", no_wrap=True)
+        nrs_table.add_column("Value", style="bright_green", justify="right")
+
+        nrs_table.add_row("New Row Score", f"{nrs_result['score']:.3f}")
+        nrs_table.add_row("New Rows", f"{nrs_result['num_new_rows']:,}")
+        nrs_table.add_row("Matched Rows", f"{nrs_result['num_matched_rows']:,}")
+
+        console.print(nrs_table)
+    else:
+        console.print("❌ NewRowSynthesis failed", style="bold red")
+
+    # BoundaryAdherence results table
+    if "boundary_adherence" in metrics and metrics["boundary_adherence"]["status"] == "success":
+        ba_result = metrics["boundary_adherence"]
+
+        # Get parameters info for display
+        params_info = ba_result["parameters"]
+        target_cols = params_info.get("target_columns", "all numerical/datetime")
+        params_display = f"target_columns={target_cols}"
+
+        # Create BoundaryAdherence results table
+        ba_table = Table(title=f"✅ BoundaryAdherence Results ({params_display})", show_header=True, header_style="bold blue")
+        ba_table.add_column("Column", style="cyan", no_wrap=True)
+        ba_table.add_column("Boundary Score", style="bright_green", justify="right")
+        ba_table.add_column("Status", style="yellow", justify="center")
+
+        # Add aggregate score as first row
+        if ba_result['aggregate_score'] is not None:
+            ba_table.add_row("AGGREGATE", f"{ba_result['aggregate_score']:.3f}", "✓")
+        else:
+            ba_table.add_row("AGGREGATE", "n/a", "ℹ️")
+
+        ba_table.add_section()
+
+        # Get all columns from column_scores and compatible_columns
+        column_scores = ba_result['column_scores']
+        compatible_columns = ba_result.get('compatible_columns', [])
+        all_columns = sorted(set(list(column_scores.keys()) + list(compatible_columns)))
+
+        for col in all_columns:
+            if col in column_scores:
+                ba_table.add_row(col, f"{column_scores[col]:.3f}", "✓")
+            elif col in compatible_columns:
+                ba_table.add_row(col, "error", "⚠️")
+            else:
+                ba_table.add_row(col, "n/a", "—")
+
+        # Add message at the bottom if no compatible columns found
+        if ba_result.get("message"):
+            ba_table.add_section()
+            ba_table.add_row("INFO", ba_result["message"], "ℹ️")
+
+        console.print(ba_table)
+    else:
+        console.print("❌ BoundaryAdherence failed", style="bold red")
+
+    # CategoryAdherence results table
+    if "category_adherence" in metrics and metrics["category_adherence"]["status"] == "success":
+        ca_result = metrics["category_adherence"]
+
+        # Get parameters info for display
+        params_info = ca_result["parameters"]
+        target_cols = params_info.get("target_columns", None)
+        params_display = f"target_columns={target_cols}"
+
+        if ca_result.get("message"):
+            # Handle case where no compatible columns found
+            console.print(f"⚠️  CategoryAdherence Results ({params_display})", style="bold yellow")
+            console.print(f"   Status: {ca_result['message']}", style="yellow")
+        else:
+            # Create CategoryAdherence results table
+            ca_table = Table(title=f"✅ CategoryAdherence Results ({params_display})", show_header=True, header_style="bold blue")
+            ca_table.add_column("Column", style="cyan", no_wrap=True)
+            ca_table.add_column("Category Score", style="bright_green", justify="right")
+            ca_table.add_column("Status", style="yellow", justify="center")
+
+            # Add aggregate score first
+            ca_table.add_row("AGGREGATE", f"{ca_result['aggregate_score']:.3f}", "✓")
+
+            ca_table.add_section()
+
+            # Get all columns from column_scores and compatible_columns
+            column_scores = ca_result['column_scores']
+            compatible_columns = ca_result.get('compatible_columns', [])
+            all_columns = sorted(set(list(column_scores.keys()) + list(compatible_columns)))
+
+            for col in all_columns:
+                if col in column_scores:
+                    ca_table.add_row(col, f"{column_scores[col]:.3f}", "✓")
+                elif col in compatible_columns:
+                    ca_table.add_row(col, "error", "⚠️")
+                else:
+                    ca_table.add_row(col, "n/a", "—")
+
+            # Add message at the bottom if no compatible columns found
+            if ca_result.get("message"):
+                ca_table.add_section()
+                ca_table.add_row("INFO", ca_result["message"], "ℹ️")
+
+            console.print(ca_table)
+    else:
+        console.print("❌ CategoryAdherence failed", style="bold red")
+
     # Alpha Precision
     if "alpha_precision" in metrics and metrics["alpha_precision"]["status"] == "success":
         scores = metrics["alpha_precision"]["scores"]
