@@ -227,14 +227,18 @@ def read_metrics(model_id: str, generation: int, experiments_root: str) -> Dict:
         with det_file.open() as f:
             data = json.load(f)
             individual_scores = data.get('individual_scores', {})
-            
-            # Average detection score across methods
+
+            # Store individual detection method scores
             if individual_scores:
                 det_scores = []
                 for method_name, method_data in individual_scores.items():
                     if method_data.get('status') == 'success' and 'auc_score' in method_data:
-                        det_scores.append(method_data['auc_score'])
-                
+                        auc = method_data['auc_score']
+                        det_scores.append(auc)
+                        # Store individual method scores
+                        metrics[method_name] = auc
+
+                # Average detection score across methods
                 if det_scores:
                     metrics['detection_avg'] = sum(det_scores) / len(det_scores)
 
@@ -474,9 +478,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb\n"
+        return "generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb\n"
 
-    lines = ["generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,new_row_synthesis,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb"]
 
     for r in results:
         gen = r['generation']
@@ -500,6 +504,10 @@ def export_csv(results: List[Dict]) -> str:
         jsd_sd = metrics.get('jsd_syndat', '')
         jsd_nm = metrics.get('jsd_nannyml', '')
         det = metrics.get('detection_avg', '')
+        det_gmm = metrics.get('detection_gmm', '')
+        det_xgb = metrics.get('detection_xgb', '')
+        det_mlp = metrics.get('detection_mlp', '')
+        det_linear = metrics.get('detection_linear', '')
         nrs = metrics.get('new_row_synthesis', '')
 
         # Hallucination metrics
@@ -523,7 +531,7 @@ def export_csv(results: List[Dict]) -> str:
 
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{alpha_delta_prec_oc},{alpha_delta_cov_oc},{alpha_auth_oc},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{nrs},{factual},{ddr},{plaus},{plaus_nov},{cat_ddr},{cat_train_valid},{cat_train_prop},{cat_halluc},{comp_pop},{comp_train},{comp_ref},{comp_synth},{comp_ratio_pop},{comp_ratio_train},{comp_ratio_ref},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{alpha_delta_prec_oc},{alpha_delta_cov_oc},{alpha_auth_oc},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{det_gmm},{det_xgb},{det_mlp},{det_linear},{nrs},{factual},{ddr},{plaus},{plaus_nov},{cat_ddr},{cat_train_valid},{cat_train_prop},{cat_halluc},{comp_pop},{comp_train},{comp_ref},{comp_synth},{comp_ratio_pop},{comp_ratio_train},{comp_ratio_ref},{size}")
 
     return "\n".join(lines)
 
