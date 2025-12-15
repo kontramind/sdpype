@@ -576,18 +576,6 @@ def generate_summary_html(
         "      </ul>",
         "    </div>",
         "    <h2>Visualizations</h2>",
-    ]
-
-    # Add each plot in its own container
-    for plot_html in plots_html:
-        html_parts.extend([
-            "    <div class='plot-container'>",
-            plot_html,
-            "    </div>",
-        ])
-
-    # Add visualization note
-    html_parts.extend([
         "    <div class='note'>",
         "      <strong>Visualization Details:</strong><br>",
         "      <ul>",
@@ -603,6 +591,18 @@ def generate_summary_html(
         "        <li><strong>Interpretation:</strong> CI narrows as n increases (uncertainty about mean decreases), but PI remains wider (natural variation persists)</li>",
         "      </ul>",
         "    </div>",
+    ]
+
+    # Add each plot in its own container
+    for plot_html in plots_html:
+        html_parts.extend([
+            "    <div class='plot-container'>",
+            plot_html,
+            "    </div>",
+        ])
+
+    # Add metrics table
+    html_parts.extend([
         "    <h2>Metrics Overview</h2>",
         summary_table_html,
         "  </div>",
