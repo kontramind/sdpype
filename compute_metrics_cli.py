@@ -79,31 +79,111 @@ def display_statistical_metrics(results: Dict[str, Any]):
 
     # Create summary table
     table = Table(title="📊 Statistical Metrics Summary", show_header=True, header_style="bold magenta")
-    table.add_column("Metric", style="cyan", no_wrap=True)
-    table.add_column("Score", justify="right", style="green")
-    table.add_column("Quality", justify="center")
+    table.add_column("Metric", style="cyan", no_wrap=True, width=30)
+    table.add_column("Score / Values", justify="right", style="green", width=35)
+    table.add_column("Quality", justify="center", width=12)
 
     for metric_name, metric_result in metrics_data.items():
-        if isinstance(metric_result, dict) and 'score' in metric_result:
-            score = metric_result['score']
-            if isinstance(score, (int, float)):
-                # Determine quality indicator
-                if score >= 0.8:
-                    quality = "✓ Excellent"
-                    style = "green"
-                elif score >= 0.6:
-                    quality = "○ Good"
-                    style = "yellow"
-                else:
-                    quality = "⚠ Fair"
-                    style = "red"
+        if not isinstance(metric_result, dict):
+            continue
 
-                table.add_row(
-                    metric_name.replace('_', ' ').title(),
-                    f"{score:.4f}",
-                    quality,
-                    style=style
-                )
+        status = metric_result.get('status', 'unknown')
+        if status != 'success':
+            table.add_row(
+                metric_name.replace('_', ' ').title(),
+                f"Error",
+                "✗ Failed",
+                style="red"
+            )
+            continue
+
+        # Handle different metric structures
+        display_value = None
+        score_val = None
+
+        # Check for single score field
+        if 'score' in metric_result:
+            score_val = metric_result['score']
+            display_value = f"{score_val:.4f}" if isinstance(score_val, (int, float)) else str(score_val)
+
+        # Check for aggregate_score (KS/TV Complement)
+        elif 'aggregate_score' in metric_result:
+            score_val = metric_result['aggregate_score']
+            if score_val is not None:
+                display_value = f"{score_val:.4f}"
+                num_cols = metric_result.get('successful_columns', 0)
+                if num_cols:
+                    display_value += f" ({num_cols} cols)"
+            else:
+                display_value = "N/A"
+
+        # Check for PRDC scores (precision, recall, density, coverage)
+        elif all(k in metric_result for k in ['precision', 'recall', 'density', 'coverage']):
+            prec = metric_result['precision']
+            rec = metric_result['recall']
+            dens = metric_result['density']
+            cov = metric_result['coverage']
+            display_value = f"P:{prec:.3f} R:{rec:.3f}\nD:{dens:.3f} C:{cov:.3f}"
+            score_val = (prec + rec) / 2  # Use average for quality
+
+        # Check for Alpha Precision scores dict
+        elif 'scores' in metric_result and isinstance(metric_result['scores'], dict):
+            scores_dict = metric_result['scores']
+            if 'authenticity_OC' in scores_dict:
+                auth = scores_dict['authenticity_OC']
+                prec = scores_dict.get('delta_precision_alpha_OC', 0)
+                cov = scores_dict.get('delta_coverage_beta_OC', 0)
+                display_value = f"Auth:{auth:.3f}\nPrec:{prec:.3f} Cov:{cov:.3f}"
+                score_val = auth
+            else:
+                # Show available scores
+                score_items = list(scores_dict.items())[:3]
+                display_value = "\n".join([f"{k.split('_')[-1]}: {v:.3f}" for k, v in score_items])
+                score_val = sum(scores_dict.values()) / len(scores_dict) if scores_dict else None
+
+        # Check for mean/std fields (Wasserstein, MMD, Jensen-Shannon)
+        elif 'mean' in metric_result:
+            mean_val = metric_result['mean']
+            std_val = metric_result.get('std', None)
+            if std_val is not None:
+                display_value = f"{mean_val:.4f} ± {std_val:.4f}"
+            else:
+                display_value = f"{mean_val:.4f}"
+            # For distance metrics (lower is better), convert for quality indicator
+            score_val = max(0, 1.0 - mean_val) if mean_val <= 1.0 else 0.5
+
+        # Check for distance field (some metrics)
+        elif 'distance' in metric_result:
+            dist_val = metric_result['distance']
+            display_value = f"{dist_val:.4f}"
+            score_val = max(0, 1.0 - dist_val) if dist_val <= 1.0 else 0.5
+
+        if display_value is None:
+            display_value = "N/A"
+
+        # Determine quality indicator
+        quality = "○ Unknown"
+        style = "white"
+        if score_val is not None:
+            if score_val >= 0.8:
+                quality = "✓ Excellent"
+                style = "green"
+            elif score_val >= 0.6:
+                quality = "○ Good"
+                style = "yellow"
+            elif score_val >= 0.4:
+                quality = "△ Fair"
+                style = "yellow"
+            else:
+                quality = "⚠ Poor"
+                style = "red"
+
+        table.add_row(
+            metric_name.replace('_', ' ').title(),
+            display_value,
+            quality,
+            style=style
+        )
 
     console.print(table)
     console.print()
