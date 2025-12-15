@@ -564,8 +564,11 @@ def compute_statistical_metrics_post_training(
             encoding_config=encoding_config
         )
 
-        # Display results in terminal
-        display_statistical_metrics(results)
+        # Display results in terminal - show the text report
+        report = generate_statistical_report(results)
+        console.print("\n" + "="*80, style="blue")
+        console.print(report)
+        console.print("="*80 + "\n", style="blue")
 
         return results
     except Exception as e:
