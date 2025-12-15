@@ -658,12 +658,18 @@ def main(
     for exp_folder in folders:
         console.print(f"\n[bold]Processing folder: {exp_folder}[/bold]")
 
+        # If no config provided, try to load from checkpoints for metadata discovery
+        effective_config = config_data
+        if not effective_config and not metadata:
+            # Try to load checkpoint config from generation 0 for metadata path
+            effective_config = load_generation_config(exp_folder, generation if generation is not None else 0)
+
         # Find metadata file
         # Priority: --metadata flag > config['data']['metadata_file'] > auto-discovery
-        metadata_path = metadata if metadata else find_metadata_file(exp_folder, config_data)
+        metadata_path = metadata if metadata else find_metadata_file(exp_folder, effective_config)
         if not metadata_path:
             console.print(f"[red]Error: Could not find metadata.json for {exp_folder}[/red]")
-            console.print("[yellow]Specify with --metadata option[/yellow]")
+            console.print("[yellow]Specify with --metadata option or ensure checkpoint params exist[/yellow]")
             continue
 
         console.print(f"Using metadata: {metadata_path}")
