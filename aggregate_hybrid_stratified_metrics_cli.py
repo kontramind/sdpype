@@ -575,8 +575,6 @@ def generate_summary_html(
         f"        <li><strong>T-distribution:</strong> Used instead of normal approximation (df = {df_value})</li>",
         "      </ul>",
         "    </div>",
-        "    <h2>Metrics Overview</h2>",
-        summary_table_html,
         "    <h2>Visualizations</h2>",
     ]
 
@@ -605,6 +603,8 @@ def generate_summary_html(
         "        <li><strong>Interpretation:</strong> CI narrows as n increases (uncertainty about mean decreases), but PI remains wider (natural variation persists)</li>",
         "      </ul>",
         "    </div>",
+        "    <h2>Metrics Overview</h2>",
+        summary_table_html,
         "  </div>",
         "</body>",
         "</html>",
