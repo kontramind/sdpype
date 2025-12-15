@@ -355,20 +355,7 @@ def compute_statistical_metrics_post_training(
         'boundary_adherence', 'category_adherence', 'new_row_synthesis'
     }
 
-    # Load encoder and encode data if needed for encoded metrics
-    ref_enc = None
-    syn_enc = None
-    needs_encoding = any(m.get('name') in ENCODED_METRICS for m in config.get('evaluation', {}).get('statistical', {}).get('metrics', []))
-
-    if needs_encoding:
-        encoder = load_encoder(folder, model_id)
-        if encoder:
-            ref_enc = encode_data(encoder, ref_dec, "reference")
-            syn_enc = encode_data(encoder, syn_dec, "synthetic")
-        else:
-            console.print("[yellow]Warning: Could not load encoder, encoded metrics may fail[/yellow]")
-
-    # Get metrics config (use default if not provided)
+    # Get metrics config first (use default if not provided)
     if config and 'evaluation' in config and 'statistical_similarity' in config['evaluation']:
         metrics_config = config['evaluation']['statistical_similarity'].get('metrics', [])
     else:
@@ -380,6 +367,20 @@ def compute_statistical_metrics_post_training(
             {'name': 'ks_complement'},
             {'name': 'tv_complement'}
         ]
+
+    # Check if any metrics need encoding
+    needs_encoding = any(m.get('name') in ENCODED_METRICS for m in metrics_config)
+
+    # Load encoder and encode data if needed for encoded metrics
+    ref_enc = None
+    syn_enc = None
+    if needs_encoding:
+        encoder = load_encoder(folder, model_id)
+        if encoder:
+            ref_enc = encode_data(encoder, ref_dec, "reference")
+            syn_enc = encode_data(encoder, syn_dec, "synthetic")
+        else:
+            console.print("[yellow]Warning: Could not load encoder, encoded metrics may fail[/yellow]")
 
     # Load encoding config if available
     encoding_config = None
