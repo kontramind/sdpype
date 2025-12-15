@@ -234,10 +234,17 @@ def load_encoder(folder: Path, model_id: str) -> Optional[RDTDatasetEncoder]:
         Fitted RDTDatasetEncoder or None if not found
     """
     models_dir = folder / "models"
-    encoder_path = models_dir / f"encoders_{model_id}.pkl"
+
+    # Try evaluation_encoder first (used for metrics evaluation)
+    encoder_path = models_dir / f"evaluation_encoder_{model_id}.pkl"
 
     if not encoder_path.exists():
-        console.print(f"[yellow]Warning: Encoder not found: {encoder_path}[/yellow]")
+        # Fallback to training_encoder if evaluation encoder not found
+        encoder_path = models_dir / f"training_encoder_{model_id}.pkl"
+
+    if not encoder_path.exists():
+        console.print(f"[yellow]Warning: Encoder not found in {models_dir}/[/yellow]")
+        console.print(f"[yellow]  Tried: evaluation_encoder_{model_id}.pkl, training_encoder_{model_id}.pkl[/yellow]")
         return None
 
     try:
