@@ -29,6 +29,7 @@ from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate
 from sdpype.evaluation.detection import evaluate_detection_metrics, generate_detection_report, ensure_json_serializable
 from sdpype.evaluation.hallucination import evaluate_hallucination_metrics, generate_hallucination_report
 from sdpype.metadata import load_csv_with_metadata
+from sdpype.encoding import RDTDatasetEncoder
 from sdpype.encoding import load_encoding_config
 
 console = Console()
@@ -185,10 +186,9 @@ def load_generation_data(
     model_id: str,
     metadata_path: Path,
     population_file: Optional[Path] = None
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame,
-           pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Load all necessary data files for a generation.
+    Load all necessary decoded data files for a generation.
 
     Args:
         folder: Experiment folder path
@@ -197,38 +197,75 @@ def load_generation_data(
         population_file: Optional path to population data file (decoded)
 
     Returns:
-        (reference_decoded, reference_encoded, synthetic_decoded, synthetic_encoded,
-         training_decoded, training_encoded, population_decoded, training_binned)
+        (reference_decoded, synthetic_decoded, training_decoded, population_decoded)
     """
     data_root = folder / "data"
 
-    # Construct file paths
+    # Construct file paths for decoded data
     reference_decoded = data_root / "decoded" / f"reference_{model_id}.csv"
-    reference_encoded = data_root / "encoded" / f"reference_{model_id}.csv"
     synthetic_decoded = data_root / "synthetic" / f"synthetic_data_{model_id}_decoded.csv"
-    synthetic_encoded = data_root / "synthetic" / f"synthetic_data_{model_id}_encoded.csv"
     training_decoded = data_root / "decoded" / f"training_{model_id}.csv"
-    training_encoded = data_root / "encoded" / f"training_{model_id}.csv"
-    training_binned = data_root / "binned" / f"training_data_for_hallucinations.csv"
 
-    # Load data
+    # Load decoded data
     ref_dec = load_csv_with_metadata(reference_decoded, metadata_path) if reference_decoded.exists() else None
-    ref_enc = pd.read_csv(reference_encoded) if reference_encoded.exists() else None
     syn_dec = load_csv_with_metadata(synthetic_decoded, metadata_path) if synthetic_decoded.exists() else None
-    syn_enc = pd.read_csv(synthetic_encoded) if synthetic_encoded.exists() else None
     trn_dec = load_csv_with_metadata(training_decoded, metadata_path) if training_decoded.exists() else None
-    trn_enc = pd.read_csv(training_encoded) if training_encoded.exists() else None
-    trn_bin = load_csv_with_metadata(training_binned, metadata_path, low_memory=False) if training_binned.exists() else None
 
     # Load population data (decoded) from provided path or try to find it
     pop_dec = None
     if population_file and population_file.exists():
         console.print(f"[dim]Loading population data: {population_file}[/dim]")
         pop_dec = load_csv_with_metadata(population_file, metadata_path, low_memory=False)
-    else:
-        console.print(f"[yellow]Warning: Population file not found or not specified[/yellow]")
+    elif population_file:
+        console.print(f"[yellow]Warning: Population file not found: {population_file}[/yellow]")
 
-    return ref_dec, ref_enc, syn_dec, syn_enc, trn_dec, trn_enc, pop_dec, trn_bin
+    return ref_dec, syn_dec, trn_dec, pop_dec
+
+
+def load_encoder(folder: Path, model_id: str) -> Optional[RDTDatasetEncoder]:
+    """
+    Load fitted encoder for a generation.
+
+    Args:
+        folder: Experiment folder path
+        model_id: Model identifier
+
+    Returns:
+        Fitted RDTDatasetEncoder or None if not found
+    """
+    models_dir = folder / "models"
+    encoder_path = models_dir / f"encoders_{model_id}.pkl"
+
+    if not encoder_path.exists():
+        console.print(f"[yellow]Warning: Encoder not found: {encoder_path}[/yellow]")
+        return None
+
+    try:
+        console.print(f"[dim]Loading encoder: {encoder_path.name}[/dim]")
+        return RDTDatasetEncoder.load(encoder_path)
+    except Exception as e:
+        console.print(f"[red]Error loading encoder: {e}[/red]")
+        return None
+
+
+def encode_data(
+    encoder: RDTDatasetEncoder,
+    data: pd.DataFrame,
+    data_name: str = "data"
+) -> pd.DataFrame:
+    """
+    Encode decoded data using fitted encoder.
+
+    Args:
+        encoder: Fitted RDTDatasetEncoder
+        data: Decoded dataframe
+        data_name: Name for logging
+
+    Returns:
+        Encoded dataframe
+    """
+    console.print(f"[dim]Encoding {data_name}...[/dim]")
+    return encoder.transform(data)
 
 
 def load_generation_config(folder: Path, generation: int) -> Optional[Dict[str, Any]]:
@@ -292,8 +329,8 @@ def compute_statistical_metrics_post_training(
 
     console.print(f"[cyan]Computing statistical metrics for generation {parsed['generation']}...[/cyan]")
 
-    # Load data (population not needed for statistical metrics)
-    ref_dec, ref_enc, syn_dec, syn_enc, _, _, _, _ = load_generation_data(folder, model_id, metadata_path, population_file=None)
+    # Load decoded data (population not needed for statistical metrics)
+    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None)
 
     if ref_dec is None or syn_dec is None:
         console.print("[red]Error: Missing required data files for statistical metrics[/red]")
@@ -310,6 +347,19 @@ def compute_statistical_metrics_post_training(
         'tv_complement', 'table_structure', 'semantic_structure',
         'boundary_adherence', 'category_adherence', 'new_row_synthesis'
     }
+
+    # Load encoder and encode data if needed for encoded metrics
+    ref_enc = None
+    syn_enc = None
+    needs_encoding = any(m.get('name') in ENCODED_METRICS for m in config.get('evaluation', {}).get('statistical', {}).get('metrics', []))
+
+    if needs_encoding:
+        encoder = load_encoder(folder, model_id)
+        if encoder:
+            ref_enc = encode_data(encoder, ref_dec, "reference")
+            syn_enc = encode_data(encoder, syn_dec, "synthetic")
+        else:
+            console.print("[yellow]Warning: Could not load encoder, encoded metrics may fail[/yellow]")
 
     # Get metrics config (use default if not provided)
     if config and 'evaluation' in config and 'statistical_similarity' in config['evaluation']:
@@ -376,12 +426,21 @@ def compute_detection_metrics_post_training(
 
     console.print(f"[cyan]Computing detection metrics for generation {parsed['generation']}...[/cyan]")
 
-    # Load data (detection needs encoded data)
-    _, ref_enc, _, syn_enc, _, _, _, _ = load_generation_data(folder, model_id, metadata_path)
+    # Load decoded data
+    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None)
 
-    if ref_enc is None or syn_enc is None:
-        console.print("[red]Error: Missing encoded data files for detection metrics[/red]")
+    if ref_dec is None or syn_dec is None:
+        console.print("[red]Error: Missing required data files for detection metrics[/red]")
         return None
+
+    # Load encoder and encode data (detection needs encoded data)
+    encoder = load_encoder(folder, model_id)
+    if not encoder:
+        console.print("[red]Error: Could not load encoder for detection metrics[/red]")
+        return None
+
+    ref_enc = encode_data(encoder, ref_dec, "reference")
+    syn_enc = encode_data(encoder, syn_dec, "synthetic")
 
     # Get detection config
     if config and 'evaluation' in config and 'detection_evaluation' in config['evaluation']:
@@ -469,7 +528,7 @@ def compute_hallucination_metrics_post_training(
         return None
 
     # Load data with population file
-    ref_dec, _, syn_dec, _, trn_dec, _, pop_dec, _ = load_generation_data(
+    ref_dec, syn_dec, trn_dec, pop_dec = load_generation_data(
         folder, model_id, metadata_path, population_file=population_file
     )
 
