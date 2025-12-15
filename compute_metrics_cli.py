@@ -231,14 +231,18 @@ def load_generation_config(folder: Path, generation: int) -> Optional[Dict[str, 
     """
     checkpoints_dir = folder / "checkpoints"
     if not checkpoints_dir.exists():
+        console.print(f"[dim]No checkpoints directory found in {folder}[/dim]")
         return None
 
     # Find params file for this generation
     params_files = list(checkpoints_dir.glob(f"params_*_gen_{generation}.yaml"))
     if not params_files:
+        console.print(f"[dim]No checkpoint params file found for generation {generation}[/dim]")
+        console.print(f"[dim]Searched pattern: {checkpoints_dir}/params_*_gen_{generation}.yaml[/dim]")
         return None
 
     # Load the first matching file
+    console.print(f"[dim]Loading checkpoint config: {params_files[0].name}[/dim]")
     with open(params_files[0], 'r') as f:
         return yaml.safe_load(f)
 
