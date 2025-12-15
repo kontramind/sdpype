@@ -183,15 +183,22 @@ def find_metadata_file(folder: Path, config: Optional[Dict[str, Any]] = None) ->
 def load_generation_data(
     folder: Path,
     model_id: str,
-    metadata_path: Path
+    metadata_path: Path,
+    population_file: Optional[Path] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame,
            pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Load all necessary data files for a generation.
 
+    Args:
+        folder: Experiment folder path
+        model_id: Model identifier
+        metadata_path: Path to metadata file
+        population_file: Optional path to population data file (decoded)
+
     Returns:
         (reference_decoded, reference_encoded, synthetic_decoded, synthetic_encoded,
-         training_decoded, training_encoded, population, training_binned)
+         training_decoded, training_encoded, population_decoded, training_binned)
     """
     data_root = folder / "data"
 
@@ -202,7 +209,6 @@ def load_generation_data(
     synthetic_encoded = data_root / "synthetic" / f"synthetic_data_{model_id}_encoded.csv"
     training_decoded = data_root / "decoded" / f"training_{model_id}.csv"
     training_encoded = data_root / "encoded" / f"training_{model_id}.csv"
-    population_binned = data_root / "binned" / "population_data_for_hallucinations.csv"
     training_binned = data_root / "binned" / f"training_data_for_hallucinations.csv"
 
     # Load data
@@ -212,10 +218,17 @@ def load_generation_data(
     syn_enc = pd.read_csv(synthetic_encoded) if synthetic_encoded.exists() else None
     trn_dec = load_csv_with_metadata(training_decoded, metadata_path) if training_decoded.exists() else None
     trn_enc = pd.read_csv(training_encoded) if training_encoded.exists() else None
-    pop_bin = load_csv_with_metadata(population_binned, metadata_path, low_memory=False) if population_binned.exists() else None
     trn_bin = load_csv_with_metadata(training_binned, metadata_path, low_memory=False) if training_binned.exists() else None
 
-    return ref_dec, ref_enc, syn_dec, syn_enc, trn_dec, trn_enc, pop_bin, trn_bin
+    # Load population data (decoded) from provided path or try to find it
+    pop_dec = None
+    if population_file and population_file.exists():
+        console.print(f"[dim]Loading population data: {population_file}[/dim]")
+        pop_dec = load_csv_with_metadata(population_file, metadata_path, low_memory=False)
+    else:
+        console.print(f"[yellow]Warning: Population file not found or not specified[/yellow]")
+
+    return ref_dec, ref_enc, syn_dec, syn_enc, trn_dec, trn_enc, pop_dec, trn_bin
 
 
 def load_generation_config(folder: Path, generation: int) -> Optional[Dict[str, Any]]:
@@ -279,8 +292,8 @@ def compute_statistical_metrics_post_training(
 
     console.print(f"[cyan]Computing statistical metrics for generation {parsed['generation']}...[/cyan]")
 
-    # Load data
-    ref_dec, ref_enc, syn_dec, syn_enc, _, _, _, _ = load_generation_data(folder, model_id, metadata_path)
+    # Load data (population not needed for statistical metrics)
+    ref_dec, ref_enc, syn_dec, syn_enc, _, _, _, _ = load_generation_data(folder, model_id, metadata_path, population_file=None)
 
     if ref_dec is None or syn_dec is None:
         console.print("[red]Error: Missing required data files for statistical metrics[/red]")
@@ -436,10 +449,31 @@ def compute_hallucination_metrics_post_training(
 
     console.print(f"[cyan]Computing hallucination metrics for generation {parsed['generation']}...[/cyan]")
 
-    # Load data
-    ref_dec, _, syn_dec, _, trn_dec, _, pop_bin, _ = load_generation_data(folder, model_id, metadata_path)
+    # Get population file path from config
+    population_file = None
+    if config and 'data' in config:
+        pop_file_str = config['data'].get('population_file')
+        if pop_file_str:
+            population_file = Path(pop_file_str)
+            # Resolve relative paths from experiment folder
+            if not population_file.is_absolute():
+                population_file = folder / population_file
+                if not population_file.exists():
+                    # Try relative to current directory
+                    population_file = Path(pop_file_str)
 
-    if ref_dec is None or syn_dec is None or trn_dec is None or pop_bin is None:
+    if not population_file or not population_file.exists():
+        console.print("[red]Error: Population file not found. Please specify 'data.population_file' in config.[/red]")
+        if population_file:
+            console.print(f"[red]Tried: {population_file}[/red]")
+        return None
+
+    # Load data with population file
+    ref_dec, _, syn_dec, _, trn_dec, _, pop_dec, _ = load_generation_data(
+        folder, model_id, metadata_path, population_file=population_file
+    )
+
+    if ref_dec is None or syn_dec is None or trn_dec is None or pop_dec is None:
         console.print("[red]Error: Missing required data files for hallucination metrics[/red]")
         return None
 
@@ -455,10 +489,10 @@ def compute_hallucination_metrics_post_training(
         console.print(f"[red]Error: Query file not found: {query_file_path}[/red]")
         return None
 
-    # Call evaluation function
+    # Call evaluation function with decoded population data
     try:
         results = evaluate_hallucination_metrics(
-            population=pop_bin,
+            population=pop_dec,
             training=trn_dec,
             reference=ref_dec,
             synthetic=syn_dec,
