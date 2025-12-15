@@ -148,6 +148,15 @@ def find_metadata_file(folder: Path, config: Optional[Dict[str, Any]] = None) ->
     # 1. Try to get from config first
     if config and 'data' in config and config['data'].get('metadata_file'):
         metadata_path = Path(config['data']['metadata_file'])
+
+        # If path is relative, try resolving it relative to the experiment folder
+        if not metadata_path.is_absolute() and not metadata_path.exists():
+            relative_to_folder = folder / metadata_path
+            if relative_to_folder.exists():
+                console.print(f"[dim]Using metadata from config (relative to folder): {relative_to_folder}[/dim]")
+                return relative_to_folder
+
+        # Check if absolute path or relative to CWD exists
         if metadata_path.exists():
             console.print(f"[dim]Using metadata from config: {metadata_path}[/dim]")
             return metadata_path
@@ -158,6 +167,7 @@ def find_metadata_file(folder: Path, config: Optional[Dict[str, Any]] = None) ->
     candidates = [
         folder / "metadata.json",
         folder / "data" / "metadata.json",
+        folder / ".." / "downloads" / "metadata.json",  # Common location for downloads
         Path("data") / "metadata.json",  # Look in repo data/
         Path("metadata.json")  # Look in current directory
     ]
