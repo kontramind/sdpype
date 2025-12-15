@@ -130,17 +130,31 @@ def discover_generation_files(folder: Path, generation: Optional[int] = None) ->
     return sorted(generations, key=lambda x: x['generation'])
 
 
-def find_metadata_file(folder: Path) -> Optional[Path]:
+def find_metadata_file(folder: Path, config: Optional[Dict[str, Any]] = None) -> Optional[Path]:
     """
     Find metadata.json file by checking common locations.
 
+    Priority order:
+    1. From config['data']['metadata_file'] (if config provided)
+    2. Auto-discovery in common locations
+
     Args:
         folder: Experiment folder path
+        config: Optional configuration dictionary (from params.yaml)
 
     Returns:
         Path to metadata.json or None
     """
-    # Check common locations
+    # 1. Try to get from config first
+    if config and 'data' in config and config['data'].get('metadata_file'):
+        metadata_path = Path(config['data']['metadata_file'])
+        if metadata_path.exists():
+            console.print(f"[dim]Using metadata from config: {metadata_path}[/dim]")
+            return metadata_path
+        else:
+            console.print(f"[yellow]Warning: Metadata file from config not found: {metadata_path}[/yellow]")
+
+    # 2. Fall back to auto-discovery
     candidates = [
         folder / "metadata.json",
         folder / "data" / "metadata.json",
@@ -150,6 +164,7 @@ def find_metadata_file(folder: Path) -> Optional[Path]:
 
     for candidate in candidates:
         if candidate.exists():
+            console.print(f"[dim]Auto-discovered metadata: {candidate}[/dim]")
             return candidate
 
     return None
@@ -571,6 +586,9 @@ def main(
 
     [bold]Examples:[/bold]
 
+      # Simplest: Use repo params.yaml (reads metadata + encoding paths from config)
+      python compute_metrics_cli.py --folder ./exp/ --config params.yaml
+
       # Compute all metrics on one folder
       python compute_metrics_cli.py --folder ./experiment_folder/
 
@@ -582,6 +600,13 @@ def main(
 
       # Force recompute
       python compute_metrics_cli.py --folder ./exp/ --force
+
+    [bold]Config Integration:[/bold]
+
+      When --config is provided, the tool automatically reads:
+      • Metadata path from config['data']['metadata_file']
+      • Encoding config from config['encoding']['config_file']
+      • Metrics configuration from config['evaluation']
     """
 
     # Validate arguments
@@ -620,7 +645,8 @@ def main(
         console.print(f"\n[bold]Processing folder: {exp_folder}[/bold]")
 
         # Find metadata file
-        metadata_path = metadata if metadata else find_metadata_file(exp_folder)
+        # Priority: --metadata flag > config['data']['metadata_file'] > auto-discovery
+        metadata_path = metadata if metadata else find_metadata_file(exp_folder, config_data)
         if not metadata_path:
             console.print(f"[red]Error: Could not find metadata.json for {exp_folder}[/red]")
             console.print("[yellow]Specify with --metadata option[/yellow]")
