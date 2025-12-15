@@ -8,33 +8,18 @@ Useful for:
 - Re-computing metrics with different configurations
 - Filling missing metrics after pipeline interruptions
 - Experimenting with metric parameters
-
-Usage:
-    # Compute all metrics on one folder
-    python compute_metrics_cli.py --folder ./mimic_iii_baseline_dseed233_sdv_gaussiancopula_mseed24157817/
-
-    # Compute specific metrics
-    python compute_metrics_cli.py --folder <folder> --metrics statistical detection
-
-    # Compute specific generation only
-    python compute_metrics_cli.py --folder <folder> --generation 5
-
-    # Batch process multiple folders
-    python compute_metrics_cli.py --folders-pattern "./mimic_iii_*dseed233*/"
-
-    # Use custom config for metrics
-    python compute_metrics_cli.py --folder <folder> --config custom_params.yaml
 """
 
-import argparse
 import json
 import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
-import sys
+from enum import Enum
 
 import pandas as pd
 import yaml
+import typer
+from typing_extensions import Annotated
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -47,6 +32,20 @@ from sdpype.metadata import load_csv_with_metadata
 from sdpype.encoding import load_encoding_config
 
 console = Console()
+app = typer.Typer(
+    name="compute_metrics_cli",
+    help="Compute metrics on experiment folders post-training",
+    add_completion=True,
+    rich_markup_mode="rich"
+)
+
+
+class MetricType(str, Enum):
+    """Available metric types"""
+    statistical = "statistical"
+    detection = "detection"
+    hallucination = "hallucination"
+    all = "all"
 
 
 def parse_model_id(model_id: str) -> Dict[str, str]:
@@ -493,112 +492,147 @@ def save_metrics(
         console.print(f"[yellow]Warning: Could not generate report: {e}[/yellow]")
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Compute metrics on experiment folders post-training",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
-    )
+@app.command()
+def main(
+    folder: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--folder",
+            help="Experiment folder path",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True
+        )
+    ] = None,
+    folders_pattern: Annotated[
+        Optional[str],
+        typer.Option(
+            "--folders-pattern",
+            help='Glob pattern to match multiple folders (e.g., "./mimic_*dseed233*/")'
+        )
+    ] = None,
+    generation: Annotated[
+        Optional[int],
+        typer.Option(
+            "--generation",
+            help="Specific generation to compute (default: all)",
+            min=0
+        )
+    ] = None,
+    metrics: Annotated[
+        List[MetricType],
+        typer.Option(
+            "--metrics",
+            help="Which metrics to compute (can specify multiple)",
+            case_sensitive=False
+        )
+    ] = [MetricType.all],
+    config: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--config",
+            help="Custom params.yaml config file (optional)",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True
+        )
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Overwrite existing metrics"
+        )
+    ] = False,
+    metadata: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--metadata",
+            help="Path to metadata.json file (auto-discovered if not specified)",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True
+        )
+    ] = None
+):
+    """
+    [bold cyan]Compute metrics on experiment folders post-training[/bold cyan]
 
-    parser.add_argument(
-        '--folder',
-        type=Path,
-        help='Experiment folder path'
-    )
+    This tool enables computing metrics on existing experiment folders without
+    re-running the DVC pipeline. Useful for:
 
-    parser.add_argument(
-        '--folders-pattern',
-        type=str,
-        help='Glob pattern to match multiple folders (e.g., "./mimic_*dseed233*/")'
-    )
+    • Adding new metrics to old experiments
+    • Re-computing metrics with different configurations
+    • Filling missing metrics after pipeline interruptions
+    • Experimenting with metric parameters
 
-    parser.add_argument(
-        '--generation',
-        type=int,
-        help='Specific generation to compute (default: all)'
-    )
+    [bold]Examples:[/bold]
 
-    parser.add_argument(
-        '--metrics',
-        nargs='+',
-        choices=['statistical', 'detection', 'hallucination', 'all'],
-        default=['all'],
-        help='Which metrics to compute (default: all)'
-    )
+      # Compute all metrics on one folder
+      python compute_metrics_cli.py --folder ./experiment_folder/
 
-    parser.add_argument(
-        '--config',
-        type=Path,
-        help='Custom params.yaml config file (optional)'
-    )
+      # Compute specific metrics
+      python compute_metrics_cli.py --folder ./exp/ --metrics statistical --metrics detection
 
-    parser.add_argument(
-        '--force',
-        action='store_true',
-        help='Overwrite existing metrics'
-    )
+      # Batch process multiple folders
+      python compute_metrics_cli.py --folders-pattern "./mimic_*dseed233*/"
 
-    parser.add_argument(
-        '--metadata',
-        type=Path,
-        help='Path to metadata.json file (auto-discovered if not specified)'
-    )
-
-    args = parser.parse_args()
+      # Force recompute
+      python compute_metrics_cli.py --folder ./exp/ --force
+    """
 
     # Validate arguments
-    if not args.folder and not args.folders_pattern:
-        parser.error("Either --folder or --folders-pattern must be specified")
+    if not folder and not folders_pattern:
+        console.print("[red]Error: Either --folder or --folders-pattern must be specified[/red]")
+        raise typer.Exit(code=1)
 
     # Collect folders to process
     folders = []
-    if args.folder:
-        if not args.folder.exists():
-            console.print(f"[red]Error: Folder not found: {args.folder}[/red]")
-            sys.exit(1)
-        folders.append(args.folder)
-    elif args.folders_pattern:
-        folders = list(Path().glob(args.folders_pattern))
+    if folder:
+        folders.append(folder)
+    elif folders_pattern:
+        folders = list(Path().glob(folders_pattern))
         if not folders:
-            console.print(f"[red]Error: No folders matched pattern: {args.folders_pattern}[/red]")
-            sys.exit(1)
+            console.print(f"[red]Error: No folders matched pattern: {folders_pattern}[/red]")
+            raise typer.Exit(code=1)
 
     # Load config if provided
-    config = None
-    if args.config:
-        if not args.config.exists():
-            console.print(f"[red]Error: Config file not found: {args.config}[/red]")
-            sys.exit(1)
-        with open(args.config, 'r') as f:
-            config = yaml.safe_load(f)
+    config_data = None
+    if config:
+        with open(config, 'r') as f:
+            config_data = yaml.safe_load(f)
 
     # Determine which metrics to compute
-    compute_all = 'all' in args.metrics
-    compute_statistical = compute_all or 'statistical' in args.metrics
-    compute_detection = compute_all or 'detection' in args.metrics
-    compute_hallucination = compute_all or 'hallucination' in args.metrics
+    metric_values = [m.value for m in metrics]
+    compute_all = MetricType.all.value in metric_values
+    compute_statistical = compute_all or MetricType.statistical.value in metric_values
+    compute_detection = compute_all or MetricType.detection.value in metric_values
+    compute_hallucination = compute_all or MetricType.hallucination.value in metric_values
 
     # Process each folder
     console.print(f"\n[bold cyan]Post-Training Metrics Computation[/bold cyan]")
     console.print(f"Processing {len(folders)} folder(s)\n")
 
-    for folder in folders:
-        console.print(f"\n[bold]Processing folder: {folder}[/bold]")
+    for exp_folder in folders:
+        console.print(f"\n[bold]Processing folder: {exp_folder}[/bold]")
 
         # Find metadata file
-        metadata_path = args.metadata if args.metadata else find_metadata_file(folder)
+        metadata_path = metadata if metadata else find_metadata_file(exp_folder)
         if not metadata_path:
-            console.print(f"[red]Error: Could not find metadata.json for {folder}[/red]")
+            console.print(f"[red]Error: Could not find metadata.json for {exp_folder}[/red]")
             console.print("[yellow]Specify with --metadata option[/yellow]")
             continue
 
         console.print(f"Using metadata: {metadata_path}")
-        metadata = SingleTableMetadata.load_from_json(str(metadata_path))
+        metadata_obj = SingleTableMetadata.load_from_json(str(metadata_path))
 
         # Discover generations
-        generations = discover_generation_files(folder, args.generation)
+        generations = discover_generation_files(exp_folder, generation)
         if not generations:
-            console.print(f"[yellow]Warning: No generations found in {folder}[/yellow]")
+            console.print(f"[yellow]Warning: No generations found in {exp_folder}[/yellow]")
             continue
 
         console.print(f"Found {len(generations)} generation(s) to process")
@@ -612,32 +646,32 @@ def main():
             console.print(f"\n[bold yellow]Generation {gen_num}[/bold yellow] ({model_id})")
 
             # Load generation config
-            gen_config = config if config else load_generation_config(folder, gen_num)
+            gen_config = config_data if config_data else load_generation_config(exp_folder, gen_num)
 
             # Compute metrics
             if compute_statistical:
                 results = compute_statistical_metrics_post_training(
-                    folder, model_id, parsed, metadata, metadata_path, gen_config, args.force
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, gen_config, force
                 )
                 if results:
-                    save_metrics(folder, model_id, "statistical_similarity", results)
+                    save_metrics(exp_folder, model_id, "statistical_similarity", results)
 
             if compute_detection:
                 results = compute_detection_metrics_post_training(
-                    folder, model_id, parsed, metadata, metadata_path, gen_config, args.force
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, gen_config, force
                 )
                 if results:
-                    save_metrics(folder, model_id, "detection_evaluation", results)
+                    save_metrics(exp_folder, model_id, "detection_evaluation", results)
 
             if compute_hallucination:
                 results = compute_hallucination_metrics_post_training(
-                    folder, model_id, parsed, metadata, metadata_path, gen_config, args.force
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, gen_config, force
                 )
                 if results:
-                    save_metrics(folder, model_id, "hallucination", results)
+                    save_metrics(exp_folder, model_id, "hallucination", results)
 
     console.print("\n[bold green]✓ Post-training metrics computation complete![/bold green]\n")
 
 
 if __name__ == "__main__":
-    main()
+    app()
