@@ -331,9 +331,16 @@ def create_plotly_visualization(
     # Dark versions for lines
     gray_color = "#a6a6a6"  # Gray for outer bands
 
+    # Complexity metrics to be combined into one graph
+    complexity_metrics = ["complexity_population", "complexity_training", "complexity_reference", "complexity_synthetic"]
+
     figures = []
 
     for metric_idx, metric in enumerate(metrics):
+        # Skip individual complexity metrics - we'll create a combined graph later
+        if metric in complexity_metrics:
+            continue
+
         fig = go.Figure()
 
         mean_col = f"{metric}_mean"
@@ -450,6 +457,70 @@ def create_plotly_visualization(
         )
 
         figures.append(fig)
+
+    # Create combined complexity graph
+    complexity_fig = go.Figure()
+    df_sorted = summary_df.sort_values("generation")
+    generations = df_sorted["generation"].values
+
+    # Define colors for each complexity metric
+    complexity_colors = {
+        "complexity_population": ("#2ca02c", "#1a6b1a"),      # Green
+        "complexity_training": ("#d62728", "#8b1a1a"),        # Red
+        "complexity_reference": ("#1f77b4", "#0d3b7a"),       # Blue
+        "complexity_synthetic": ("#ff7f0e", "#d64a0a")        # Orange
+    }
+
+    complexity_names = {
+        "complexity_population": "Population",
+        "complexity_training": "Training",
+        "complexity_reference": "Reference",
+        "complexity_synthetic": "Synthetic"
+    }
+
+    for complexity_metric in complexity_metrics:
+        mean_col = f"{complexity_metric}_mean"
+
+        if mean_col not in summary_df.columns:
+            continue
+
+        means = df_sorted[mean_col].values
+        color, line_color = complexity_colors[complexity_metric]
+        name = complexity_names[complexity_metric]
+
+        # Add mean line for each complexity metric
+        complexity_fig.add_trace(
+            go.Scatter(
+                x=generations,
+                y=means,
+                mode="lines+markers",
+                name=name,
+                line=dict(color=line_color, width=3),
+                marker=dict(size=8, color=line_color, line=dict(color="white", width=1)),
+                hovertemplate=f"<b>{name}</b><br>Gen %{{x}}<br>Complexity: %{{y:.2f}}<extra></extra>",
+            ),
+        )
+
+    # Update layout for combined complexity figure
+    complexity_fig.update_layout(
+        title_text="Dataset Complexity (Combinatorial Search Space)",
+        xaxis_title="Generation",
+        yaxis_title="Total Complexity (ln scale)",
+        height=500,
+        hovermode="x unified",
+        template="plotly_white",
+        font=dict(family="Arial, sans-serif", size=11),
+        showlegend=True,
+        legend=dict(
+            x=1.02,
+            y=1,
+            xanchor="left",
+            yanchor="top",
+        ),
+    )
+
+    # Insert combined complexity figure after ddr_novel_factual (position 2)
+    figures.insert(2, complexity_fig)
 
     return figures
 
