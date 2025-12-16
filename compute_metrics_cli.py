@@ -1335,14 +1335,26 @@ def main(
     for exp_folder in folders:
         console.print(f"\n[bold]Processing folder: {exp_folder}[/bold]")
 
-        # If no config provided, try to load from checkpoints for metadata discovery
+        # Load config for metadata discovery
+        # If user provided partial config (e.g., metrics_only.yaml), try to load checkpoint config
+        # for metadata path and other missing data paths
         effective_config = config_data
-        if not effective_config and not metadata:
-            # Try to load checkpoint config from generation 0 for metadata path
-            effective_config = load_generation_config(exp_folder, generation if generation is not None else 0)
+        checkpoint_config = None
+
+        if not metadata:
+            # Try to load checkpoint config for metadata discovery (even if user provided partial config)
+            checkpoint_config = load_generation_config(exp_folder, generation if generation is not None else 0)
+
+            # If no user config, use checkpoint config entirely
+            if not effective_config:
+                effective_config = checkpoint_config
+            # If user config exists but lacks data section, merge with checkpoint config
+            elif checkpoint_config and 'data' not in effective_config:
+                # Use checkpoint config for metadata/data paths, user config for everything else
+                effective_config = {**checkpoint_config, **effective_config}
 
         # Find metadata file
-        # Priority: --metadata flag > config['data']['metadata_file'] > auto-discovery
+        # Priority: --metadata flag > config['data']['metadata_file'] > checkpoint config > auto-discovery
         metadata_path = metadata if metadata else find_metadata_file(exp_folder, effective_config)
         if not metadata_path:
             console.print(f"[red]Error: Could not find metadata.json for {exp_folder}[/red]")
