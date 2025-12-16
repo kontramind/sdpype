@@ -39,6 +39,11 @@ def main():
         action="store_true",
         help="Show what would happen without executing"
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force rerun all pipeline stages (passed to DVC)"
+    )
 
     args = parser.parse_args()
 
@@ -54,16 +59,18 @@ def main():
         print(f"DRY-RUN MODE")
         print(f"Pattern: {args.pattern}")
         print(f"Generations: {args.generations}")
+        print(f"Force: {args.force}")
         print(f"\nMatching files ({len(matching_files)}):")
         for i, filepath in enumerate(matching_files, 1):
             basename = Path(filepath).stem
             print(f"  {i}. {filepath}")
             print(f"     -> Output folder: {basename}/")
 
+        force_flag = " --force" if args.force else ""
         print(f"\nWorkflow for each file:")
         print(f"  1. Backup params.yaml -> params.backup.yaml")
         print(f"  2. Copy config file -> params.yaml")
-        print(f"  3. Run: uv run recursive_train.py --generations {args.generations}")
+        print(f"  3. Run: uv run recursive_train.py --generations {args.generations}{force_flag}")
         print(f"  4. Move experiments/ -> {{config_basename}}/")
         print(f"  5. Delete source config file")
         print(f"  6. Restore params.backup.yaml -> params.yaml")
@@ -93,11 +100,11 @@ def main():
             shutil.copy2(config_path, params_path)
 
             # Step 3: Run recursive training
-            print(f"  Running: uv run recursive_train.py --generations {args.generations}")
-            result = subprocess.run(
-                ["uv", "run", "recursive_train.py", "--generations", str(args.generations)],
-                check=True
-            )
+            cmd = ["uv", "run", "recursive_train.py", "--generations", str(args.generations)]
+            if args.force:
+                cmd.append("--force")
+            print(f"  Running: {' '.join(cmd)}")
+            result = subprocess.run(cmd, check=True)
 
             # Step 4: Move experiments folder
             if experiments_path.exists():

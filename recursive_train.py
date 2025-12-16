@@ -53,12 +53,15 @@ def validate_initial_params(params_file: Path) -> dict:
     return params
 
 
-def run_pipeline() -> tuple[bool, float]:
+def run_pipeline(force: bool = False) -> tuple[bool, float]:
     """Execute sdpype pipeline, return (success, elapsed_time)"""
     start = time.time()
     try:
+        cmd = ["uv", "run", "sdpype", "pipeline"]
+        if force:
+            cmd.append("--force")
         result = subprocess.run(
-            ["uv", "run", "sdpype", "pipeline"],
+            cmd,
             capture_output=True,
             text=True,
             check=True
@@ -547,7 +550,8 @@ def run(
         None,
         "--resume-from",
         help="Resume specific chain by MODEL_ID (e.g., sdv_gaussiancopula_..._gen_5_..._51)"
-    ),    
+    ),
+    force: bool = typer.Option(False, "--force", help="Force rerun all pipeline stages (passed to DVC)"),
 ):
     """
     Run recursive training for N generations.
@@ -645,7 +649,7 @@ def run(
         
         # Run pipeline with spinner
         with console.status(f"[bold green]Gen {gen}/{generations-1}...", spinner="dots"):
-            success, elapsed = run_pipeline()
+            success, elapsed = run_pipeline(force)
         
         if not success:
             console.print(f"[red]Generation {gen} failed[/red]")
