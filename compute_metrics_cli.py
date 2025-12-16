@@ -792,7 +792,8 @@ def compute_statistical_metrics_post_training(
     metadata: SingleTableMetadata,
     metadata_path: Path,
     config: Optional[Dict[str, Any]] = None,
-    force: bool = False
+    force: bool = False,
+    show_tables: bool = True
 ) -> Optional[Dict[str, Any]]:
     """
     Compute statistical metrics for a generation post-training.
@@ -888,7 +889,8 @@ def compute_statistical_metrics_post_training(
         )
 
         # Display results in terminal with Rich tables
-        display_statistical_metrics(results)
+        if show_tables:
+            display_statistical_metrics(results)
 
         return results
     except Exception as e:
@@ -905,7 +907,8 @@ def compute_detection_metrics_post_training(
     metadata: SingleTableMetadata,
     metadata_path: Path,
     config: Optional[Dict[str, Any]] = None,
-    force: bool = False
+    force: bool = False,
+    show_tables: bool = True
 ) -> Optional[Dict[str, Any]]:
     """
     Compute detection metrics for a generation post-training.
@@ -973,7 +976,7 @@ def compute_detection_metrics_post_training(
         results = ensure_json_serializable(results)
 
         # Display results in terminal
-        if DISPLAY_FUNCTIONS['detection']:
+        if show_tables and DISPLAY_FUNCTIONS['detection']:
             DISPLAY_FUNCTIONS['detection'](results)
 
         return results
@@ -991,7 +994,8 @@ def compute_hallucination_metrics_post_training(
     metadata: SingleTableMetadata,
     metadata_path: Path,
     config: Optional[Dict[str, Any]] = None,
-    force: bool = False
+    force: bool = False,
+    show_tables: bool = True
 ) -> Optional[Dict[str, Any]]:
     """
     Compute hallucination metrics for a generation post-training.
@@ -1057,7 +1061,7 @@ def compute_hallucination_metrics_post_training(
         )
 
         # Display results in terminal
-        if DISPLAY_FUNCTIONS['hallucination']:
+        if show_tables and DISPLAY_FUNCTIONS['hallucination']:
             DISPLAY_FUNCTIONS['hallucination'](results)
 
         return results
@@ -1178,7 +1182,14 @@ def main(
             dir_okay=False,
             readable=True
         )
-    ] = None
+    ] = None,
+    show_tables: Annotated[
+        bool,
+        typer.Option(
+            "--show-tables/--no-show-tables",
+            help="Display Rich tables in terminal (default: True)"
+        )
+    ] = True
 ):
     """
     [bold cyan]Compute metrics on experiment folders post-training[/bold cyan]
