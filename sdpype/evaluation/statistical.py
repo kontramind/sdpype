@@ -1674,7 +1674,7 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
             # Collect scores for overall calculation
             if metric_result["status"] == "success":
                 match metric_name:
-                    case "alpha_precision" | "prdc_score" | "new_row_synthesis" | "ks_complement" | "tv_complement" | "dcr_baseline_protection":
+                    case "alpha_precision" | "prdc_score" | "new_row_synthesis" | "ks_complement" | "tv_complement":
                         # Individual scores handled in report - no aggregation
                         pass
                     case _:
@@ -1689,6 +1689,108 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
             }
 
     print("Individual statistical metrics completed - see detailed scores")
+
+    # Ensure all results are JSON serializable
+    results = ensure_json_serializable(results)
+
+    return results
+
+
+def evaluate_privacy_metrics(original: pd.DataFrame,
+                            synthetic: pd.DataFrame,
+                            metrics_config: list,
+                            experiment_name: str,
+                            metadata: SingleTableMetadata,
+                            reference_data_decoded: pd.DataFrame = None,
+                            synthetic_data_decoded: pd.DataFrame = None,
+                            reference_data_encoded: pd.DataFrame = None,
+                            synthetic_data_encoded: pd.DataFrame = None,
+                            encoding_config: dict = None) -> Dict[str, Any]:
+    """
+    Evaluate configured privacy metrics
+
+    Args:
+        original: Original dataset (legacy parameter, may be encoded or decoded)
+        synthetic: Synthetic dataset (legacy parameter, may be encoded or decoded)
+        metrics_config: List of privacy metric configurations
+        experiment_name: Experiment identifier
+        metadata: SDV metadata
+        reference_data_decoded: Decoded reference data
+        synthetic_data_decoded: Decoded synthetic data
+        reference_data_encoded: Encoded reference data (for distance-based privacy metrics)
+        synthetic_data_encoded: Encoded synthetic data (for distance-based privacy metrics)
+        encoding_config: Encoding configuration dict
+
+    Returns:
+        Complete privacy metrics results
+    """
+
+    print(f"Evaluating privacy metrics for experiment: {experiment_name}")
+    print(f"Original shape: {original.shape}, Synthetic shape: {synthetic.shape}")
+
+    results = {
+        "metadata": {
+            "experiment_name": experiment_name,
+            "evaluation_timestamp": datetime.now().isoformat(),
+            "original_shape": list(original.shape),
+            "synthetic_shape": list(synthetic.shape),
+            "evaluation_type": "privacy_metrics"
+        },
+        "metrics": {}
+    }
+
+    # Privacy metrics that need encoded data (distance-based)
+    ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
+
+    # Privacy metrics that need decoded data (if any in future)
+    DECODED_PRIVACY_METRICS = set()
+
+    # Run each configured metric
+    for metric_config in metrics_config:
+        metric_name = metric_config.get("name")
+        parameters = metric_config.get("parameters", {})
+
+        # Route to correct data format
+        if metric_name in ENCODED_PRIVACY_METRICS:
+            # Use encoded data for distance-based privacy metrics
+            if reference_data_encoded is None or synthetic_data_encoded is None:
+                print(f"⚠️  Metric {metric_name} needs encoded data but not available, using default")
+                ref_data = original
+                syn_data = synthetic
+            else:
+                print(f"📊 Routing {metric_name} to ENCODED data")
+                ref_data = reference_data_encoded
+                syn_data = synthetic_data_encoded
+        elif metric_name in DECODED_PRIVACY_METRICS:
+            # Use decoded data for other privacy metrics
+            if reference_data_decoded is None or synthetic_data_decoded is None:
+                print(f"⚠️  Metric {metric_name} needs decoded data but not available, using default")
+                ref_data = original
+                syn_data = synthetic
+            else:
+                print(f"📊 Routing {metric_name} to DECODED data")
+                ref_data = reference_data_decoded
+                syn_data = synthetic_data_decoded
+        else:
+            # Use default data (backward compatibility)
+            ref_data = original
+            syn_data = synthetic
+
+        print(f"Running {metric_name} privacy metric...")
+
+        try:
+            evaluator = get_metric_evaluator(metric_name, parameters)
+            metric_result = evaluator.evaluate(ref_data, syn_data, metadata, encoding_config=encoding_config)
+            results["metrics"][metric_name] = metric_result
+
+        except Exception as e:
+            results["metrics"][metric_name] = {
+                "status": "error",
+                "error_message": str(e),
+                "parameters": parameters
+            }
+
+    print("Privacy metrics evaluation completed")
 
     # Ensure all results are JSON serializable
     results = ensure_json_serializable(results)
@@ -1982,33 +2084,6 @@ Metrics Results
         else:
             report += f"""TVComplement: ERROR
   Error: {tv_result.get('error_message', 'Unknown error')}
-"""
-
-    # DCR Baseline Protection results
-    if "dcr_baseline_protection" in metrics:
-        dcr_result = metrics["dcr_baseline_protection"]
-        if dcr_result["status"] == "success":
-            params_info = dcr_result["parameters"]
-            params_display = str(params_info) if params_info else "default settings"
-
-            score = dcr_result['score']
-            interpretation = "Excellent" if score > 0.8 else "Good" if score > 0.6 else "Moderate" if score > 0.4 else "Needs Improvement"
-
-            report += f"""DCR Baseline Protection Results:
-  Parameters: {params_display}
-  Execution time: {dcr_result['execution_time']:.2f}s
-
-  Privacy Protection:
-  → Privacy Score:          {score:.3f} ({interpretation})
-  → Median DCR (Synthetic): {dcr_result['median_dcr_synthetic']:.6f}
-  → Median DCR (Random):    {dcr_result['median_dcr_random']:.6f}
-
-  Note: Higher scores indicate better privacy protection (0-1 scale)
-        Score compares synthetic DCR against random baseline DCR
-"""
-        else:
-            report += f"""DCR Baseline Protection: ERROR
-  Error: {dcr_result.get('error_message', 'Unknown error')}
 """
 
     # TableStructure results
@@ -2347,6 +2422,61 @@ Metrics Results
                 insights.append("Poor category adherence")
         # If ca_score is None, we simply don't add any insight (no categorical/boolean columns to evaluate)
 
+    assessment = ", ".join(insights) if insights else "No successful metrics"
+
+    report += f"""
+Assessment: {assessment}
+"""
+
+    return report
+
+
+def generate_privacy_report(results: Dict[str, Any]) -> str:
+    """Generate a human-readable privacy metrics report"""
+
+    report = f"""
+Privacy Metrics Evaluation Report
+===================================
+
+Experiment: {results['metadata']['experiment_name']}
+Timestamp: {results['metadata']['evaluation_timestamp']}
+Dataset Shapes: Original {tuple(results['metadata']['original_shape'])}, Synthetic {tuple(results['metadata']['synthetic_shape'])}
+
+Privacy Metrics Results
+-----------------------
+"""
+    metrics = results.get("metrics", {})
+
+    # DCR Baseline Protection results
+    if "dcr_baseline_protection" in metrics:
+        dcr_result = metrics["dcr_baseline_protection"]
+        if dcr_result["status"] == "success":
+            params_info = dcr_result["parameters"]
+            params_display = str(params_info) if params_info else "default settings"
+
+            score = dcr_result['score']
+            interpretation = "Excellent" if score > 0.8 else "Good" if score > 0.6 else "Moderate" if score > 0.4 else "Needs Improvement"
+
+            report += f"""DCR Baseline Protection Results:
+  Parameters: {params_display}
+  Execution time: {dcr_result['execution_time']:.2f}s
+
+  Privacy Protection:
+  → Privacy Score:          {score:.3f} ({interpretation})
+  → Median DCR (Synthetic): {dcr_result['median_dcr_synthetic']:.6f}
+  → Median DCR (Random):    {dcr_result['median_dcr_random']:.6f}
+
+  Note: Higher scores indicate better privacy protection (0-1 scale)
+        Score compares synthetic DCR against random baseline DCR
+"""
+        else:
+            report += f"""DCR Baseline Protection: ERROR
+  Error: {dcr_result.get('error_message', 'Unknown error')}
+"""
+
+    # Assessment
+    insights = []
+
     if "dcr_baseline_protection" in metrics and metrics["dcr_baseline_protection"]["status"] == "success":
         dcr_score = metrics["dcr_baseline_protection"]["score"]
         if dcr_score > 0.8:
@@ -2358,7 +2488,7 @@ Metrics Results
         else:
             insights.append("Privacy protection needs improvement")
 
-    assessment = ", ".join(insights) if insights else "No successful metrics"
+    assessment = ", ".join(insights) if insights else "No successful privacy metrics"
 
     report += f"""
 Assessment: {assessment}

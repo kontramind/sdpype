@@ -25,7 +25,7 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from sdv.metadata import SingleTableMetadata
 
-from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate_statistical_report
+from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate_statistical_report, evaluate_privacy_metrics, generate_privacy_report
 from sdpype.evaluation.detection import evaluate_detection_metrics, generate_detection_report, ensure_json_serializable
 from sdpype.evaluation.hallucination import evaluate_hallucination_metrics, generate_hallucination_report
 from sdpype.metadata import load_csv_with_metadata
@@ -491,6 +491,17 @@ def display_statistical_metrics(results: Dict[str, Any]):
 
         console.print(tv_table)
 
+    console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
+
+
+def display_privacy_metrics(results: Dict[str, Any]):
+    """
+    Display privacy metrics results in terminal.
+    Only displays metrics that were actually configured and computed.
+    """
+    console.print()
+    metrics = results.get("metrics", {})
+
     # DCR Baseline Protection
     if "dcr_baseline_protection" in metrics and metrics["dcr_baseline_protection"]["status"] == "success":
         dcr_result = metrics["dcr_baseline_protection"]
@@ -516,7 +527,8 @@ def display_statistical_metrics(results: Dict[str, Any]):
 
         console.print(dcr_table)
 
-    console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
+    console.print("\n✅ Privacy metrics evaluation completed", style="bold green")
+
 
 app = typer.Typer(
     name="compute_metrics_cli",
@@ -531,6 +543,7 @@ class MetricType(str, Enum):
     statistical = "statistical"
     detection = "detection"
     hallucination = "hallucination"
+    privacy = "privacy"
     all = "all"
 
 
@@ -926,8 +939,7 @@ def compute_statistical_metrics_post_training(
     ENCODED_METRICS = {
         'alpha_precision', 'prdc_score', 'jensenshannon_synthcity',
         'jensenshannon_syndat', 'jensenshannon_nannyml',
-        'wasserstein_distance', 'maximum_mean_discrepancy', 'ks_complement',
-        'dcr_baseline_protection'
+        'wasserstein_distance', 'maximum_mean_discrepancy', 'ks_complement'
     }
 
     DECODED_METRICS = {
@@ -945,8 +957,7 @@ def compute_statistical_metrics_post_training(
             {'name': 'prdc_score'},
             {'name': 'wasserstein_distance'},
             {'name': 'ks_complement'},
-            {'name': 'tv_complement'},
-            {'name': 'dcr_baseline_protection'}
+            {'name': 'tv_complement'}
         ]
 
     # Check if any metrics need encoding
@@ -1252,6 +1263,131 @@ def compute_hallucination_metrics_post_training(
         return None
 
 
+def compute_privacy_metrics_post_training(
+    folder: Path,
+    model_id: str,
+    parsed: Dict[str, str],
+    metadata: SingleTableMetadata,
+    metadata_path: Path,
+    config: Optional[Dict[str, Any]] = None,
+    force: bool = False,
+    show_tables: bool = True
+) -> Optional[Dict[str, Any]]:
+    """
+    Compute privacy metrics for a generation post-training.
+
+    Args:
+        folder: Experiment folder path
+        model_id: Model identifier
+        parsed: Parsed model ID components
+        metadata: SDV metadata object
+        metadata_path: Path to metadata file
+        config: Optional configuration (from params.yaml)
+        force: If True, overwrite existing metrics
+        show_tables: If True, display Rich tables in terminal
+
+    Returns:
+        Metrics dictionary or None if skipped
+    """
+    # Check if metrics already exist
+    metrics_file = folder / "metrics" / f"privacy_{model_id}.json"
+    if metrics_file.exists() and not force:
+        console.print(f"[yellow]Skipping privacy metrics (already exists): {metrics_file.name}[/yellow]")
+        return None
+
+    console.print(f"[cyan]Computing privacy metrics for generation {parsed['generation']}...[/cyan]")
+
+    # Define encoded vs decoded privacy metrics
+    ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
+    DECODED_PRIVACY_METRICS = set()
+
+    # Get metrics config first (use default if not provided)
+    if config and 'evaluation' in config and 'privacy' in config['evaluation']:
+        metrics_config = config['evaluation']['privacy'].get('metrics', [])
+    else:
+        # Default privacy metrics config
+        metrics_config = [
+            {'name': 'dcr_baseline_protection'}
+        ]
+
+    # Check if any metrics need encoding
+    needs_encoding = any(m.get('name') in ENCODED_PRIVACY_METRICS for m in metrics_config)
+
+    # Load data files - use pre-encoded files from encode_evaluation stage if needed (matches DVC)
+    if needs_encoding:
+        # Load both decoded and pre-encoded files
+        ref_dec, syn_dec, trn_dec, _, ref_enc, syn_enc = load_generation_data(
+            folder, model_id, metadata_path, population_file=None, config=config,
+            use_original_files=False, load_encoded=True
+        )
+
+        if ref_enc is None or syn_enc is None:
+            console.print("[yellow]Warning: Pre-encoded files not found, some encoded privacy metrics may fail[/yellow]")
+    else:
+        # Only load decoded files
+        ref_dec, syn_dec, trn_dec, _ = load_generation_data(
+            folder, model_id, metadata_path, population_file=None, config=config,
+            use_original_files=False, load_encoded=False
+        )
+        ref_enc = None
+        syn_enc = None
+
+    if ref_dec is None or syn_dec is None:
+        console.print("[red]Error: Missing required data files for privacy metrics[/red]")
+        return None
+
+    # Load encoding config if available
+    encoding_config = None
+    if config and 'encoding' in config and config['encoding'].get('config_file'):
+        encoding_config_path = Path(config['encoding']['config_file'])
+
+        # Resolve relative paths
+        if not encoding_config_path.is_absolute():
+            if not encoding_config_path.exists():
+                filename = encoding_config_path.name
+                candidates = [
+                    Path("..") / "downloads" / filename,
+                    Path("downloads") / filename,
+                    Path("experiments") / "configs" / "encoding" / filename,
+                ]
+                for candidate in candidates:
+                    if candidate.exists():
+                        encoding_config_path = candidate.resolve()
+                        break
+
+        if encoding_config_path.exists():
+            console.print(f"[dim]Loading encoding config: {encoding_config_path}[/dim]")
+            encoding_config = load_encoding_config(encoding_config_path)
+        else:
+            console.print(f"[yellow]Warning: Encoding config file not found: {config['encoding']['config_file']}[/yellow]")
+
+    # Call evaluation function
+    try:
+        results = evaluate_privacy_metrics(
+            ref_enc if ref_enc is not None else ref_dec,
+            syn_enc if syn_enc is not None else syn_dec,
+            metrics_config,
+            experiment_name=f"{parsed['experiment_name']}_seed_{parsed['seed']}",
+            metadata=metadata,
+            reference_data_decoded=ref_dec,
+            synthetic_data_decoded=syn_dec,
+            reference_data_encoded=ref_enc,
+            synthetic_data_encoded=syn_enc,
+            encoding_config=encoding_config
+        )
+
+        # Display results in terminal with Rich tables
+        if show_tables:
+            display_privacy_metrics(results)
+
+        return results
+    except Exception as e:
+        console.print(f"[red]Error computing privacy metrics: {e}[/red]")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 def save_metrics(
     folder: Path,
     model_id: str,
@@ -1319,6 +1455,8 @@ def save_metrics(
             report = generate_detection_report(results)
         elif metric_type == "hallucination":
             report = generate_hallucination_report(results)
+        elif metric_type == "privacy":
+            report = generate_privacy_report(results)
         else:
             return
 
@@ -1536,6 +1674,7 @@ def main(
             compute_statistical = compute_all or MetricType.statistical.value in metric_values
             compute_detection = compute_all or MetricType.detection.value in metric_values
             compute_hallucination = compute_all or MetricType.hallucination.value in metric_values
+            compute_privacy = compute_all or MetricType.privacy.value in metric_values
         else:
             # Auto-detect from config structure
             # Use the USER'S config (config_data), not effective_config
@@ -1544,6 +1683,7 @@ def main(
             compute_statistical = False
             compute_detection = False
             compute_hallucination = False
+            compute_privacy = False
 
             if config_data and 'evaluation' in config_data:
                 eval_config = config_data['evaluation']
@@ -1563,8 +1703,13 @@ def main(
                     compute_hallucination = True
                     console.print("[dim]Auto-detected: hallucination metrics configured[/dim]")
 
+                # Check for privacy metrics configuration
+                if 'privacy' in eval_config:
+                    compute_privacy = True
+                    console.print("[dim]Auto-detected: privacy metrics configured[/dim]")
+
             # If no config provided or no evaluation section, fall back to computing all
-            if not config_data or not (compute_statistical or compute_detection or compute_hallucination):
+            if not config_data or not (compute_statistical or compute_detection or compute_hallucination or compute_privacy):
                 if not config_data:
                     console.print("[dim]No config provided, computing all metrics[/dim]")
                 else:
@@ -1572,6 +1717,7 @@ def main(
                 compute_statistical = True
                 compute_detection = True
                 compute_hallucination = True
+                compute_privacy = True
 
         # Process each generation
         for gen_info in generations:
@@ -1605,6 +1751,13 @@ def main(
                 )
                 if results:
                     save_metrics(exp_folder, model_id, "hallucination", results)
+
+            if compute_privacy:
+                results = compute_privacy_metrics_post_training(
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
+                )
+                if results:
+                    save_metrics(exp_folder, model_id, "privacy", results)
 
     console.print("\n[bold green]✓ Post-training metrics computation complete![/bold green]\n")
 
