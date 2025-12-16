@@ -1560,21 +1560,21 @@ def main(
             # Compute metrics
             if compute_statistical:
                 results = compute_statistical_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
                 )
                 if results:
                     save_metrics(exp_folder, model_id, "statistical_similarity", results)
 
             if compute_detection:
                 results = compute_detection_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
                 )
                 if results:
                     save_metrics(exp_folder, model_id, "detection_evaluation", results)
 
             if compute_hallucination:
                 results = compute_hallucination_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
                 )
                 if results:
                     save_metrics(exp_folder, model_id, "hallucination", results)
