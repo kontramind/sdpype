@@ -974,14 +974,23 @@ def compute_statistical_metrics_post_training(
     if config and 'encoding' in config and config['encoding'].get('config_file'):
         encoding_config_path = Path(config['encoding']['config_file'])
 
-        # Resolve relative paths
-        if not encoding_config_path.is_absolute() and not encoding_config_path.exists():
-            # Try relative to parent directory
-            parent_path = Path("..") / encoding_config_path
-            if parent_path.exists():
-                encoding_config_path = parent_path.resolve()
+        # Resolve relative paths (handles ../downloads/... paths)
+        if not encoding_config_path.is_absolute():
+            if not encoding_config_path.exists():
+                # Try common locations with just filename
+                filename = encoding_config_path.name
+                candidates = [
+                    Path("..") / "downloads" / filename,
+                    Path("downloads") / filename,
+                    Path("experiments") / "configs" / "encoding" / filename,
+                ]
+                for candidate in candidates:
+                    if candidate.exists():
+                        encoding_config_path = candidate.resolve()
+                        break
 
         if encoding_config_path.exists():
+            console.print(f"[dim]Loading encoding config: {encoding_config_path}[/dim]")
             encoding_config = load_encoding_config(encoding_config_path)
         else:
             console.print(f"[yellow]Warning: Encoding config file not found: {config['encoding']['config_file']}[/yellow]")
@@ -1068,16 +1077,23 @@ def compute_detection_metrics_post_training(
     if config and 'encoding' in config and config['encoding'].get('config_file'):
         encoding_config_path = Path(config['encoding']['config_file'])
 
-        # Resolve relative paths
-        if not encoding_config_path.is_absolute() and not encoding_config_path.exists():
-            # Try relative to current directory first
+        # Resolve relative paths (handles ../downloads/... paths)
+        if not encoding_config_path.is_absolute():
             if not encoding_config_path.exists():
-                # Try relative to parent directory
-                parent_path = Path("..") / encoding_config_path
-                if parent_path.exists():
-                    encoding_config_path = parent_path.resolve()
+                # Try common locations with just filename
+                filename = encoding_config_path.name
+                candidates = [
+                    Path("..") / "downloads" / filename,
+                    Path("downloads") / filename,
+                    Path("experiments") / "configs" / "encoding" / filename,
+                ]
+                for candidate in candidates:
+                    if candidate.exists():
+                        encoding_config_path = candidate.resolve()
+                        break
 
         if encoding_config_path.exists():
+            console.print(f"[dim]Loading encoding config: {encoding_config_path}[/dim]")
             encoding_config = load_encoding_config(encoding_config_path)
         else:
             console.print(f"[yellow]Warning: Encoding config file not found: {config['encoding']['config_file']}[/yellow]")
@@ -1139,27 +1155,25 @@ def compute_hallucination_metrics_post_training(
 
             # Try multiple resolution strategies for relative paths
             if not population_file_path.is_absolute():
-                # Try 1: Absolute path or relative to CWD
+                # Try 1: As-is (relative to CWD) - handles ../downloads/... paths
                 if population_file_path.exists():
-                    population_file = population_file_path
-                # Try 2: Relative to experiment folder
-                elif (folder / population_file_path).exists():
-                    population_file = folder / population_file_path
-                # Try 3: Relative to parent directory (for ../downloads/... paths)
-                elif (Path("..") / population_file_path).exists():
-                    population_file = (Path("..") / population_file_path).resolve()
-                # Try 4: Just filename in common locations
+                    population_file = population_file_path.resolve()
+                # Try 2: Relative to experiment folder (for paths like data/file.csv)
+                elif not str(population_file_path).startswith('..') and (folder / population_file_path).exists():
+                    population_file = (folder / population_file_path).resolve()
+                # Try 3: Just filename in common locations
                 else:
                     filename = population_file_path.name
                     candidates = [
+                        Path("..") / "downloads" / filename,
+                        Path("downloads") / filename,
                         folder / "data" / filename,
                         folder / ".." / "downloads" / filename,
-                        Path("downloads") / filename,
                         Path("data") / filename,
                     ]
                     for candidate in candidates:
                         if candidate.exists():
-                            population_file = candidate
+                            population_file = candidate.resolve()
                             break
             else:
                 # Absolute path - use directly
