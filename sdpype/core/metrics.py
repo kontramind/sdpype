@@ -202,6 +202,21 @@ AVAILABLE_METRICS = {
             "outputs": ["aggregate_score", "column_scores", "compatible_columns"],
             "reference": "SDMetrics library - Single column diagnostic metric for category validation"
         }
+    },
+    "privacy": {
+        "dcr_baseline_protection": {
+            "description": "Distance to Closest Record (DCR) privacy metric comparing synthetic data against random baseline",
+            "library": "sdmetrics",
+            "parameters": {},  # Uses default parameters for now
+            "outputs": ["score", "median_dcr_synthetic", "median_dcr_random"],
+            "reference": "SDMetrics library - Privacy metric measuring how well synthetic data protects individual record privacy",
+            "direction": "maximize",
+            "interpretation": {
+                "excellent": "> 0.8",
+                "good": "> 0.6",
+                "moderate": "> 0.4"
+            }
+        }
     }
 }
 
