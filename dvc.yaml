@@ -107,7 +107,7 @@ stages:
       - experiments/data/encoded/synthetic_${experiment.name}_${config_hash}_${experiment.seed}.csv
       - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}_decoded.csv
     params:
-      - evaluation.privacy
+      - evaluation
       - experiment.seed
       - experiment.name
       - config_hash
