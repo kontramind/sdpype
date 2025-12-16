@@ -1229,7 +1229,8 @@ def save_metrics(
     folder: Path,
     model_id: str,
     metric_type: str,
-    results: Dict[str, Any]
+    results: Dict[str, Any],
+    merge: bool = True
 ) -> None:
     """
     Save metrics results to JSON file.
@@ -1239,11 +1240,42 @@ def save_metrics(
         model_id: Model identifier
         metric_type: Type of metric (statistical_similarity, detection_evaluation, hallucination)
         results: Metrics results dictionary
+        merge: If True, merge with existing metrics instead of overwriting (default: True)
     """
     metrics_dir = folder / "metrics"
     metrics_dir.mkdir(parents=True, exist_ok=True)
 
     metrics_file = metrics_dir / f"{metric_type}_{model_id}.json"
+
+    # If merge=True and file exists, load existing metrics and merge
+    if merge and metrics_file.exists():
+        try:
+            with open(metrics_file, 'r', encoding='utf-8') as f:
+                existing_metrics = json.load(f)
+
+            # Merge metrics: update existing with new results
+            # For statistical_similarity, merge the metrics dict
+            if 'metrics' in existing_metrics and 'metrics' in results:
+                # Keep existing metrics, update with new ones
+                existing_metrics['metrics'].update(results['metrics'])
+                # Update metadata with new timestamp
+                if 'metadata' in results:
+                    existing_metrics['metadata'] = results['metadata']
+                results = existing_metrics
+                console.print(f"[dim]Merged with existing metrics (kept {len(existing_metrics['metrics'])} total)[/dim]")
+            elif 'individual_scores' in existing_metrics and 'individual_scores' in results:
+                # For detection, merge individual_scores
+                existing_metrics['individual_scores'].update(results['individual_scores'])
+                if 'metadata' in results:
+                    existing_metrics['metadata'] = results['metadata']
+                # Recalculate ensemble score if needed
+                if 'ensemble_score' in results:
+                    existing_metrics['ensemble_score'] = results['ensemble_score']
+                results = existing_metrics
+                console.print(f"[dim]Merged with existing metrics (kept {len(existing_metrics['individual_scores'])} total)[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not merge with existing metrics: {e}[/yellow]")
+            console.print(f"[yellow]Will overwrite existing file[/yellow]")
 
     with open(metrics_file, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
