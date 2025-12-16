@@ -666,7 +666,8 @@ def load_generation_data(
     folder: Path,
     model_id: str,
     metadata_path: Path,
-    population_file: Optional[Path] = None
+    population_file: Optional[Path] = None,
+    config: Optional[Dict[str, Any]] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Load all necessary decoded data files for a generation.
@@ -676,21 +677,61 @@ def load_generation_data(
         model_id: Model identifier
         metadata_path: Path to metadata file
         population_file: Optional path to population data file (decoded)
+        config: Optional config dict to get original training/reference files
 
     Returns:
         (reference_decoded, synthetic_decoded, training_decoded, population_decoded)
     """
     data_root = folder / "data"
 
-    # Construct file paths for decoded data
-    reference_decoded = data_root / "decoded" / f"reference_{model_id}.csv"
-    synthetic_decoded = data_root / "synthetic" / f"synthetic_data_{model_id}_decoded.csv"
-    training_decoded = data_root / "decoded" / f"training_{model_id}.csv"
+    # For reference and training data, prefer original files from config (like DVC pipeline)
+    # This ensures data matches exactly with DVC runs (no encode/decode artifacts)
+    reference_file = None
+    training_file = None
 
-    # Load decoded data
-    ref_dec = load_csv_with_metadata(reference_decoded, metadata_path) if reference_decoded.exists() else None
+    if config and 'data' in config:
+        # Try to get original files from config
+        ref_from_config = config['data'].get('reference_file')
+        trn_from_config = config['data'].get('training_file')
+
+        if ref_from_config:
+            reference_file = Path(ref_from_config)
+            if not reference_file.is_absolute() and not reference_file.exists():
+                # Try relative to folder
+                reference_file = folder / ref_from_config
+            if reference_file.exists():
+                console.print(f"[dim]Using original reference file from config: {reference_file}[/dim]")
+            else:
+                console.print(f"[yellow]Warning: Reference file from config not found: {reference_file}[/yellow]")
+                reference_file = None
+
+        if trn_from_config:
+            training_file = Path(trn_from_config)
+            if not training_file.is_absolute() and not training_file.exists():
+                # Try relative to folder
+                training_file = folder / trn_from_config
+            if training_file.exists():
+                console.print(f"[dim]Using original training file from config: {training_file}[/dim]")
+            else:
+                console.print(f"[yellow]Warning: Training file from config not found: {training_file}[/yellow]")
+                training_file = None
+
+    # Fallback to decoded files if original files not available
+    if not reference_file or not reference_file.exists():
+        reference_file = data_root / "decoded" / f"reference_{model_id}.csv"
+        console.print(f"[dim]Using decoded reference file: {reference_file}[/dim]")
+
+    if not training_file or not training_file.exists():
+        training_file = data_root / "decoded" / f"training_{model_id}.csv"
+        console.print(f"[dim]Using decoded training file: {training_file}[/dim]")
+
+    # Synthetic always uses decoded version
+    synthetic_decoded = data_root / "synthetic" / f"synthetic_data_{model_id}_decoded.csv"
+
+    # Load data files
+    ref_dec = load_csv_with_metadata(reference_file, metadata_path) if reference_file.exists() else None
     syn_dec = load_csv_with_metadata(synthetic_decoded, metadata_path) if synthetic_decoded.exists() else None
-    trn_dec = load_csv_with_metadata(training_decoded, metadata_path) if training_decoded.exists() else None
+    trn_dec = load_csv_with_metadata(training_file, metadata_path) if training_file.exists() else None
 
     # Load population data (decoded) from provided path or try to find it
     pop_dec = None
@@ -819,7 +860,8 @@ def compute_statistical_metrics_post_training(
     console.print(f"[cyan]Computing statistical metrics for generation {parsed['generation']}...[/cyan]")
 
     # Load decoded data (population not needed for statistical metrics)
-    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None)
+    # Use original files if available in config to match DVC pipeline exactly
+    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None, config=config)
 
     if ref_dec is None or syn_dec is None:
         console.print("[red]Error: Missing required data files for statistical metrics[/red]")
@@ -921,8 +963,8 @@ def compute_detection_metrics_post_training(
 
     console.print(f"[cyan]Computing detection metrics for generation {parsed['generation']}...[/cyan]")
 
-    # Load decoded data
-    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None)
+    # Load decoded data (or original if available in config)
+    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None, config=config)
 
     if ref_dec is None or syn_dec is None:
         console.print("[red]Error: Missing required data files for detection metrics[/red]")
@@ -1028,8 +1070,9 @@ def compute_hallucination_metrics_post_training(
         return None
 
     # Load data with population file
+    # CRITICAL: Use original files from config to match DVC pipeline exactly
     ref_dec, syn_dec, trn_dec, pop_dec = load_generation_data(
-        folder, model_id, metadata_path, population_file=population_file
+        folder, model_id, metadata_path, population_file=population_file, config=config
     )
 
     if ref_dec is None or syn_dec is None or trn_dec is None or pop_dec is None:
