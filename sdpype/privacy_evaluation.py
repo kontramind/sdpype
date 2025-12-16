@@ -33,26 +33,61 @@ def _get_config_hash() -> str:
 def main(cfg: DictConfig) -> None:
     """Run privacy metrics evaluation between reference and synthetic data"""
 
+    config_hash = _get_config_hash()
+    experiment_name = cfg.experiment.name
+    seed = cfg.experiment.seed
+
+    # Setup output paths
+    metrics_dir = Path("experiments/metrics")
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    metrics_file = metrics_dir / f"privacy_{experiment_name}_{config_hash}_{seed}.json"
+    report_file = metrics_dir / f"privacy_report_{experiment_name}_{config_hash}_{seed}.txt"
+
     # Check if privacy metrics are configured
     metrics_config = cfg.get("evaluation", {}).get("privacy", {}).get("metrics", [])
 
     if not metrics_config:
         print("🔒 No privacy metrics configured, skipping evaluation")
+
+        # Create empty output files to satisfy DVC
+        empty_results = {
+            "metadata": {
+                "experiment_name": f"{experiment_name}_seed_{seed}",
+                "evaluation_timestamp": "",
+                "original_shape": [0, 0],
+                "synthetic_shape": [0, 0],
+                "evaluation_type": "privacy_metrics",
+                "status": "skipped",
+                "message": "No privacy metrics configured in params.yaml"
+            },
+            "metrics": {}
+        }
+
+        with open(metrics_file, 'w', encoding='utf-8') as f:
+            json.dump(empty_results, f, indent=2, ensure_ascii=False)
+
+        with open(report_file, 'w', encoding='utf-8') as f:
+            f.write("Privacy Metrics Evaluation Report\n")
+            f.write("===================================\n\n")
+            f.write("Status: Skipped\n")
+            f.write("Reason: No privacy metrics configured in params.yaml\n\n")
+            f.write("To enable privacy metrics, add to params.yaml:\n")
+            f.write("  evaluation:\n")
+            f.write("    privacy:\n")
+            f.write("      metrics:\n")
+            f.write("        - name: dcr_baseline_protection\n")
+            f.write("          parameters: {}\n")
+
+        print(f"✅ Created placeholder files: {metrics_file.name}, {report_file.name}")
         return
 
     print(f"🔒 Starting privacy evaluation with {len(metrics_config)} metrics...")
-    print(f"Experiment seed: {cfg.experiment.seed}")
-
-    config_hash = _get_config_hash()
+    print(f"Experiment seed: {seed}")
 
     # Define which privacy metrics need encoded vs decoded data
     # DCR and other distance-based privacy metrics need encoded data
     ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
     DECODED_PRIVACY_METRICS = set()
-
-    # Build file paths
-    experiment_name = cfg.experiment.name
-    seed = cfg.experiment.seed
 
     # Define data paths
     encoded_reference = Path(f"experiments/data/encoded/reference_{experiment_name}_{config_hash}_{seed}.csv")
@@ -105,18 +140,13 @@ def main(cfg: DictConfig) -> None:
         encoding_config=encoding_config
     )
 
-    # Save results
-    metrics_dir = Path("experiments/metrics")
-    metrics_dir.mkdir(parents=True, exist_ok=True)
-
-    metrics_file = metrics_dir / f"privacy_{experiment_name}_{config_hash}_{seed}.json"
+    # Save results (paths already defined at top of function)
     with open(metrics_file, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
 
     print(f"✅ Privacy metrics saved to {metrics_file}")
 
     # Generate and save report
-    report_file = metrics_dir / f"privacy_report_{experiment_name}_{config_hash}_{seed}.txt"
     report = generate_privacy_report(results)
 
     with open(report_file, 'w', encoding='utf-8') as f:
