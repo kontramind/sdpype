@@ -30,6 +30,7 @@ from sdmetrics.single_column import CategoryAdherence
 from sdmetrics.single_column import KSComplement
 from sdmetrics.single_column import TVComplement
 from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
+from sdmetrics.single_table.privacy import DCRBaselineProtection
 
 # SYNDAT imports for alternative implementations
 from syndat.metrics import jensen_shannon_distance as syndat_jsd
@@ -1535,6 +1536,53 @@ class CategoryAdherenceMetric:
         return compatible_columns
 
 
+class DCRBaselineProtectionMetric:
+    """DCR Baseline Protection privacy metric implementation"""
+
+    def __init__(self, **parameters):
+        self.parameters = parameters
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
+        """Evaluate DCR Baseline Protection privacy metric"""
+        start_time = time.time()
+
+        try:
+            # Convert the SingleTableMetadata object to a dictionary as required by SDMetrics
+            metadata_dict = metadata.to_dict()
+
+            # Run evaluation using SDMetrics DCRBaselineProtection
+            result = DCRBaselineProtection.compute_breakdown(
+                real_data=original,
+                synthetic_data=synthetic,
+                metadata=metadata_dict
+            )
+
+            # Extract scores from breakdown
+            # The breakdown returns: {'score': overall_score, 'DCR.Synthetic': median_dcr_synthetic, 'DCR.Random': median_dcr_random}
+            overall_score = result.get("score", 0.0)
+            median_dcr_synthetic = result.get("DCR.Synthetic", 0.0)
+            median_dcr_random = result.get("DCR.Random", 0.0)
+
+            return {
+                "score": float(overall_score),
+                "median_dcr_synthetic": float(median_dcr_synthetic),
+                "median_dcr_random": float(median_dcr_random),
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "score": 0.0,
+                "median_dcr_synthetic": 0.0,
+                "median_dcr_random": 0.0,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
@@ -1626,7 +1674,7 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
             # Collect scores for overall calculation
             if metric_result["status"] == "success":
                 match metric_name:
-                    case "alpha_precision" | "prdc_score" | "new_row_synthesis" | "ks_complement" | "tv_complement":
+                    case "alpha_precision" | "prdc_score" | "new_row_synthesis" | "ks_complement" | "tv_complement" | "dcr_baseline_protection":
                         # Individual scores handled in report - no aggregation
                         pass
                     case _:
@@ -1680,6 +1728,8 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return JensenShannonSyndatMetric(**parameters)
         case "jensenshannon_nannyml":
             return JensenShannonNannyMLMetric(**parameters)
+        case "dcr_baseline_protection":
+            return DCRBaselineProtectionMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -1933,6 +1983,34 @@ Metrics Results
             report += f"""TVComplement: ERROR
   Error: {tv_result.get('error_message', 'Unknown error')}
 """
+
+    # DCR Baseline Protection results
+    if "dcr_baseline_protection" in metrics:
+        dcr_result = metrics["dcr_baseline_protection"]
+        if dcr_result["status"] == "success":
+            params_info = dcr_result["parameters"]
+            params_display = str(params_info) if params_info else "default settings"
+
+            score = dcr_result['score']
+            interpretation = "Excellent" if score > 0.8 else "Good" if score > 0.6 else "Moderate" if score > 0.4 else "Needs Improvement"
+
+            report += f"""DCR Baseline Protection Results:
+  Parameters: {params_display}
+  Execution time: {dcr_result['execution_time']:.2f}s
+
+  Privacy Protection:
+  → Privacy Score:          {score:.3f} ({interpretation})
+  → Median DCR (Synthetic): {dcr_result['median_dcr_synthetic']:.6f}
+  → Median DCR (Random):    {dcr_result['median_dcr_random']:.6f}
+
+  Note: Higher scores indicate better privacy protection (0-1 scale)
+        Score compares synthetic DCR against random baseline DCR
+"""
+        else:
+            report += f"""DCR Baseline Protection: ERROR
+  Error: {dcr_result.get('error_message', 'Unknown error')}
+"""
+
     # TableStructure results
     if "table_structure" in metrics:
         ts_result = metrics["table_structure"]
@@ -2268,6 +2346,17 @@ Metrics Results
             else:
                 insights.append("Poor category adherence")
         # If ca_score is None, we simply don't add any insight (no categorical/boolean columns to evaluate)
+
+    if "dcr_baseline_protection" in metrics and metrics["dcr_baseline_protection"]["status"] == "success":
+        dcr_score = metrics["dcr_baseline_protection"]["score"]
+        if dcr_score > 0.8:
+            insights.append("Excellent privacy protection")
+        elif dcr_score > 0.6:
+            insights.append("Good privacy protection")
+        elif dcr_score > 0.4:
+            insights.append("Moderate privacy protection")
+        else:
+            insights.append("Privacy protection needs improvement")
 
     assessment = ", ".join(insights) if insights else "No successful metrics"
 

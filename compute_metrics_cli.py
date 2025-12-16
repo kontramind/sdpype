@@ -491,6 +491,31 @@ def display_statistical_metrics(results: Dict[str, Any]):
 
         console.print(tv_table)
 
+    # DCR Baseline Protection
+    if "dcr_baseline_protection" in metrics and metrics["dcr_baseline_protection"]["status"] == "success":
+        dcr_result = metrics["dcr_baseline_protection"]
+        params_info = dcr_result["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
+
+        dcr_table = Table(title=f"✅ DCR Baseline Protection Results ({params_display})", show_header=True, header_style="bold blue")
+        dcr_table.add_column("Metric", style="cyan", no_wrap=True)
+        dcr_table.add_column("Score", style="bright_green", justify="right")
+        dcr_table.add_column("Interpretation", style="yellow")
+
+        # Overall privacy score
+        score = dcr_result['score']
+        interpretation = "Excellent" if score > 0.8 else "Good" if score > 0.6 else "Moderate" if score > 0.4 else "Needs Improvement"
+        dcr_table.add_row("Privacy Score", f"{score:.3f}", interpretation)
+
+        dcr_table.add_section()
+
+        # Breakdown: DCR values
+        dcr_table.add_row("Median DCR (Synthetic)", f"{dcr_result['median_dcr_synthetic']:.6f}", "")
+        dcr_table.add_row("Median DCR (Random)", f"{dcr_result['median_dcr_random']:.6f}", "")
+        dcr_table.add_row("", "", "Higher is better")
+
+        console.print(dcr_table)
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 app = typer.Typer(
@@ -901,7 +926,8 @@ def compute_statistical_metrics_post_training(
     ENCODED_METRICS = {
         'alpha_precision', 'prdc_score', 'jensenshannon_synthcity',
         'jensenshannon_syndat', 'jensenshannon_nannyml',
-        'wasserstein_distance', 'maximum_mean_discrepancy', 'ks_complement'
+        'wasserstein_distance', 'maximum_mean_discrepancy', 'ks_complement',
+        'dcr_baseline_protection'
     }
 
     DECODED_METRICS = {
@@ -919,7 +945,8 @@ def compute_statistical_metrics_post_training(
             {'name': 'prdc_score'},
             {'name': 'wasserstein_distance'},
             {'name': 'ks_complement'},
-            {'name': 'tv_complement'}
+            {'name': 'tv_complement'},
+            {'name': 'dcr_baseline_protection'}
         ]
 
     # Check if any metrics need encoding
