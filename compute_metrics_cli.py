@@ -1433,12 +1433,8 @@ def main(
         with open(config, 'r') as f:
             config_data = yaml.safe_load(f)
 
-    # Determine which metrics to compute
-    metric_values = [m.value for m in metrics]
-    compute_all = MetricType.all.value in metric_values
-    compute_statistical = compute_all or MetricType.statistical.value in metric_values
-    compute_detection = compute_all or MetricType.detection.value in metric_values
-    compute_hallucination = compute_all or MetricType.hallucination.value in metric_values
+    # Check if user explicitly specified metrics (not using default)
+    user_specified_metrics = metrics != [MetricType.all]
 
     # Process each folder
     console.print(f"\n[bold cyan]Post-Training Metrics Computation[/bold cyan]")
@@ -1502,6 +1498,53 @@ def main(
             continue
 
         console.print(f"Found {len(generations)} generation(s) to process")
+
+        # Determine which metrics to compute
+        # If user explicitly specified --metrics flag, use their choice
+        # Otherwise, auto-detect from config structure
+        if user_specified_metrics:
+            # User explicitly specified metrics via --metrics flag
+            metric_values = [m.value for m in metrics]
+            compute_all = MetricType.all.value in metric_values
+            compute_statistical = compute_all or MetricType.statistical.value in metric_values
+            compute_detection = compute_all or MetricType.detection.value in metric_values
+            compute_hallucination = compute_all or MetricType.hallucination.value in metric_values
+        else:
+            # Auto-detect from config structure
+            # Use the USER'S config (config_data), not effective_config
+            # This ensures we only compute what the user explicitly configured
+            # (effective_config includes merged checkpoint data which has all metric types)
+            compute_statistical = False
+            compute_detection = False
+            compute_hallucination = False
+
+            if config_data and 'evaluation' in config_data:
+                eval_config = config_data['evaluation']
+
+                # Check for statistical metrics configuration
+                if 'statistical_similarity' in eval_config:
+                    compute_statistical = True
+                    console.print("[dim]Auto-detected: statistical metrics configured[/dim]")
+
+                # Check for detection metrics configuration
+                if 'detection_evaluation' in eval_config:
+                    compute_detection = True
+                    console.print("[dim]Auto-detected: detection metrics configured[/dim]")
+
+                # Check for hallucination metrics configuration
+                if 'hallucination' in eval_config:
+                    compute_hallucination = True
+                    console.print("[dim]Auto-detected: hallucination metrics configured[/dim]")
+
+            # If no config provided or no evaluation section, fall back to computing all
+            if not config_data or not (compute_statistical or compute_detection or compute_hallucination):
+                if not config_data:
+                    console.print("[dim]No config provided, computing all metrics[/dim]")
+                else:
+                    console.print("[dim]No metric configuration found, computing all metrics[/dim]")
+                compute_statistical = True
+                compute_detection = True
+                compute_hallucination = True
 
         # Process each generation
         for gen_info in generations:
