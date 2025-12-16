@@ -13,7 +13,7 @@ Useful for:
 import json
 import re
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 from enum import Enum
 
 import pandas as pd
@@ -668,10 +668,12 @@ def load_generation_data(
     metadata_path: Path,
     population_file: Optional[Path] = None,
     config: Optional[Dict[str, Any]] = None,
-    use_original_files: bool = False
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    use_original_files: bool = False,
+    load_encoded: bool = False
+) -> Union[Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame],
+           Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]]:
     """
-    Load all necessary decoded data files for a generation.
+    Load all necessary data files for a generation (decoded and optionally encoded).
 
     Args:
         folder: Experiment folder path
@@ -681,9 +683,12 @@ def load_generation_data(
         config: Optional config dict to get original training/reference files
         use_original_files: If True, use original files from config (for hallucination metrics)
                            If False, use decoded files from experiments folder (for statistical/detection)
+        load_encoded: If True, also load pre-encoded files from encode_evaluation stage
 
     Returns:
-        (reference_decoded, synthetic_decoded, training_decoded, population_decoded)
+        If load_encoded=False: (reference_decoded, synthetic_decoded, training_decoded, population_decoded)
+        If load_encoded=True: (reference_decoded, synthetic_decoded, training_decoded, population_decoded,
+                               reference_encoded, synthetic_encoded)
     """
     data_root = folder / "data"
 
@@ -743,6 +748,29 @@ def load_generation_data(
         pop_dec = load_csv_with_metadata(population_file, metadata_path, low_memory=False)
     elif population_file:
         console.print(f"[yellow]Warning: Population file not found: {population_file}[/yellow]")
+
+    # If encoded files requested, load them from encode_evaluation stage
+    if load_encoded:
+        # Load pre-encoded files created by DVC encode_evaluation stage
+        reference_encoded_file = data_root / "encoded" / f"reference_{model_id}.csv"
+        synthetic_encoded_file = data_root / "encoded" / f"synthetic_{model_id}.csv"
+
+        ref_enc = None
+        syn_enc = None
+
+        if reference_encoded_file.exists():
+            console.print(f"[dim]Loading pre-encoded reference file: {reference_encoded_file}[/dim]")
+            ref_enc = pd.read_csv(reference_encoded_file)
+        else:
+            console.print(f"[yellow]Warning: Pre-encoded reference file not found: {reference_encoded_file}[/yellow]")
+
+        if synthetic_encoded_file.exists():
+            console.print(f"[dim]Loading pre-encoded synthetic file: {synthetic_encoded_file}[/dim]")
+            syn_enc = pd.read_csv(synthetic_encoded_file)
+        else:
+            console.print(f"[yellow]Warning: Pre-encoded synthetic file not found: {synthetic_encoded_file}[/yellow]")
+
+        return ref_dec, syn_dec, trn_dec, pop_dec, ref_enc, syn_enc
 
     return ref_dec, syn_dec, trn_dec, pop_dec
 
@@ -862,14 +890,6 @@ def compute_statistical_metrics_post_training(
 
     console.print(f"[cyan]Computing statistical metrics for generation {parsed['generation']}...[/cyan]")
 
-    # Load decoded data (population not needed for statistical metrics)
-    # Statistical metrics use DECODED files from encode_evaluation stage (matches DVC)
-    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None, config=config, use_original_files=False)
-
-    if ref_dec is None or syn_dec is None:
-        console.print("[red]Error: Missing required data files for statistical metrics[/red]")
-        return None
-
     # Define encoded vs decoded metrics
     ENCODED_METRICS = {
         'alpha_precision', 'prdc_score', 'jensenshannon_synthcity',
@@ -898,16 +918,28 @@ def compute_statistical_metrics_post_training(
     # Check if any metrics need encoding
     needs_encoding = any(m.get('name') in ENCODED_METRICS for m in metrics_config)
 
-    # Load encoder and encode data if needed for encoded metrics
-    ref_enc = None
-    syn_enc = None
+    # Load data files - use pre-encoded files from encode_evaluation stage if needed (matches DVC)
     if needs_encoding:
-        encoder = load_encoder(folder, model_id)
-        if encoder:
-            ref_enc = encode_data(encoder, ref_dec, "reference")
-            syn_enc = encode_data(encoder, syn_dec, "synthetic")
-        else:
-            console.print("[yellow]Warning: Could not load encoder, encoded metrics may fail[/yellow]")
+        # Load both decoded and pre-encoded files
+        ref_dec, syn_dec, trn_dec, _, ref_enc, syn_enc = load_generation_data(
+            folder, model_id, metadata_path, population_file=None, config=config,
+            use_original_files=False, load_encoded=True
+        )
+
+        if ref_enc is None or syn_enc is None:
+            console.print("[yellow]Warning: Pre-encoded files not found, some encoded metrics may fail[/yellow]")
+    else:
+        # Only load decoded files
+        ref_dec, syn_dec, trn_dec, _ = load_generation_data(
+            folder, model_id, metadata_path, population_file=None, config=config,
+            use_original_files=False, load_encoded=False
+        )
+        ref_enc = None
+        syn_enc = None
+
+    if ref_dec is None or syn_dec is None:
+        console.print("[red]Error: Missing required data files for statistical metrics[/red]")
+        return None
 
     # Load encoding config if available
     encoding_config = None
@@ -966,21 +998,16 @@ def compute_detection_metrics_post_training(
 
     console.print(f"[cyan]Computing detection metrics for generation {parsed['generation']}...[/cyan]")
 
-    # Load decoded data from encode_evaluation stage (matches DVC)
-    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None, config=config, use_original_files=False)
+    # Load pre-encoded data from encode_evaluation stage (matches DVC)
+    # Detection metrics always use encoded data
+    ref_dec, syn_dec, trn_dec, _, ref_enc, syn_enc = load_generation_data(
+        folder, model_id, metadata_path, population_file=None, config=config,
+        use_original_files=False, load_encoded=True
+    )
 
-    if ref_dec is None or syn_dec is None:
-        console.print("[red]Error: Missing required data files for detection metrics[/red]")
+    if ref_enc is None or syn_enc is None:
+        console.print("[red]Error: Missing required pre-encoded data files for detection metrics[/red]")
         return None
-
-    # Load encoder and encode data (detection needs encoded data)
-    encoder = load_encoder(folder, model_id)
-    if not encoder:
-        console.print("[red]Error: Could not load encoder for detection metrics[/red]")
-        return None
-
-    ref_enc = encode_data(encoder, ref_dec, "reference")
-    syn_enc = encode_data(encoder, syn_dec, "synthetic")
 
     # Get detection config
     if config and 'evaluation' in config and 'detection_evaluation' in config['evaluation']:
