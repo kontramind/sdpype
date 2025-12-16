@@ -1500,27 +1500,27 @@ def main(
 
             console.print(f"\n[bold yellow]Generation {gen_num}[/bold yellow] ({model_id})")
 
-            # Load generation config
-            gen_config = config_data if config_data else load_generation_config(exp_folder, gen_num)
+            # Use effective_config (merged user + checkpoint config) for all metrics
+            # This ensures data paths, encoding config, etc. are available
 
             # Compute metrics
             if compute_statistical:
                 results = compute_statistical_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, gen_config, force
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force
                 )
                 if results:
                     save_metrics(exp_folder, model_id, "statistical_similarity", results)
 
             if compute_detection:
                 results = compute_detection_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, gen_config, force
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force
                 )
                 if results:
                     save_metrics(exp_folder, model_id, "detection_evaluation", results)
 
             if compute_hallucination:
                 results = compute_hallucination_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, gen_config, force
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force
                 )
                 if results:
                     save_metrics(exp_folder, model_id, "hallucination", results)
