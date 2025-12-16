@@ -95,6 +95,26 @@ stages:
       - experiments/metrics/statistical_similarity_${experiment.name}_${config_hash}_${experiment.seed}.json
       - experiments/metrics/statistical_report_${experiment.name}_${config_hash}_${experiment.seed}.txt
 
+  privacy_evaluation:
+    cmd: python -m sdpype.privacy_evaluation
+    deps:
+      - sdpype/privacy_evaluation.py
+      - sdpype/evaluation/statistical.py
+      - ${data.reference_file}
+      - ${data.metadata_file}
+      - experiments/data/encoded/reference_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/decoded/reference_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/encoded/synthetic_${experiment.name}_${config_hash}_${experiment.seed}.csv
+      - experiments/data/synthetic/synthetic_data_${experiment.name}_${config_hash}_${experiment.seed}_decoded.csv
+    params:
+      - evaluation.privacy
+      - experiment.seed
+      - experiment.name
+      - config_hash
+    metrics:
+      - experiments/metrics/privacy_${experiment.name}_${config_hash}_${experiment.seed}.json
+      - experiments/metrics/privacy_report_${experiment.name}_${config_hash}_${experiment.seed}.txt
+
   detection_evaluation:
     cmd: python -m sdpype.detect
     deps:
