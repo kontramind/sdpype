@@ -667,7 +667,8 @@ def load_generation_data(
     model_id: str,
     metadata_path: Path,
     population_file: Optional[Path] = None,
-    config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None,
+    use_original_files: bool = False
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Load all necessary decoded data files for a generation.
@@ -678,18 +679,20 @@ def load_generation_data(
         metadata_path: Path to metadata file
         population_file: Optional path to population data file (decoded)
         config: Optional config dict to get original training/reference files
+        use_original_files: If True, use original files from config (for hallucination metrics)
+                           If False, use decoded files from experiments folder (for statistical/detection)
 
     Returns:
         (reference_decoded, synthetic_decoded, training_decoded, population_decoded)
     """
     data_root = folder / "data"
 
-    # For reference and training data, prefer original files from config (like DVC pipeline)
-    # This ensures data matches exactly with DVC runs (no encode/decode artifacts)
+    # For hallucination metrics: use original files (matches DVC hallucination_evaluation)
+    # For statistical/detection: use decoded files from encode_evaluation stage (matches DVC)
     reference_file = None
     training_file = None
 
-    if config and 'data' in config:
+    if use_original_files and config and 'data' in config:
         # Try to get original files from config
         ref_from_config = config['data'].get('reference_file')
         trn_from_config = config['data'].get('training_file')
@@ -860,8 +863,8 @@ def compute_statistical_metrics_post_training(
     console.print(f"[cyan]Computing statistical metrics for generation {parsed['generation']}...[/cyan]")
 
     # Load decoded data (population not needed for statistical metrics)
-    # Use original files if available in config to match DVC pipeline exactly
-    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None, config=config)
+    # Statistical metrics use DECODED files from encode_evaluation stage (matches DVC)
+    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None, config=config, use_original_files=False)
 
     if ref_dec is None or syn_dec is None:
         console.print("[red]Error: Missing required data files for statistical metrics[/red]")
@@ -963,8 +966,8 @@ def compute_detection_metrics_post_training(
 
     console.print(f"[cyan]Computing detection metrics for generation {parsed['generation']}...[/cyan]")
 
-    # Load decoded data (or original if available in config)
-    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None, config=config)
+    # Load decoded data from encode_evaluation stage (matches DVC)
+    ref_dec, syn_dec, trn_dec, _ = load_generation_data(folder, model_id, metadata_path, population_file=None, config=config, use_original_files=False)
 
     if ref_dec is None or syn_dec is None:
         console.print("[red]Error: Missing required data files for detection metrics[/red]")
@@ -1070,9 +1073,9 @@ def compute_hallucination_metrics_post_training(
         return None
 
     # Load data with population file
-    # CRITICAL: Use original files from config to match DVC pipeline exactly
+    # CRITICAL: Hallucination metrics use ORIGINAL files from config (matches DVC hallucination_evaluation)
     ref_dec, syn_dec, trn_dec, pop_dec = load_generation_data(
-        folder, model_id, metadata_path, population_file=population_file, config=config
+        folder, model_id, metadata_path, population_file=population_file, config=config, use_original_files=True
     )
 
     if ref_dec is None or syn_dec is None or trn_dec is None or pop_dec is None:
