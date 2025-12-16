@@ -808,6 +808,34 @@ def load_encoder(folder: Path, model_id: str) -> Optional[RDTDatasetEncoder]:
         return None
 
 
+
+def deep_merge_configs(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Deep merge two configuration dictionaries.
+
+    The override dict takes precedence over base dict. For nested dicts, merge recursively.
+    For lists and other types, override completely replaces base.
+
+    Args:
+        base: Base configuration (lower priority)
+        override: Override configuration (higher priority)
+
+    Returns:
+        Merged configuration
+    """
+    result = base.copy()
+
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            # Recursively merge nested dictionaries
+            result[key] = deep_merge_configs(result[key], value)
+        else:
+            # Override completely replaces (for lists, primitives, etc.)
+            result[key] = value
+
+    return result
+
+
 def encode_data(
     encoder: RDTDatasetEncoder,
     data: pd.DataFrame,
@@ -1348,10 +1376,11 @@ def main(
             # If no user config, use checkpoint config entirely
             if not effective_config:
                 effective_config = checkpoint_config
-            # If user config exists but lacks data section, merge with checkpoint config
-            elif checkpoint_config and 'data' not in effective_config:
-                # Use checkpoint config for metadata/data paths, user config for everything else
-                effective_config = {**checkpoint_config, **effective_config}
+            # If user config exists, deep merge with checkpoint config
+            # User config takes precedence for overlapping keys (including metric lists)
+            elif checkpoint_config:
+                # Deep merge: checkpoint provides defaults, user config overrides
+                effective_config = deep_merge_configs(checkpoint_config, effective_config)
 
         # Find metadata file
         # Priority: --metadata flag > config['data']['metadata_file'] > checkpoint config > auto-discovery
