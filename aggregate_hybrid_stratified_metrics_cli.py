@@ -97,11 +97,12 @@ def load_metrics_csv(folder: Path) -> Tuple[bool, Optional[pd.DataFrame], Option
         df = pd.read_csv(csv_path)
 
         # Validate required columns
-        required_cols = {"generation", "factual_total", "ddr_novel_factual", "ks_complement", "tv_complement",
-                         "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
-                         "alpha_delta_coverage_OC", "alpha_authenticity_OC", "prdc_precision",
-                         "prdc_recall", "prdc_density", "prdc_coverage", "detection_gmm",
-                         "detection_xgb", "detection_mlp", "detection_linear"}
+        required_cols = {"generation", "factual_total", "ddr_novel_factual", "complexity_population",
+                         "complexity_training", "complexity_reference", "complexity_synthetic",
+                         "ks_complement", "tv_complement", "wasserstein_dist", "jsd_syndat", "mmd",
+                         "alpha_delta_precision_OC", "alpha_delta_coverage_OC", "alpha_authenticity_OC",
+                         "prdc_precision", "prdc_recall", "prdc_density", "prdc_coverage",
+                         "detection_gmm", "detection_xgb", "detection_mlp", "detection_linear"}
         missing_cols = required_cols - set(df.columns)
 
         if missing_cols:
@@ -317,15 +318,16 @@ def create_plotly_visualization(
         List of Plotly Figure objects (one per metric)
     """
     if metrics is None:
-        metrics = ["factual_total", "ddr_novel_factual", "ks_complement", "tv_complement",
+        metrics = ["factual_total", "ddr_novel_factual", "complexity_population", "complexity_training",
+                   "complexity_reference", "complexity_synthetic", "ks_complement", "tv_complement",
                    "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
                    "alpha_delta_coverage_OC", "alpha_authenticity_OC", "prdc_precision",
                    "prdc_recall", "prdc_density", "prdc_coverage", "detection_gmm",
                    "detection_xgb", "detection_mlp", "detection_linear"]
 
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728", "#17becf", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#ff9896", "#9edae5", "#c5b0d5", "#c49c94", "#f1c40f", "#16a085", "#e91e63", "#808000"]
-    # Blue, Orange, Green, Purple, Red, Cyan, Brown, Pink, Gray, Lime, Light Red, Light Cyan, Light Purple, Light Brown, Gold, Teal, Magenta, Olive
-    line_colors = ["#0d3b7a", "#d64a0a", "#1a6b1a", "#5a3a7a", "#8b1a1a", "#0a7a8a", "#5a3525", "#a03a82", "#4a4a4a", "#7a7d15", "#cc4c4c", "#5a9aa8", "#8a7aa8", "#8a6a5a", "#c29d0b", "#117a65", "#ad1457", "#5a5a00"]
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728", "#17becf", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#ff9896", "#9edae5", "#c5b0d5", "#c49c94", "#f1c40f", "#16a085", "#e91e63", "#808000", "#3498db", "#e74c3c", "#9b59b6", "#1abc9c"]
+    # Blue, Orange, Green, Purple, Red, Cyan, Brown, Pink, Gray, Lime, Light Red, Light Cyan, Light Purple, Light Brown, Gold, Teal, Magenta, Olive, Sky Blue, Crimson, Amethyst, Turquoise
+    line_colors = ["#0d3b7a", "#d64a0a", "#1a6b1a", "#5a3a7a", "#8b1a1a", "#0a7a8a", "#5a3525", "#a03a82", "#4a4a4a", "#7a7d15", "#cc4c4c", "#5a9aa8", "#8a7aa8", "#8a6a5a", "#c29d0b", "#117a65", "#ad1457", "#5a5a00", "#206694", "#a32a1e", "#6a3a7a", "#138a6a"]
     # Dark versions for lines
     gray_color = "#a6a6a6"  # Gray for outer bands
 
@@ -666,7 +668,8 @@ def main(
 
     # Parse folder names and organize by dseed/mseed
     data_structure = defaultdict(dict)  # {dseed: {mseed: dataframe}}
-    metrics = ["factual_total", "ddr_novel_factual", "ks_complement", "tv_complement",
+    metrics = ["factual_total", "ddr_novel_factual", "complexity_population", "complexity_training",
+               "complexity_reference", "complexity_synthetic", "ks_complement", "tv_complement",
                "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
                "alpha_delta_coverage_OC", "alpha_authenticity_OC", "prdc_precision",
                "prdc_recall", "prdc_density", "prdc_coverage", "detection_gmm",
