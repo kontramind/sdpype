@@ -973,8 +973,18 @@ def compute_statistical_metrics_post_training(
     encoding_config = None
     if config and 'encoding' in config and config['encoding'].get('config_file'):
         encoding_config_path = Path(config['encoding']['config_file'])
+
+        # Resolve relative paths
+        if not encoding_config_path.is_absolute() and not encoding_config_path.exists():
+            # Try relative to parent directory
+            parent_path = Path("..") / encoding_config_path
+            if parent_path.exists():
+                encoding_config_path = parent_path.resolve()
+
         if encoding_config_path.exists():
             encoding_config = load_encoding_config(encoding_config_path)
+        else:
+            console.print(f"[yellow]Warning: Encoding config file not found: {config['encoding']['config_file']}[/yellow]")
 
     # Call evaluation function
     try:
@@ -1057,8 +1067,20 @@ def compute_detection_metrics_post_training(
     encoding_config = None
     if config and 'encoding' in config and config['encoding'].get('config_file'):
         encoding_config_path = Path(config['encoding']['config_file'])
+
+        # Resolve relative paths
+        if not encoding_config_path.is_absolute() and not encoding_config_path.exists():
+            # Try relative to current directory first
+            if not encoding_config_path.exists():
+                # Try relative to parent directory
+                parent_path = Path("..") / encoding_config_path
+                if parent_path.exists():
+                    encoding_config_path = parent_path.resolve()
+
         if encoding_config_path.exists():
             encoding_config = load_encoding_config(encoding_config_path)
+        else:
+            console.print(f"[yellow]Warning: Encoding config file not found: {config['encoding']['config_file']}[/yellow]")
 
     # Call evaluation function
     try:
@@ -1113,19 +1135,45 @@ def compute_hallucination_metrics_post_training(
     if config and 'data' in config:
         pop_file_str = config['data'].get('population_file')
         if pop_file_str:
-            population_file = Path(pop_file_str)
-            # Resolve relative paths from experiment folder
-            if not population_file.is_absolute():
-                population_file = folder / population_file
-                if not population_file.exists():
-                    # Try relative to current directory
-                    population_file = Path(pop_file_str)
+            population_file_path = Path(pop_file_str)
+
+            # Try multiple resolution strategies for relative paths
+            if not population_file_path.is_absolute():
+                # Try 1: Absolute path or relative to CWD
+                if population_file_path.exists():
+                    population_file = population_file_path
+                # Try 2: Relative to experiment folder
+                elif (folder / population_file_path).exists():
+                    population_file = folder / population_file_path
+                # Try 3: Relative to parent directory (for ../downloads/... paths)
+                elif (Path("..") / population_file_path).exists():
+                    population_file = (Path("..") / population_file_path).resolve()
+                # Try 4: Just filename in common locations
+                else:
+                    filename = population_file_path.name
+                    candidates = [
+                        folder / "data" / filename,
+                        folder / ".." / "downloads" / filename,
+                        Path("downloads") / filename,
+                        Path("data") / filename,
+                    ]
+                    for candidate in candidates:
+                        if candidate.exists():
+                            population_file = candidate
+                            break
+            else:
+                # Absolute path - use directly
+                if population_file_path.exists():
+                    population_file = population_file_path
 
     if not population_file or not population_file.exists():
         console.print("[red]Error: Population file not found. Please specify 'data.population_file' in config.[/red]")
-        if population_file:
-            console.print(f"[red]Tried: {population_file}[/red]")
+        if config and 'data' in config:
+            console.print(f"[yellow]Config specifies: {config['data'].get('population_file')}[/yellow]")
+        console.print("[yellow]Hint: Use --metadata option or check that paths in checkpoint params are correct[/yellow]")
         return None
+
+    console.print(f"[dim]Using population file: {population_file}[/dim]")
 
     # Load data with population file
     # CRITICAL: Hallucination metrics use ORIGINAL files from config (matches DVC hallucination_evaluation)
