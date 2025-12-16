@@ -1429,6 +1429,24 @@ def main(
             elif checkpoint_config:
                 # Deep merge: checkpoint provides defaults, user config overrides
                 effective_config = deep_merge_configs(checkpoint_config, effective_config)
+                console.print("[dim]Merged user config with checkpoint config[/dim]")
+
+        # Debug: Show key config paths
+        if effective_config:
+            if 'data' in effective_config:
+                console.print(f"[dim]Config data paths:[/dim]")
+                if 'population_file' in effective_config['data']:
+                    console.print(f"[dim]  population_file: {effective_config['data']['population_file']}[/dim]")
+                if 'training_file' in effective_config['data']:
+                    console.print(f"[dim]  training_file: {effective_config['data']['training_file']}[/dim]")
+                if 'reference_file' in effective_config['data']:
+                    console.print(f"[dim]  reference_file: {effective_config['data']['reference_file']}[/dim]")
+            if 'encoding' in effective_config and 'config_file' in effective_config['encoding']:
+                console.print(f"[dim]  encoding_config: {effective_config['encoding']['config_file']}[/dim]")
+            if 'evaluation' in effective_config and 'statistical_similarity' in effective_config['evaluation']:
+                metrics_list = effective_config['evaluation']['statistical_similarity'].get('metrics', [])
+                metric_names = [m.get('name') for m in metrics_list if isinstance(m, dict)]
+                console.print(f"[dim]  statistical_metrics: {metric_names}[/dim]")
 
         # Find metadata file
         # Priority: --metadata flag > config['data']['metadata_file'] > checkpoint config > auto-discovery
