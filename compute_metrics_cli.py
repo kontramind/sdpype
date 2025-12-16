@@ -68,7 +68,10 @@ DISPLAY_FUNCTIONS = import_display_functions()
 console = Console()
 
 def display_statistical_metrics(results: Dict[str, Any]):
-    """Display statistical metrics results in terminal - matches DVC pipeline output"""
+    """
+    Display statistical metrics results in terminal.
+    Only displays metrics that were actually configured and computed.
+    """
     console.print()
     metrics = results.get("metrics", {})
 
@@ -143,8 +146,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
 
             console.print("\n")
             console.print(full_comparison)
-    else:
-        console.print("❌ TableStructure failed", style="bold red")
 
     # SemanticStructure results table
     if "semantic_structure" in metrics and metrics["semantic_structure"]["status"] == "success":
@@ -217,8 +218,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
 
             console.print("\n")
             console.print(full_comparison)
-    else:
-        console.print("❌ SemanticStructure failed", style="bold red")
 
     # NewRowSynthesis results table
     if "new_row_synthesis" in metrics and metrics["new_row_synthesis"]["status"] == "success":
@@ -240,8 +239,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
         nrs_table.add_row("Matched Rows", f"{nrs_result['num_matched_rows']:,}")
 
         console.print(nrs_table)
-    else:
-        console.print("❌ NewRowSynthesis failed", style="bold red")
 
     # BoundaryAdherence results table
     if "boundary_adherence" in metrics and metrics["boundary_adherence"]["status"] == "success":
@@ -285,8 +282,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
             ba_table.add_row("INFO", ba_result["message"], "ℹ️")
 
         console.print(ba_table)
-    else:
-        console.print("❌ BoundaryAdherence failed", style="bold red")
 
     # CategoryAdherence results table
     if "category_adherence" in metrics and metrics["category_adherence"]["status"] == "success":
@@ -332,8 +327,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
                 ca_table.add_row("INFO", ca_result["message"], "ℹ️")
 
             console.print(ca_table)
-    else:
-        console.print("❌ CategoryAdherence failed", style="bold red")
 
     # Alpha Precision
     if "alpha_precision" in metrics and metrics["alpha_precision"]["status"] == "success":
@@ -351,8 +344,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
         table.add_row("Authenticity", f"{scores['authenticity_OC']:.3f}", f"{scores['authenticity_naive']:.3f}")
 
         console.print(table)
-    elif "alpha_precision" in metrics:
-        console.print("❌ Alpha Precision failed", style="bold red")
 
     # PRDC Score
     if "prdc_score" in metrics and metrics["prdc_score"]["status"] == "success":
@@ -370,8 +361,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
         prdc_table.add_row("Coverage", f"{prdc_result['coverage']:.3f}")
 
         console.print(prdc_table)
-    elif "prdc_score" in metrics:
-        console.print("❌ PRDC Score failed", style="bold red")
 
     # Wasserstein Distance
     if "wasserstein_distance" in metrics and metrics["wasserstein_distance"]["status"] == "success":
@@ -391,8 +380,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
         wd_table.add_row("", "", "Lower is better")
 
         console.print(wd_table)
-    elif "wasserstein_distance" in metrics:
-        console.print("❌ Wasserstein Distance failed", style="bold red")
 
     # Maximum Mean Discrepancy
     if "maximum_mean_discrepancy" in metrics and metrics["maximum_mean_discrepancy"]["status"] == "success":
@@ -413,8 +400,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
         mmd_table.add_row("", "", "Lower is better")
 
         console.print(mmd_table)
-    elif "maximum_mean_discrepancy" in metrics:
-        console.print("❌ Maximum Mean Discrepancy failed", style="bold red")
 
     # Jensen-Shannon Distance variants
     for js_variant in ["jensenshannon_synthcity", "jensenshannon_syndat", "jensenshannon_nannyml"]:
@@ -447,8 +432,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
             jsd_table.add_row("", "", "Lower is better")
 
             console.print(jsd_table)
-        elif js_variant in metrics:
-            console.print(f"❌ {js_variant.replace('_', ' ').title()} failed", style="bold red")
 
     # KS Complement
     if "ks_complement" in metrics and metrics["ks_complement"]["status"] == "success":
@@ -478,8 +461,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
                 ks_table.add_row(col, "error", "⚠️")
 
         console.print(ks_table)
-    elif "ks_complement" in metrics:
-        console.print("❌ KSComplement failed", style="bold red")
 
     # TV Complement
     if "tv_complement" in metrics and metrics["tv_complement"]["status"] == "success":
@@ -509,8 +490,6 @@ def display_statistical_metrics(results: Dict[str, Any]):
                 tv_table.add_row(col, "error", "⚠️")
 
         console.print(tv_table)
-    elif "tv_complement" in metrics:
-        console.print("❌ TVComplement failed", style="bold red")
 
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
