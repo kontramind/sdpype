@@ -1148,21 +1148,32 @@ def compute_hallucination_metrics_post_training(
 
     # Get population file path from config
     population_file = None
+    console.print(f"[dim]Debug: config is None: {config is None}[/dim]")
+    if config:
+        console.print(f"[dim]Debug: 'data' in config: {'data' in config}[/dim]")
+
     if config and 'data' in config:
         pop_file_str = config['data'].get('population_file')
+        console.print(f"[dim]Debug: population_file from config: {pop_file_str}[/dim]")
         if pop_file_str:
             population_file_path = Path(pop_file_str)
+            console.print(f"[dim]Debug: Path object created: {population_file_path}[/dim]")
+            console.print(f"[dim]Debug: is_absolute: {population_file_path.is_absolute()}[/dim]")
 
             # Try multiple resolution strategies for relative paths
             if not population_file_path.is_absolute():
+                console.print(f"[dim]Debug: Trying path.exists(): {population_file_path.exists()}[/dim]")
                 # Try 1: As-is (relative to CWD) - handles ../downloads/... paths
                 if population_file_path.exists():
                     population_file = population_file_path.resolve()
+                    console.print(f"[dim]Debug: Found via Try 1 (as-is): {population_file}[/dim]")
                 # Try 2: Relative to experiment folder (for paths like data/file.csv)
                 elif not str(population_file_path).startswith('..') and (folder / population_file_path).exists():
                     population_file = (folder / population_file_path).resolve()
+                    console.print(f"[dim]Debug: Found via Try 2 (relative to folder): {population_file}[/dim]")
                 # Try 3: Just filename in common locations
                 else:
+                    console.print(f"[dim]Debug: Trying candidate paths...[/dim]")
                     filename = population_file_path.name
                     candidates = [
                         Path("..") / "downloads" / filename,
