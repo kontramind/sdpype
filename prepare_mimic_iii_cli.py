@@ -71,7 +71,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -87,7 +87,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -103,7 +103,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -119,7 +119,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -135,7 +135,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -153,7 +153,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int32',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -171,7 +171,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -187,7 +187,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -203,7 +203,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -219,7 +219,7 @@ COLUMN_CONFIG = [
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_replacement': 'mean',
+                'missing_value_generation': '',
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
