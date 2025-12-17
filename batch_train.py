@@ -28,11 +28,43 @@ Examples:
 """
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
 from glob import glob
 from pathlib import Path
+
+
+def find_most_advanced_checkpoint(checkpoint_dir: Path) -> tuple[str, int]:
+    """
+    Find the most advanced checkpoint in a directory.
+
+    Returns:
+        (model_id, last_completed_generation) or (None, -1) if no checkpoints found
+    """
+    checkpoint_files = list(checkpoint_dir.glob("checkpoint_*.json"))
+
+    if not checkpoint_files:
+        return None, -1
+
+    best_checkpoint = None
+    best_gen = -1
+    best_model_id = None
+
+    for cp_file in checkpoint_files:
+        try:
+            with cp_file.open() as f:
+                cp_data = json.load(f)
+                last_gen = cp_data.get('last_completed_generation', -1)
+                if last_gen > best_gen:
+                    best_gen = last_gen
+                    best_model_id = cp_data.get('last_model_id')
+                    best_checkpoint = cp_data
+        except (json.JSONDecodeError, KeyError):
+            continue
+
+    return best_model_id, best_gen
 
 
 def main():
@@ -174,6 +206,15 @@ def main():
                 print(f"  Skipping (not a valid training output directory)")
                 continue
 
+            # Find the most advanced checkpoint (handles multiple chains)
+            best_model_id, best_gen = find_most_advanced_checkpoint(checkpoint_dir)
+            if not best_model_id:
+                print(f"  ✗ No valid checkpoints found in {checkpoint_dir}")
+                print(f"  Skipping")
+                continue
+
+            print(f"  Found checkpoint: gen={best_gen}, resuming to gen={args.resume - 1}")
+
             try:
                 # Step 1: Backup current params.yaml
                 if params_path.exists():
@@ -201,7 +242,7 @@ def main():
                             shutil.copytree(src, experiments_path / subdir)
 
                 # Step 3: Run recursive training with resume
-                cmd = ["uv", "run", "recursive_train.py", "--resume", "--generations", str(args.resume)]
+                cmd = ["uv", "run", "recursive_train.py", "--resume-from", best_model_id, "--generations", str(args.resume)]
                 if args.force:
                     cmd.append("--force")
                 print(f"  Running: {' '.join(cmd)}")
