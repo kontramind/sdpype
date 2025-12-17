@@ -105,10 +105,14 @@ def main():
             print(f"\nMatching directories ({len(matching_items)}):")
             for i, dirpath in enumerate(matching_items, 1):
                 dirname = Path(dirpath).name
-                checkpoint_dir = Path(dirpath) / "experiments" / "checkpoints"
-                has_checkpoint = checkpoint_dir.exists()
+                dir_path = Path(dirpath)
+                # Check both possible checkpoint locations
+                checkpoint_dir_new = dir_path / "experiments" / "checkpoints"
+                checkpoint_dir_direct = dir_path / "checkpoints"
+                has_checkpoint = checkpoint_dir_new.exists() or checkpoint_dir_direct.exists()
+                structure = "nested" if checkpoint_dir_new.exists() else ("direct" if checkpoint_dir_direct.exists() else "none")
                 print(f"  {i}. {dirpath}")
-                print(f"     Checkpoint: {'✓' if has_checkpoint else '✗'}")
+                print(f"     Checkpoint: {'✓' if has_checkpoint else '✗'} ({structure})")
 
             force_flag = " --force" if args.force else ""
             print(f"\nWorkflow for each directory:")
@@ -147,8 +151,20 @@ def main():
         # RESUME MODE: Process existing directories
         for i, output_dir in enumerate(matching_items, 1):
             output_path = Path(output_dir)
+
+            # Support two directory structures:
+            # 1. New batch_train.py: output_dir/experiments/checkpoints/
+            # 2. Direct structure: output_dir/checkpoints/
             dir_experiments_path = output_path / "experiments"
-            checkpoint_dir = dir_experiments_path / "checkpoints"
+            if dir_experiments_path.exists():
+                # New structure with experiments/ subfolder
+                checkpoint_dir = dir_experiments_path / "checkpoints"
+                has_experiments_subfolder = True
+            else:
+                # Direct structure - data at root level
+                checkpoint_dir = output_path / "checkpoints"
+                dir_experiments_path = output_path
+                has_experiments_subfolder = False
 
             print(f"\n[{i}/{len(matching_items)}] Resuming: {output_dir}")
 
@@ -165,15 +181,24 @@ def main():
                     shutil.copy2(params_path, backup_path)
 
                 # Step 2: Temporarily restore experiments folder
-                if dir_experiments_path.exists():
+                if has_experiments_subfolder:
+                    # New structure: copy experiments/ subfolder
                     if experiments_path.exists():
                         print(f"  Removing existing experiments/ folder")
                         shutil.rmtree(experiments_path)
                     print(f"  Restoring {output_dir}/experiments/ -> experiments/")
                     shutil.copytree(dir_experiments_path, experiments_path)
                 else:
-                    print(f"  ✗ No experiments folder found in {output_dir}")
-                    continue
+                    # Direct structure: copy data directories to experiments/
+                    if experiments_path.exists():
+                        print(f"  Removing existing experiments/ folder")
+                        shutil.rmtree(experiments_path)
+                    print(f"  Restoring {output_dir}/* -> experiments/")
+                    experiments_path.mkdir(exist_ok=True)
+                    for subdir in ["checkpoints", "data", "metrics", "models"]:
+                        src = output_path / subdir
+                        if src.exists():
+                            shutil.copytree(src, experiments_path / subdir)
 
                 # Step 3: Run recursive training with resume
                 cmd = ["uv", "run", "recursive_train.py", "--resume", "--generations", str(args.resume)]
@@ -183,11 +208,26 @@ def main():
                 result = subprocess.run(cmd, check=True)
 
                 # Step 4: Move updated experiments folder back
-                if experiments_path.exists():
-                    print(f"  Removing old {output_dir}/experiments/")
-                    shutil.rmtree(dir_experiments_path)
-                    print(f"  Moving experiments/ -> {output_dir}/experiments/")
-                    shutil.move(str(experiments_path), str(dir_experiments_path))
+                if has_experiments_subfolder:
+                    # New structure: move experiments/ back
+                    if experiments_path.exists():
+                        print(f"  Removing old {output_dir}/experiments/")
+                        shutil.rmtree(dir_experiments_path)
+                        print(f"  Moving experiments/ -> {output_dir}/experiments/")
+                        shutil.move(str(experiments_path), str(dir_experiments_path))
+                else:
+                    # Direct structure: copy subdirs back to root
+                    if experiments_path.exists():
+                        print(f"  Updating {output_dir}/ with new data")
+                        for subdir in ["checkpoints", "data", "metrics", "models"]:
+                            src = experiments_path / subdir
+                            dst = output_path / subdir
+                            if src.exists():
+                                if dst.exists():
+                                    shutil.rmtree(dst)
+                                shutil.copytree(src, dst)
+                        print(f"  Removing temporary experiments/ folder")
+                        shutil.rmtree(experiments_path)
 
                 # Step 5: Restore params.yaml
                 if backup_path.exists():
