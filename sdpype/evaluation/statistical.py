@@ -1558,10 +1558,11 @@ class DCRBaselineProtectionMetric:
             )
 
             # Extract scores from breakdown
-            # The breakdown returns: {'score': overall_score, 'DCR.Synthetic': median_dcr_synthetic, 'DCR.Random': median_dcr_random}
+            # The breakdown returns: {'score': overall_score, 'median_DCR_to_real_data': {'synthetic_data': ..., 'random_data_baseline': ...}}
             overall_score = result.get("score", 0.0)
-            median_dcr_synthetic = result.get("DCR.Synthetic", 0.0)
-            median_dcr_random = result.get("DCR.Random", 0.0)
+            dcr_breakdown = result.get("median_DCR_to_real_data", {})
+            median_dcr_synthetic = dcr_breakdown.get("synthetic_data", 0.0)
+            median_dcr_random = dcr_breakdown.get("random_data_baseline", 0.0)
 
             return {
                 "score": float(overall_score),
