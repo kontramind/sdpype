@@ -9,6 +9,8 @@ import hydra
 import pandas as pd
 from omegaconf import DictConfig
 from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
 
 from sdv.metadata import SingleTableMetadata
 from sdpype.evaluation.statistical import evaluate_privacy_metrics, generate_privacy_report
@@ -27,6 +29,84 @@ def _get_config_hash() -> str:
         return "nohash"
     except Exception:
         return "nohash"
+
+
+def _display_privacy_tables(results: dict) -> None:
+    """Display privacy metrics results in rich tables"""
+
+    console.print("\n🔒 Privacy Metrics Evaluation:", style="bold cyan")
+
+    metrics_data = results.get("metrics", {})
+
+    # Create privacy results table
+    privacy_table = Table(
+        title="📊 DCR Baseline Protection Results",
+        show_header=True,
+        header_style="bold blue"
+    )
+    privacy_table.add_column("Metric", style="cyan", no_wrap=True)
+    privacy_table.add_column("Score", style="bright_green", justify="right")
+    privacy_table.add_column("Interpretation", style="yellow")
+
+    # Process DCR baseline protection results
+    dcr_result = metrics_data.get("dcr_baseline_protection", {})
+
+    if dcr_result.get("status") == "success":
+        score = dcr_result.get("score", 0.0)
+        median_dcr_synthetic = dcr_result.get("median_dcr_synthetic", 0.0)
+        median_dcr_random = dcr_result.get("median_dcr_random", 0.0)
+
+        # Interpret privacy score
+        if score > 0.8:
+            interpretation = "Excellent"
+        elif score > 0.6:
+            interpretation = "Good"
+        elif score > 0.4:
+            interpretation = "Moderate"
+        else:
+            interpretation = "Poor"
+
+        privacy_table.add_row(
+            "Privacy Score",
+            f"{score:.3f}",
+            interpretation
+        )
+        privacy_table.add_row(
+            "Median DCR (Synthetic)",
+            f"{median_dcr_synthetic:.6f}",
+            ""
+        )
+        privacy_table.add_row(
+            "Median DCR (Random)",
+            f"{median_dcr_random:.6f}",
+            "Higher is better"
+        )
+    else:
+        error_msg = dcr_result.get("error_message", "Unknown error")
+        privacy_table.add_row(
+            "DCR Baseline Protection",
+            "N/A",
+            f"❌ Error: {error_msg[:40]}..."
+        )
+
+    console.print(privacy_table)
+
+    # Add interpretation guide
+    guide_panel = Panel.fit(
+        """🔒 DCR Privacy Metric Guide:
+• Privacy Score = How well synthetic data protects individual record privacy
+• Score > 0.8 = Excellent privacy protection
+• Score > 0.6 = Good privacy protection
+• Score > 0.4 = Moderate privacy protection
+• Score ≤ 0.4 = Poor privacy protection
+
+• Median DCR (Synthetic) = Distance from synthetic records to nearest real record
+• Median DCR (Random) = Distance from random baseline to nearest real record
+• Higher distances indicate better privacy protection""",
+        title="📖 Privacy Metrics Guide",
+        border_style="blue"
+    )
+    console.print(guide_panel)
 
 
 @hydra.main(version_base=None, config_path="../", config_name="params")
@@ -139,6 +219,9 @@ def main(cfg: DictConfig) -> None:
         synthetic_data_encoded=synthetic_encoded,
         encoding_config=encoding_config
     )
+
+    # Display results in rich tables
+    _display_privacy_tables(results)
 
     # Save results (paths already defined at top of function)
     with open(metrics_file, 'w', encoding='utf-8') as f:
