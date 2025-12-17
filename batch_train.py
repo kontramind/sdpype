@@ -74,15 +74,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Validate arguments
-    if args.resume and args.resume == args.generations:
-        print(f"Warning: --resume {args.resume} is same as --generations {args.generations}")
-        print("This will resume runs that already have completed generations.")
-    if args.resume and args.resume < args.generations:
-        print(f"Error: --resume {args.resume} cannot be less than --generations {args.generations}")
-        print("The resume value should be the NEW total generations you want (must be >= --generations)")
-        sys.exit(1)
-
     # Get matching files or directories depending on mode
     if args.resume:
         # Resume mode: match directories (existing output folders)
