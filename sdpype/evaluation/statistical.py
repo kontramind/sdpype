@@ -1588,44 +1588,82 @@ class KAnonymizationMetric:
     """
     k-Anonymization privacy metric implementation using synthcity.
 
-    Uses encoded data (all numerical) and bins columns into 20 discrete groups
-    to compute k-anonymity values for real and synthetic datasets.
+    Uses encoded data and intelligently bins columns:
+    - Categorical columns (UniformEncoder): kept as-is (already discrete labels 0,1,2,...)
+    - Numerical columns (FloatFormatter): binned into 20 discrete groups
+
+    This creates discrete quasi-identifier groups for k-anonymity calculation.
     """
 
     def __init__(self, quasi_identifiers=None, **parameters):
         self.quasi_identifiers = quasi_identifiers
         self.parameters = parameters
 
-    def _bin_numerical_columns(self, data: pd.DataFrame, metadata: SingleTableMetadata) -> pd.DataFrame:
+    def _bin_numerical_columns(self, data: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> pd.DataFrame:
         """
-        Bin all columns into 20 bins for k-anonymization.
+        Bin truly numerical columns into 20 bins for k-anonymization.
+        Keep categorical columns (UniformEncoder) as-is since they're already discrete.
 
         Note: Works with encoded data where all columns are numerical.
+        - Categorical columns encoded with UniformEncoder → keep as-is (already labels 0,1,2,...)
+        - Numerical columns encoded with FloatFormatter → bin into 20 groups
+
         Binning creates discrete groups needed for k-anonymization.
 
         Args:
             data: Encoded DataFrame (all numerical columns)
-            metadata: SDV metadata (not used for encoded data, but kept for consistency)
+            metadata: SDV metadata
+            encoding_config: Encoding configuration dict with transformer info
 
         Returns:
-            DataFrame with binned columns
+            DataFrame with binned numerical columns and unchanged categorical columns
         """
         processed = data.copy()
 
-        # Bin all columns (encoded data is all numerical)
+        # If no encoding config, bin all columns (fallback behavior)
+        if encoding_config is None:
+            print(f"  Warning: No encoding_config provided, binning all columns")
+            for col in data.columns:
+                try:
+                    processed[col] = pd.cut(data[col], bins=20, labels=False, duplicates='drop')
+                except Exception as e:
+                    print(f"  Warning: Could not bin column {col}: {e}")
+            return processed
+
+        # Get transformer info from encoding config
+        transformers = encoding_config.get('transformers', {})
+
+        # Bin only columns that were originally numerical (FloatFormatter)
         for col in data.columns:
-            try:
-                # Use pd.cut with 20 bins, handle duplicates gracefully
-                processed[col] = pd.cut(
-                    data[col],
-                    bins=20,
-                    labels=False,
-                    duplicates='drop'
-                )
-            except Exception as e:
-                print(f"  Warning: Could not bin column {col}: {e}")
-                # Keep original values if binning fails
-                pass
+            # Check if column has transformer info
+            if col not in transformers:
+                # No transformer info - bin it as fallback
+                try:
+                    processed[col] = pd.cut(data[col], bins=20, labels=False, duplicates='drop')
+                except Exception as e:
+                    print(f"  Warning: Could not bin column {col}: {e}")
+                continue
+
+            transformer_info = transformers[col]
+            transformer_type = transformer_info.get('type', '')
+
+            # Only bin truly numerical columns (FloatFormatter)
+            # Skip categorical columns (UniformEncoder) - they're already discrete labels
+            if transformer_type == 'FloatFormatter':
+                try:
+                    # Bin numerical column into 20 groups
+                    processed[col] = pd.cut(data[col], bins=20, labels=False, duplicates='drop')
+                except Exception as e:
+                    print(f"  Warning: Could not bin column {col}: {e}")
+            elif transformer_type == 'UniformEncoder':
+                # Keep categorical labels as-is (already discrete: 0, 1, 2, ...)
+                pass  # processed[col] already has the original encoded values
+            else:
+                # Unknown transformer - bin as fallback
+                try:
+                    processed[col] = pd.cut(data[col], bins=20, labels=False, duplicates='drop')
+                except Exception as e:
+                    print(f"  Warning: Could not bin column {col}: {e}")
 
         return processed
 
@@ -1678,10 +1716,10 @@ class KAnonymizationMetric:
             real_qi = original[quasi_ids].copy()
             syn_qi = synthetic[quasi_ids].copy()
 
-            # 3. Bin all columns into 20 bins (encoded data is all numerical)
+            # 3. Bin numerical columns (keep categorical labels as-is)
             print(f"  k-Anonymization: Binning columns into discrete groups...")
-            real_binned = self._bin_numerical_columns(real_qi, metadata)
-            syn_binned = self._bin_numerical_columns(syn_qi, metadata)
+            real_binned = self._bin_numerical_columns(real_qi, metadata, encoding_config)
+            syn_binned = self._bin_numerical_columns(syn_qi, metadata, encoding_config)
 
             # 4. Wrap in synthcity DataLoaders
             loader_real = GenericDataLoader(real_binned)
