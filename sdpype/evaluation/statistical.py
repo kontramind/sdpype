@@ -1613,7 +1613,8 @@ class KAnonymizationMetric:
         Args:
             data: Encoded DataFrame (all numerical columns)
             metadata: SDV metadata
-            encoding_config: Encoding configuration dict with transformer info
+            encoding_config: Encoding configuration dict with transformer instances
+                           (e.g., {'transformers': {'col': UniformEncoder(), ...}})
 
         Returns:
             DataFrame with binned numerical columns and unchanged categorical columns
@@ -1630,7 +1631,10 @@ class KAnonymizationMetric:
                     print(f"  Warning: Could not bin column {col}: {e}")
             return processed
 
-        # Get transformer info from encoding config
+        # Import transformer classes to check instance types
+        from rdt.transformers import UniformEncoder, FloatFormatter
+
+        # Get transformer instances from encoding config
         transformers = encoding_config.get('transformers', {})
 
         # Bin only columns that were originally numerical (FloatFormatter)
@@ -1644,22 +1648,22 @@ class KAnonymizationMetric:
                     print(f"  Warning: Could not bin column {col}: {e}")
                 continue
 
-            transformer_info = transformers[col]
-            transformer_type = transformer_info.get('type', '')
+            # Get transformer instance (it's an object, not a dict!)
+            transformer_instance = transformers[col]
 
-            # Only bin truly numerical columns (FloatFormatter)
-            # Skip categorical columns (UniformEncoder) - they're already discrete labels
-            if transformer_type == 'FloatFormatter':
+            # Check instance type: only bin FloatFormatter (numerical)
+            # Skip UniformEncoder (categorical) - already discrete labels
+            if isinstance(transformer_instance, FloatFormatter):
                 try:
                     # Bin numerical column into 20 groups
                     processed[col] = pd.cut(data[col], bins=20, labels=False, duplicates='drop')
                 except Exception as e:
                     print(f"  Warning: Could not bin column {col}: {e}")
-            elif transformer_type == 'UniformEncoder':
+            elif isinstance(transformer_instance, UniformEncoder):
                 # Keep categorical labels as-is (already discrete: 0, 1, 2, ...)
                 pass  # processed[col] already has the original encoded values
             else:
-                # Unknown transformer - bin as fallback
+                # Unknown transformer type - bin as fallback
                 try:
                     processed[col] = pd.cut(data[col], bins=20, labels=False, duplicates='drop')
                 except Exception as e:
