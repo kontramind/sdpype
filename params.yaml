@@ -4,9 +4,9 @@
 # EXPERIMENT CONFIGURATION
 # =============================================================================
 experiment:
-  seed: 7
+  seed: 987
   generation: 0
-  name: "{sdg.library}_{sdg.model_type}_{data.reference_hash}_{data.root_hash}_{data.training_hash}_gen_{experiment.generation}_variant2"
+  name: "{sdg.library}_{sdg.model_type}_{data.reference_hash}_{data.root_hash}_{data.training_hash}_gen_{experiment.generation}_mimic_iii_baseline"
   description: "Testing"
   researcher: test_user
   tags:
@@ -15,18 +15,18 @@ experiment:
 # ACTIVE MODEL CONFIGURATION - Edit here or override with DVC
 # =============================================================================
 sdg:
-  library: synthcity
-  model_type: arf
-  parameters: {}
+  library: sdv
+  model_type: gaussiancopula
+  parameters:
 
 # =============================================================================
 # DATA CONFIGURATION
 # =============================================================================
 data:
-  training_file: experiments/data/processed/canada_covid19_case_details_sample_variant2_10k_seed_4242.csv
-  reference_file: experiments/data/processed/canada_covid19_case_details_sample_variant2_10k_seed_4242.csv
-  population_file: experiments/data/processed/canada_covid19_case_details_population_variant2.csv
-  metadata_file: experiments/data/processed/canada_covid19_case_details_variant2_encoded_metadata.json
+  training_file: ../downloads/mimic_iii_icu_population_transformed_sample20000_seed701408733_training.csv
+  reference_file: ../downloads/mimic_iii_icu_population_transformed_sample20000_seed701408733_training.csv
+  population_file: ../downloads/mimic_iii_icu_population_transformed.csv
+  metadata_file: ../downloads/mimic_iii_icu_population_metadata.json
 
 # =============================================================================
 # ENCODING CONFIGURATION
@@ -34,7 +34,7 @@ data:
 encoding:
   # Path to RDT encoding configuration YAML file
   # This file specifies transformers for each column
-  config_file: experiments/configs/encoding/canada_covid19_case_details_variant2.yaml
+  config_file: ../downloads/mimic_iii_icu_population_encoding.yaml
 
   # Whether to enable encoding stage (set to false to skip encoding)
   enabled: true
@@ -127,6 +127,11 @@ evaluation:
       parameters: {}
             # Override common params if needed
 
+  privacy:
+    metrics:
+      - name: dcr_baseline_protection
+        parameters: {}
+
 # Hallucination evaluation (DDR + Plausibility)
   hallucination:
-    query_file: queries/validation.sql
+    query_file: queries/mimic_iii_validation.sql
