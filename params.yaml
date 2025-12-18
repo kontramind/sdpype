@@ -129,8 +129,8 @@ evaluation:
 
   privacy:
     metrics:
-      - name: dcr_baseline_protection
-        parameters: {}
+      # - name: dcr_baseline_protection
+      #   parameters: {}
 
 # Hallucination evaluation (DDR + Plausibility)
   hallucination:
