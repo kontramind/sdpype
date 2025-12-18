@@ -1585,7 +1585,12 @@ class DCRBaselineProtectionMetric:
 
 
 class KAnonymizationMetric:
-    """k-Anonymization privacy metric implementation using synthcity"""
+    """
+    k-Anonymization privacy metric implementation using synthcity.
+
+    Uses encoded data (all numerical) and bins columns into 20 discrete groups
+    to compute k-anonymity values for real and synthetic datasets.
+    """
 
     def __init__(self, quasi_identifiers=None, **parameters):
         self.quasi_identifiers = quasi_identifiers
@@ -1593,39 +1598,34 @@ class KAnonymizationMetric:
 
     def _bin_numerical_columns(self, data: pd.DataFrame, metadata: SingleTableMetadata) -> pd.DataFrame:
         """
-        Bin numerical columns into 20 bins (like hallucination evaluation).
-        Keep categorical columns as-is.
+        Bin all columns into 20 bins for k-anonymization.
+
+        Note: Works with encoded data where all columns are numerical.
+        Binning creates discrete groups needed for k-anonymization.
 
         Args:
-            data: DataFrame to process
-            metadata: SDV metadata for column type detection
+            data: Encoded DataFrame (all numerical columns)
+            metadata: SDV metadata (not used for encoded data, but kept for consistency)
 
         Returns:
-            DataFrame with binned numerical columns
+            DataFrame with binned columns
         """
         processed = data.copy()
 
+        # Bin all columns (encoded data is all numerical)
         for col in data.columns:
-            if col not in metadata.columns:
-                continue
-
-            sdtype = metadata.columns[col]['sdtype']
-
-            # Bin numerical columns into 20 bins
-            if sdtype == 'numerical':
-                try:
-                    # Use pd.cut with 20 bins, handle duplicates gracefully
-                    processed[col] = pd.cut(
-                        data[col],
-                        bins=20,
-                        labels=False,
-                        duplicates='drop'
-                    )
-                except Exception as e:
-                    print(f"  Warning: Could not bin column {col}: {e}")
-                    # Keep original values if binning fails
-                    pass
-            # Categorical/boolean columns stay as-is
+            try:
+                # Use pd.cut with 20 bins, handle duplicates gracefully
+                processed[col] = pd.cut(
+                    data[col],
+                    bins=20,
+                    labels=False,
+                    duplicates='drop'
+                )
+            except Exception as e:
+                print(f"  Warning: Could not bin column {col}: {e}")
+                # Keep original values if binning fails
+                pass
 
         return processed
 
@@ -1652,7 +1652,12 @@ class KAnonymizationMetric:
         }
 
     def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
-        """Evaluate k-Anonymization privacy metric"""
+        """
+        Evaluate k-Anonymization privacy metric.
+
+        Note: Uses encoded data (all numerical) as required by synthcity.
+        Bins columns into 20 discrete groups for k-anonymization calculation.
+        """
         start_time = time.time()
 
         try:
@@ -1673,8 +1678,8 @@ class KAnonymizationMetric:
             real_qi = original[quasi_ids].copy()
             syn_qi = synthetic[quasi_ids].copy()
 
-            # 3. Bin numerical columns (20 bins, like hallucination)
-            print(f"  k-Anonymization: Binning numerical columns...")
+            # 3. Bin all columns into 20 bins (encoded data is all numerical)
+            print(f"  k-Anonymization: Binning columns into discrete groups...")
             real_binned = self._bin_numerical_columns(real_qi, metadata)
             syn_binned = self._bin_numerical_columns(syn_qi, metadata)
 
@@ -1879,11 +1884,11 @@ def evaluate_privacy_metrics(original: pd.DataFrame,
         "metrics": {}
     }
 
-    # Privacy metrics that need encoded data (distance-based)
-    ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
+    # Privacy metrics that need encoded data (all synthcity metrics require numerical data)
+    ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection', 'k_anonymization'}
 
-    # Privacy metrics that need decoded data (group-based, requires semantic meaning)
-    DECODED_PRIVACY_METRICS = {'k_anonymization'}
+    # Privacy metrics that need decoded data (if any in future)
+    DECODED_PRIVACY_METRICS = set()
 
     # Run each configured metric
     for metric_config in metrics_config:

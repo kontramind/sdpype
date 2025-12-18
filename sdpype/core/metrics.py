@@ -218,7 +218,7 @@ AVAILABLE_METRICS = {
             }
         },
         "k_anonymization": {
-            "description": "k-Anonymization privacy metric comparing group sizes in quasi-identifiers between synthetic and real data",
+            "description": "k-Anonymization privacy metric comparing group sizes in quasi-identifiers (uses encoded data, bins into 20 groups)",
             "library": "synthcity",
             "parameters": {
                 "quasi_identifiers": {

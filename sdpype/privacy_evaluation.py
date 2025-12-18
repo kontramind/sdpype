@@ -255,10 +255,9 @@ def main(cfg: DictConfig) -> None:
     print(f"Experiment seed: {seed}")
 
     # Define which privacy metrics need encoded vs decoded data
-    # DCR and other distance-based privacy metrics need encoded data
-    ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
-    # k-Anonymization and other group-based metrics need decoded data
-    DECODED_PRIVACY_METRICS = {'k_anonymization'}
+    # All synthcity privacy metrics need encoded data (numerical format required)
+    ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection', 'k_anonymization'}
+    DECODED_PRIVACY_METRICS = set()
 
     # Define data paths
     encoded_reference = Path(f"experiments/data/encoded/reference_{experiment_name}_{config_hash}_{seed}.csv")

@@ -1336,8 +1336,9 @@ def compute_privacy_metrics_post_training(
     console.print(f"[cyan]Computing privacy metrics for generation {parsed['generation']}...[/cyan]")
 
     # Define encoded vs decoded privacy metrics
-    ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
-    DECODED_PRIVACY_METRICS = {'k_anonymization'}
+    # All synthcity privacy metrics need encoded data (numerical format required)
+    ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection', 'k_anonymization'}
+    DECODED_PRIVACY_METRICS = set()
 
     # Get metrics config first (use default if not provided)
     if config and 'evaluation' in config and 'privacy' in config['evaluation']:
