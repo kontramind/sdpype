@@ -1692,6 +1692,13 @@ class KAnonymizationMetric:
 
         print(f"  DEBUG: Binning complete - {binned_count} columns binned, {kept_count} columns kept as-is")
 
+        # DEBUG: Check if binning actually worked
+        print(f"  DEBUG: After binning - checking first few values:")
+        for col in list(processed.columns)[:5]:  # Check first 5 columns
+            unique_vals = processed[col].nunique()
+            sample_vals = processed[col].head(3).tolist()
+            print(f"    {col}: unique={unique_vals}, sample={sample_vals}")
+
         return processed
 
     def _compute_distribution_stats(self, data: pd.DataFrame) -> Dict[str, Any]:
