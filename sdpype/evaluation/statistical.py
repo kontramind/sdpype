@@ -1937,9 +1937,14 @@ def evaluate_privacy_metrics(original: pd.DataFrame,
         if metric_name in ENCODED_PRIVACY_METRICS:
             # Use encoded data for distance-based privacy metrics
             if reference_data_encoded is None or synthetic_data_encoded is None:
-                print(f"⚠️  Metric {metric_name} needs encoded data but not available, using default")
-                ref_data = original
-                syn_data = synthetic
+                error_msg = f"Metric {metric_name} requires encoded data but encoded data is not available. Run encode_evaluation stage first."
+                print(f"❌ ERROR: {error_msg}")
+                results["metrics"][metric_name] = {
+                    "status": "error",
+                    "error_message": error_msg,
+                    "parameters": parameters
+                }
+                continue  # Skip this metric
             else:
                 print(f"📊 Routing {metric_name} to ENCODED data")
                 ref_data = reference_data_encoded
@@ -1947,9 +1952,14 @@ def evaluate_privacy_metrics(original: pd.DataFrame,
         elif metric_name in DECODED_PRIVACY_METRICS:
             # Use decoded data for other privacy metrics
             if reference_data_decoded is None or synthetic_data_decoded is None:
-                print(f"⚠️  Metric {metric_name} needs decoded data but not available, using default")
-                ref_data = original
-                syn_data = synthetic
+                error_msg = f"Metric {metric_name} requires decoded data but decoded data is not available."
+                print(f"❌ ERROR: {error_msg}")
+                results["metrics"][metric_name] = {
+                    "status": "error",
+                    "error_message": error_msg,
+                    "parameters": parameters
+                }
+                continue  # Skip this metric
             else:
                 print(f"📊 Routing {metric_name} to DECODED data")
                 ref_data = reference_data_decoded

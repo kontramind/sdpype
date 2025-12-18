@@ -276,8 +276,22 @@ def main(cfg: DictConfig) -> None:
     # Load data based on metric requirements
     if needs_encoding:
         print(f"📊 Loading encoded data for distance-based privacy metrics...")
-        reference_encoded = pd.read_csv(encoded_reference)
-        synthetic_encoded = pd.read_csv(encoded_synthetic)
+        try:
+            if not encoded_reference.exists():
+                raise FileNotFoundError(f"Encoded reference file not found: {encoded_reference}")
+            if not encoded_synthetic.exists():
+                raise FileNotFoundError(f"Encoded synthetic file not found: {encoded_synthetic}")
+
+            reference_encoded = pd.read_csv(encoded_reference)
+            synthetic_encoded = pd.read_csv(encoded_synthetic)
+            print(f"   ✓ Loaded encoded reference: {reference_encoded.shape}")
+            print(f"   ✓ Loaded encoded synthetic: {synthetic_encoded.shape}")
+        except Exception as e:
+            print(f"❌ ERROR: Failed to load encoded data: {e}")
+            print(f"   Metrics requiring encoded data (k_anonymization, dcr_baseline_protection) will fail.")
+            print(f"   Please ensure the encode_evaluation DVC stage has been run.")
+            reference_encoded = None
+            synthetic_encoded = None
     else:
         reference_encoded = None
         synthetic_encoded = None
