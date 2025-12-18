@@ -1754,6 +1754,9 @@ class KAnonymizationMetric:
                 "status": "success"
             }
         except Exception as e:
+            import traceback
+            full_traceback = traceback.format_exc()
+            print(f"\n❌ k-Anonymization Error Details:\n{full_traceback}")
             return {
                 "score": 0.0,
                 "k_real": 0.0,
