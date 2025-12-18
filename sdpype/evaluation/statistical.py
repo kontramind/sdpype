@@ -1725,6 +1725,12 @@ class KAnonymizationMetric:
             real_binned = self._bin_numerical_columns(real_qi, metadata, encoding_config)
             syn_binned = self._bin_numerical_columns(syn_qi, metadata, encoding_config)
 
+            # DEBUG: Check binned data characteristics
+            print(f"  DEBUG: real_binned shape={real_binned.shape}, unique combinations={len(real_binned.drop_duplicates())}")
+            print(f"  DEBUG: syn_binned shape={syn_binned.shape}, unique combinations={len(syn_binned.drop_duplicates())}")
+            print(f"  DEBUG: real_binned sample:\n{real_binned.head()}")
+            print(f"  DEBUG: real_binned value counts (first col): {real_binned.iloc[:, 0].value_counts().head()}")
+
             # 4. Wrap in synthcity DataLoaders
             loader_real = GenericDataLoader(real_binned)
             loader_syn = GenericDataLoader(syn_binned)
@@ -1735,6 +1741,12 @@ class KAnonymizationMetric:
             k_real = evaluator.evaluate_data(loader_real)
             k_syn = evaluator.evaluate_data(loader_syn)
             k_ratio = evaluator.evaluate_default(loader_real, loader_syn)
+
+            # DEBUG: Print what synthcity actually returned
+            print(f"  DEBUG: k_real type={type(k_real)}, value={k_real}")
+            print(f"  DEBUG: k_syn type={type(k_syn)}, value={k_syn}")
+            print(f"  DEBUG: k_ratio type={type(k_ratio)}, value={k_ratio}")
+            print(f"  DEBUG: Manual ratio calculation: {k_syn}/{k_real} = {k_syn/k_real if k_real != 0 else 'undefined'}")
 
             # 6. Get distribution statistics
             dist_real = self._compute_distribution_stats(real_binned)
