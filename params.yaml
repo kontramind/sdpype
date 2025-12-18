@@ -130,3 +130,15 @@ evaluation:
 # Hallucination evaluation (DDR + Plausibility)
   hallucination:
     query_file: queries/validation.sql
+
+  # Privacy evaluation
+  privacy:
+    metrics:
+      - name: dcr_baseline_protection
+        parameters: {}
+      - name: k_anonymization
+        parameters:
+          quasi_identifiers:  # List of column names, or null to use all columns
+            # - AGE
+            # - GENDER
+            # - ETHNICITY_GROUPED

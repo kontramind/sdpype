@@ -528,6 +528,43 @@ def display_privacy_metrics(results: Dict[str, Any]):
 
         console.print(dcr_table)
 
+    # k-Anonymization
+    if "k_anonymization" in metrics and metrics["k_anonymization"]["status"] == "success":
+        k_result = metrics["k_anonymization"]
+        params_info = k_result["parameters"]
+        quasi_ids = k_result.get("quasi_identifiers", [])
+        num_qi = len(quasi_ids) if quasi_ids else 0
+        params_display = f"{num_qi} quasi-identifiers" if num_qi > 0 else "all columns"
+
+        k_table = Table(title=f"✅ k-Anonymization Results ({params_display})", show_header=True, header_style="bold blue")
+        k_table.add_column("Metric", style="cyan", no_wrap=True)
+        k_table.add_column("Value", style="bright_green", justify="right")
+        k_table.add_column("Interpretation", style="yellow")
+
+        # Overall k-anonymization ratio
+        k_ratio = k_result['k_ratio']
+        interpretation = "Excellent" if k_ratio > 1.5 else "Good" if k_ratio > 1.0 else "Moderate" if k_ratio > 0.7 else "Needs Improvement"
+        k_table.add_row("k-Anonymization Ratio", f"{k_ratio:.3f}", interpretation)
+
+        k_table.add_section()
+
+        # k values
+        k_table.add_row("k (Real Data)", f"{k_result['k_real']:.0f}", "")
+        k_table.add_row("k (Synthetic Data)", f"{k_result['k_synthetic']:.0f}", "Higher is better")
+
+        # Distribution stats if available
+        dist_real = k_result.get("distribution_real", {})
+        dist_syn = k_result.get("distribution_synthetic", {})
+
+        if dist_real and dist_syn:
+            k_table.add_section()
+            k_table.add_row("Mean Group Size (Real)", f"{dist_real.get('mean', 0):.1f}", "")
+            k_table.add_row("Mean Group Size (Synthetic)", f"{dist_syn.get('mean', 0):.1f}", "")
+            k_table.add_row("Num Groups (Real)", f"{dist_real.get('num_unique_groups', 0):,}", "")
+            k_table.add_row("Num Groups (Synthetic)", f"{dist_syn.get('num_unique_groups', 0):,}", "")
+
+        console.print(k_table)
+
     console.print("\n✅ Privacy metrics evaluation completed", style="bold green")
 
 
@@ -1300,7 +1337,7 @@ def compute_privacy_metrics_post_training(
 
     # Define encoded vs decoded privacy metrics
     ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
-    DECODED_PRIVACY_METRICS = set()
+    DECODED_PRIVACY_METRICS = {'k_anonymization'}
 
     # Get metrics config first (use default if not provided)
     if config and 'evaluation' in config and 'privacy' in config['evaluation']:

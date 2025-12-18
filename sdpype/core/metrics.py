@@ -216,6 +216,25 @@ AVAILABLE_METRICS = {
                 "good": "> 0.6",
                 "moderate": "> 0.4"
             }
+        },
+        "k_anonymization": {
+            "description": "k-Anonymization privacy metric comparing group sizes in quasi-identifiers between synthetic and real data",
+            "library": "synthcity",
+            "parameters": {
+                "quasi_identifiers": {
+                    "type": "list",
+                    "default": None,
+                    "description": "List of column names to use as quasi-identifiers (None = use all columns)"
+                }
+            },
+            "outputs": ["score", "k_real", "k_synthetic", "k_ratio", "distribution_real", "distribution_synthetic", "quasi_identifiers"],
+            "reference": "Synthcity library - Privacy metric measuring k-anonymity preservation in synthetic data",
+            "direction": "maximize",
+            "interpretation": {
+                "excellent": "> 1.5",
+                "good": "> 1.0",
+                "moderate": "> 0.7"
+            }
         }
     }
 }

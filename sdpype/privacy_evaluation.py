@@ -91,18 +91,108 @@ def _display_privacy_tables(results: dict) -> None:
 
     console.print(privacy_table)
 
+    # k-Anonymization table
+    k_anon_result = metrics_data.get("k_anonymization", {})
+
+    if k_anon_result and k_anon_result.get("status") == "success":
+        k_ratio = k_anon_result.get("k_ratio", 0.0)
+        k_real = k_anon_result.get("k_real", 0.0)
+        k_synthetic = k_anon_result.get("k_synthetic", 0.0)
+
+        # Interpret k-anonymization score
+        if k_ratio > 1.5:
+            interpretation = "Excellent"
+        elif k_ratio > 1.0:
+            interpretation = "Good"
+        elif k_ratio > 0.7:
+            interpretation = "Moderate"
+        else:
+            interpretation = "Poor"
+
+        k_table = Table(
+            title="📊 k-Anonymization Results",
+            show_header=True,
+            header_style="bold blue"
+        )
+        k_table.add_column("Metric", style="cyan", no_wrap=True)
+        k_table.add_column("Value", style="bright_green", justify="right")
+        k_table.add_column("Interpretation", style="yellow")
+
+        k_table.add_row(
+            "k-Anonymization Ratio",
+            f"{k_ratio:.3f}",
+            interpretation
+        )
+        k_table.add_row(
+            "k (Real Data)",
+            f"{k_real:.0f}",
+            ""
+        )
+        k_table.add_row(
+            "k (Synthetic Data)",
+            f"{k_synthetic:.0f}",
+            "Higher is better"
+        )
+
+        # Add distribution statistics if available
+        dist_real = k_anon_result.get("distribution_real", {})
+        dist_syn = k_anon_result.get("distribution_synthetic", {})
+
+        if dist_real and dist_syn:
+            k_table.add_section()
+            k_table.add_row(
+                "Mean Group Size (Real)",
+                f"{dist_real.get('mean', 0):.1f}",
+                ""
+            )
+            k_table.add_row(
+                "Mean Group Size (Synthetic)",
+                f"{dist_syn.get('mean', 0):.1f}",
+                ""
+            )
+            k_table.add_row(
+                "Num Groups (Real)",
+                f"{dist_real.get('num_unique_groups', 0):,}",
+                ""
+            )
+            k_table.add_row(
+                "Num Groups (Synthetic)",
+                f"{dist_syn.get('num_unique_groups', 0):,}",
+                ""
+            )
+
+        console.print("\n")
+        console.print(k_table)
+    elif k_anon_result and k_anon_result.get("status") == "error":
+        error_msg = k_anon_result.get("error_message", "Unknown error")
+        console.print(f"\n[red]❌ k-Anonymization Error: {error_msg}[/red]")
+
     # Add interpretation guide
-    guide_panel = Panel.fit(
-        """🔒 DCR Privacy Metric Guide:
+    guide_text = """🔒 Privacy Metrics Guide:
+
+DCR Baseline Protection:
 • Privacy Score = How well synthetic data protects individual record privacy
 • Score > 0.8 = Excellent privacy protection
 • Score > 0.6 = Good privacy protection
 • Score > 0.4 = Moderate privacy protection
-• Score ≤ 0.4 = Poor privacy protection
-
 • Median DCR (Synthetic) = Distance from synthetic records to nearest real record
 • Median DCR (Random) = Distance from random baseline to nearest real record
-• Higher distances indicate better privacy protection""",
+• Higher distances indicate better privacy protection"""
+
+    # Add k-Anonymization guide if metric was computed
+    if k_anon_result and k_anon_result.get("status") == "success":
+        guide_text += """
+
+k-Anonymization:
+• k-Ratio = k_synthetic / k_real (comparison of anonymity levels)
+• k-Ratio > 1.5 = Excellent (synthetic is much more private)
+• k-Ratio > 1.0 = Good (synthetic is at least as private)
+• k-Ratio > 0.7 = Moderate (synthetic is somewhat less private)
+• k (Real/Synthetic) = Minimum group size in quasi-identifier groups
+• Higher k values = Better privacy (records are hidden in larger groups)"""
+
+    guide_panel = Panel.fit(
+        guide_text,
         title="📖 Privacy Metrics Guide",
         border_style="blue"
     )
@@ -167,7 +257,8 @@ def main(cfg: DictConfig) -> None:
     # Define which privacy metrics need encoded vs decoded data
     # DCR and other distance-based privacy metrics need encoded data
     ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
-    DECODED_PRIVACY_METRICS = set()
+    # k-Anonymization and other group-based metrics need decoded data
+    DECODED_PRIVACY_METRICS = {'k_anonymization'}
 
     # Define data paths
     encoded_reference = Path(f"experiments/data/encoded/reference_{experiment_name}_{config_hash}_{seed}.csv")

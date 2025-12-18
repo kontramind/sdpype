@@ -1584,6 +1584,145 @@ class DCRBaselineProtectionMetric:
             }
 
 
+class KAnonymizationMetric:
+    """k-Anonymization privacy metric implementation using synthcity"""
+
+    def __init__(self, quasi_identifiers=None, **parameters):
+        self.quasi_identifiers = quasi_identifiers
+        self.parameters = parameters
+
+    def _bin_numerical_columns(self, data: pd.DataFrame, metadata: SingleTableMetadata) -> pd.DataFrame:
+        """
+        Bin numerical columns into 20 bins (like hallucination evaluation).
+        Keep categorical columns as-is.
+
+        Args:
+            data: DataFrame to process
+            metadata: SDV metadata for column type detection
+
+        Returns:
+            DataFrame with binned numerical columns
+        """
+        processed = data.copy()
+
+        for col in data.columns:
+            if col not in metadata.columns:
+                continue
+
+            sdtype = metadata.columns[col]['sdtype']
+
+            # Bin numerical columns into 20 bins
+            if sdtype == 'numerical':
+                try:
+                    # Use pd.cut with 20 bins, handle duplicates gracefully
+                    processed[col] = pd.cut(
+                        data[col],
+                        bins=20,
+                        labels=False,
+                        duplicates='drop'
+                    )
+                except Exception as e:
+                    print(f"  Warning: Could not bin column {col}: {e}")
+                    # Keep original values if binning fails
+                    pass
+            # Categorical/boolean columns stay as-is
+
+        return processed
+
+    def _compute_distribution_stats(self, data: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Compute k-anonymity distribution statistics across all groups.
+
+        Args:
+            data: Binned DataFrame with quasi-identifiers
+
+        Returns:
+            Dictionary with distribution statistics
+        """
+        # Group by all columns and count group sizes
+        group_sizes = data.groupby(list(data.columns), dropna=False).size()
+
+        return {
+            "min": int(group_sizes.min()),
+            "mean": float(group_sizes.mean()),
+            "median": float(group_sizes.median()),
+            "max": int(group_sizes.max()),
+            "std": float(group_sizes.std()),
+            "num_unique_groups": int(len(group_sizes))
+        }
+
+    def evaluate(self, original: pd.DataFrame, synthetic: pd.DataFrame, metadata: SingleTableMetadata, encoding_config: dict = None) -> Dict[str, Any]:
+        """Evaluate k-Anonymization privacy metric"""
+        start_time = time.time()
+
+        try:
+            # Import synthcity components
+            from synthcity.plugins.core.dataloader import GenericDataLoader
+            from synthcity.metrics.eval_privacy import kAnonymization
+
+            # 1. Get quasi-identifiers (from params or all columns)
+            quasi_ids = self.quasi_identifiers
+            if quasi_ids is None:
+                # Use all columns as quasi-identifiers
+                quasi_ids = list(original.columns)
+                print(f"  k-Anonymization: Using all {len(quasi_ids)} columns as quasi-identifiers")
+            else:
+                print(f"  k-Anonymization: Using {len(quasi_ids)} specified quasi-identifiers: {quasi_ids}")
+
+            # 2. Subset to quasi-identifiers only
+            real_qi = original[quasi_ids].copy()
+            syn_qi = synthetic[quasi_ids].copy()
+
+            # 3. Bin numerical columns (20 bins, like hallucination)
+            print(f"  k-Anonymization: Binning numerical columns...")
+            real_binned = self._bin_numerical_columns(real_qi, metadata)
+            syn_binned = self._bin_numerical_columns(syn_qi, metadata)
+
+            # 4. Wrap in synthcity DataLoaders
+            loader_real = GenericDataLoader(real_binned)
+            loader_syn = GenericDataLoader(syn_binned)
+
+            # 5. Compute k-anonymity
+            print(f"  k-Anonymization: Computing k-anonymity values...")
+            evaluator = kAnonymization()
+            k_real = evaluator.evaluate_data(loader_real)
+            k_syn = evaluator.evaluate_data(loader_syn)
+            k_ratio = evaluator.evaluate_default(loader_real, loader_syn)
+
+            # 6. Get distribution statistics
+            dist_real = self._compute_distribution_stats(real_binned)
+            dist_syn = self._compute_distribution_stats(syn_binned)
+
+            return {
+                "score": float(k_ratio),
+                "k_real": float(k_real),
+                "k_synthetic": float(k_syn),
+                "k_ratio": float(k_ratio),
+                "distribution_real": dist_real,
+                "distribution_synthetic": dist_syn,
+                "quasi_identifiers": quasi_ids,
+                "num_quasi_identifiers": len(quasi_ids),
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "score": 0.0,
+                "k_real": 0.0,
+                "k_synthetic": 0.0,
+                "k_ratio": 0.0,
+                "distribution_real": {},
+                "distribution_synthetic": {},
+                "quasi_identifiers": self.quasi_identifiers or [],
+                "num_quasi_identifiers": 0,
+                "parameters": self.parameters,
+                "execution_time": time.time() - start_time,
+                "status": "error",
+                "error_message": str(e)
+            }
+
+
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
@@ -1743,8 +1882,8 @@ def evaluate_privacy_metrics(original: pd.DataFrame,
     # Privacy metrics that need encoded data (distance-based)
     ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
 
-    # Privacy metrics that need decoded data (if any in future)
-    DECODED_PRIVACY_METRICS = set()
+    # Privacy metrics that need decoded data (group-based, requires semantic meaning)
+    DECODED_PRIVACY_METRICS = {'k_anonymization'}
 
     # Run each configured metric
     for metric_config in metrics_config:
@@ -1833,6 +1972,8 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return JensenShannonNannyMLMetric(**parameters)
         case "dcr_baseline_protection":
             return DCRBaselineProtectionMetric(**parameters)
+        case "k_anonymization":
+            return KAnonymizationMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -2475,19 +2616,70 @@ Privacy Metrics Results
   Error: {dcr_result.get('error_message', 'Unknown error')}
 """
 
+    # k-Anonymization results
+    if "k_anonymization" in metrics:
+        k_result = metrics["k_anonymization"]
+        if k_result["status"] == "success":
+            params_info = k_result["parameters"]
+            quasi_ids = k_result.get("quasi_identifiers", [])
+            num_qi = len(quasi_ids) if quasi_ids else 0
+            params_display = f"{num_qi} quasi-identifiers" if num_qi > 0 else "all columns"
+
+            k_ratio = k_result['k_ratio']
+            interpretation = "Excellent" if k_ratio > 1.5 else "Good" if k_ratio > 1.0 else "Moderate" if k_ratio > 0.7 else "Needs Improvement"
+
+            dist_real = k_result.get("distribution_real", {})
+            dist_syn = k_result.get("distribution_synthetic", {})
+
+            report += f"""
+k-Anonymization Results:
+  Parameters: {params_display}
+  Execution time: {k_result['execution_time']:.2f}s
+
+  Privacy Metrics:
+  → k-Anonymization Ratio:  {k_ratio:.3f} ({interpretation})
+  → k (Real Data):          {k_result['k_real']:.0f}
+  → k (Synthetic Data):     {k_result['k_synthetic']:.0f}
+
+  Distribution Statistics:
+  → Mean Group Size (Real):      {dist_real.get('mean', 0):.1f}
+  → Mean Group Size (Synthetic): {dist_syn.get('mean', 0):.1f}
+  → Num Groups (Real):           {dist_real.get('num_unique_groups', 0):,}
+  → Num Groups (Synthetic):      {dist_syn.get('num_unique_groups', 0):,}
+
+  Note: k-Ratio > 1.0 means synthetic data is more private than real data
+        Higher k values = Better privacy (records hidden in larger groups)
+"""
+        else:
+            report += f"""
+k-Anonymization: ERROR
+  Error: {k_result.get('error_message', 'Unknown error')}
+"""
+
     # Assessment
     insights = []
 
     if "dcr_baseline_protection" in metrics and metrics["dcr_baseline_protection"]["status"] == "success":
         dcr_score = metrics["dcr_baseline_protection"]["score"]
         if dcr_score > 0.8:
-            insights.append("Excellent privacy protection")
+            insights.append("Excellent DCR privacy protection")
         elif dcr_score > 0.6:
-            insights.append("Good privacy protection")
+            insights.append("Good DCR privacy protection")
         elif dcr_score > 0.4:
-            insights.append("Moderate privacy protection")
+            insights.append("Moderate DCR privacy protection")
         else:
-            insights.append("Privacy protection needs improvement")
+            insights.append("DCR privacy protection needs improvement")
+
+    if "k_anonymization" in metrics and metrics["k_anonymization"]["status"] == "success":
+        k_ratio = metrics["k_anonymization"]["k_ratio"]
+        if k_ratio > 1.5:
+            insights.append("Excellent k-anonymization")
+        elif k_ratio > 1.0:
+            insights.append("Good k-anonymization")
+        elif k_ratio > 0.7:
+            insights.append("Moderate k-anonymization")
+        else:
+            insights.append("k-anonymization needs improvement")
 
     assessment = ", ".join(insights) if insights else "No successful privacy metrics"
 
