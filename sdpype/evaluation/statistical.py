@@ -1621,6 +1621,17 @@ class KAnonymizationMetric:
         """
         processed = data.copy()
 
+        # DEBUG: Check encoding_config structure
+        print(f"  DEBUG: encoding_config is None: {encoding_config is None}")
+        if encoding_config:
+            print(f"  DEBUG: encoding_config keys: {encoding_config.keys()}")
+            transformers_dict = encoding_config.get('transformers', {})
+            print(f"  DEBUG: transformers dict has {len(transformers_dict)} entries")
+            if transformers_dict:
+                first_col = list(transformers_dict.keys())[0]
+                first_transformer = transformers_dict[first_col]
+                print(f"  DEBUG: Sample transformer ({first_col}): type={type(first_transformer)}, value={first_transformer}")
+
         # If no encoding config, bin all columns (fallback behavior)
         if encoding_config is None:
             print(f"  Warning: No encoding_config provided, binning all columns")
@@ -1638,12 +1649,16 @@ class KAnonymizationMetric:
         transformers = encoding_config.get('transformers', {})
 
         # Bin only columns that were originally numerical (FloatFormatter)
+        binned_count = 0
+        kept_count = 0
         for col in data.columns:
             # Check if column has transformer info
             if col not in transformers:
                 # No transformer info - bin it as fallback
+                print(f"  DEBUG: {col} - NOT in transformers, binning as fallback")
                 try:
                     processed[col] = pd.cut(data[col], bins=20, labels=False, duplicates='drop')
+                    binned_count += 1
                 except Exception as e:
                     print(f"  Warning: Could not bin column {col}: {e}")
                 continue
@@ -1654,20 +1669,28 @@ class KAnonymizationMetric:
             # Check instance type: only bin FloatFormatter (numerical)
             # Skip UniformEncoder (categorical) - already discrete labels
             if isinstance(transformer_instance, FloatFormatter):
+                print(f"  DEBUG: {col} - FloatFormatter detected, BINNING into 20 groups")
                 try:
                     # Bin numerical column into 20 groups
                     processed[col] = pd.cut(data[col], bins=20, labels=False, duplicates='drop')
+                    binned_count += 1
                 except Exception as e:
                     print(f"  Warning: Could not bin column {col}: {e}")
             elif isinstance(transformer_instance, UniformEncoder):
+                print(f"  DEBUG: {col} - UniformEncoder detected, KEEPING as-is")
                 # Keep categorical labels as-is (already discrete: 0, 1, 2, ...)
+                kept_count += 1
                 pass  # processed[col] already has the original encoded values
             else:
+                print(f"  DEBUG: {col} - Unknown transformer type {type(transformer_instance)}, binning as fallback")
                 # Unknown transformer type - bin as fallback
                 try:
                     processed[col] = pd.cut(data[col], bins=20, labels=False, duplicates='drop')
+                    binned_count += 1
                 except Exception as e:
                     print(f"  Warning: Could not bin column {col}: {e}")
+
+        print(f"  DEBUG: Binning complete - {binned_count} columns binned, {kept_count} columns kept as-is")
 
         return processed
 
