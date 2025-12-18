@@ -24,6 +24,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from sdv.metadata import SingleTableMetadata
+from joblib import Parallel, delayed
 
 from sdpype.evaluation.statistical import evaluate_statistical_metrics, generate_statistical_report, evaluate_privacy_metrics, generate_privacy_report
 from sdpype.evaluation.detection import evaluate_detection_metrics, generate_detection_report, ensure_json_serializable
@@ -1468,6 +1469,228 @@ def save_metrics(
         console.print(f"[yellow]Warning: Could not generate report: {e}[/yellow]")
 
 
+def process_single_folder(
+    exp_folder: Path,
+    metadata_path_override: Optional[Path],
+    generation_filter: Optional[int],
+    config_data: Optional[Dict[str, Any]],
+    force: bool,
+    show_tables: bool,
+    user_specified_metrics: bool,
+    metrics: List[MetricType]
+) -> Dict[str, Any]:
+    """
+    Process a single experiment folder.
+
+    This function is extracted to enable parallel processing of multiple folders.
+
+    Args:
+        exp_folder: Path to experiment folder
+        metadata_path_override: User-specified metadata path (from --metadata)
+        generation_filter: If specified, only process this generation
+        config_data: Configuration dictionary (from --config)
+        force: Whether to overwrite existing metrics
+        show_tables: Whether to display Rich tables
+        user_specified_metrics: Whether user explicitly specified --metrics
+        metrics: List of metric types to compute
+
+    Returns:
+        Dictionary with processing results: {
+            'folder': exp_folder,
+            'success': bool,
+            'generations_processed': int,
+            'error': Optional[str]
+        }
+    """
+    try:
+        console.print(f"\n[bold]Processing folder: {exp_folder}[/bold]")
+
+        # Load config for metadata discovery
+        # If user provided partial config (e.g., metrics_only.yaml), try to load checkpoint config
+        # for metadata path and other missing data paths
+        effective_config = config_data
+        checkpoint_config = None
+
+        if not metadata_path_override:
+            # Try to load checkpoint config for metadata discovery (even if user provided partial config)
+            checkpoint_config = load_generation_config(exp_folder, generation_filter if generation_filter is not None else 0)
+
+            # If no user config, use checkpoint config entirely
+            if not effective_config:
+                effective_config = checkpoint_config
+            # If user config exists, deep merge with checkpoint config
+            # User config takes precedence for overlapping keys (including metric lists)
+            elif checkpoint_config:
+                # Deep merge: checkpoint provides defaults, user config overrides
+                effective_config = deep_merge_configs(checkpoint_config, effective_config)
+                console.print("[dim]Merged user config with checkpoint config[/dim]")
+
+        # Debug: Show key config paths
+        if effective_config:
+            if 'data' in effective_config:
+                console.print(f"[dim]Config data paths:[/dim]")
+                if 'population_file' in effective_config['data']:
+                    console.print(f"[dim]  population_file: {effective_config['data']['population_file']}[/dim]")
+                if 'training_file' in effective_config['data']:
+                    console.print(f"[dim]  training_file: {effective_config['data']['training_file']}[/dim]")
+                if 'reference_file' in effective_config['data']:
+                    console.print(f"[dim]  reference_file: {effective_config['data']['reference_file']}[/dim]")
+            if 'encoding' in effective_config and 'config_file' in effective_config['encoding']:
+                console.print(f"[dim]  encoding_config: {effective_config['encoding']['config_file']}[/dim]")
+            if 'evaluation' in effective_config and 'statistical_similarity' in effective_config['evaluation']:
+                metrics_list = effective_config['evaluation']['statistical_similarity'].get('metrics', [])
+                metric_names = [m.get('name') for m in metrics_list if isinstance(m, dict)]
+                console.print(f"[dim]  statistical_metrics: {metric_names}[/dim]")
+
+        # Find metadata file
+        # Priority: --metadata flag > config['data']['metadata_file'] > checkpoint config > auto-discovery
+        metadata_path = metadata_path_override if metadata_path_override else find_metadata_file(exp_folder, effective_config)
+        if not metadata_path:
+            error_msg = f"Could not find metadata.json for {exp_folder}"
+            console.print(f"[red]Error: {error_msg}[/red]")
+            console.print("[yellow]Specify with --metadata option or ensure checkpoint params exist[/yellow]")
+            return {
+                'folder': exp_folder,
+                'success': False,
+                'generations_processed': 0,
+                'error': error_msg
+            }
+
+        console.print(f"Using metadata: {metadata_path}")
+        metadata_obj = SingleTableMetadata.load_from_json(str(metadata_path))
+
+        # Discover generations
+        generations = discover_generation_files(exp_folder, generation_filter)
+        if not generations:
+            warning_msg = f"No generations found in {exp_folder}"
+            console.print(f"[yellow]Warning: {warning_msg}[/yellow]")
+            return {
+                'folder': exp_folder,
+                'success': True,
+                'generations_processed': 0,
+                'error': warning_msg
+            }
+
+        console.print(f"Found {len(generations)} generation(s) to process")
+
+        # Determine which metrics to compute
+        # If user explicitly specified --metrics flag, use their choice
+        # Otherwise, auto-detect from config structure
+        if user_specified_metrics:
+            # User explicitly specified metrics via --metrics flag
+            metric_values = [m.value for m in metrics]
+            compute_all = MetricType.all.value in metric_values
+            compute_statistical = compute_all or MetricType.statistical.value in metric_values
+            compute_detection = compute_all or MetricType.detection.value in metric_values
+            compute_hallucination = compute_all or MetricType.hallucination.value in metric_values
+            compute_privacy = compute_all or MetricType.privacy.value in metric_values
+        else:
+            # Auto-detect from config structure
+            # Use the USER'S config (config_data), not effective_config
+            # This ensures we only compute what the user explicitly configured
+            # (effective_config includes merged checkpoint data which has all metric types)
+            compute_statistical = False
+            compute_detection = False
+            compute_hallucination = False
+            compute_privacy = False
+
+            if config_data and 'evaluation' in config_data:
+                eval_config = config_data['evaluation']
+
+                # Check for statistical metrics configuration
+                if 'statistical_similarity' in eval_config:
+                    compute_statistical = True
+                    console.print("[dim]Auto-detected: statistical metrics configured[/dim]")
+
+                # Check for detection metrics configuration
+                if 'detection_evaluation' in eval_config:
+                    compute_detection = True
+                    console.print("[dim]Auto-detected: detection metrics configured[/dim]")
+
+                # Check for hallucination metrics configuration
+                if 'hallucination' in eval_config:
+                    compute_hallucination = True
+                    console.print("[dim]Auto-detected: hallucination metrics configured[/dim]")
+
+                # Check for privacy metrics configuration
+                if 'privacy' in eval_config:
+                    compute_privacy = True
+                    console.print("[dim]Auto-detected: privacy metrics configured[/dim]")
+
+            # If no config provided or no evaluation section, fall back to computing all
+            if not config_data or not (compute_statistical or compute_detection or compute_hallucination or compute_privacy):
+                if not config_data:
+                    console.print("[dim]No config provided, computing all metrics[/dim]")
+                else:
+                    console.print("[dim]No metric configuration found, computing all metrics[/dim]")
+                compute_statistical = True
+                compute_detection = True
+                compute_hallucination = True
+                compute_privacy = True
+
+        # Process each generation
+        generations_processed = 0
+        for gen_info in generations:
+            model_id = gen_info['model_id']
+            parsed = gen_info['parsed']
+            gen_num = gen_info['generation']
+
+            console.print(f"\n[bold yellow]Generation {gen_num}[/bold yellow] ({model_id})")
+
+            # Use effective_config (merged user + checkpoint config) for all metrics
+            # This ensures data paths, encoding config, etc. are available
+
+            # Compute metrics
+            if compute_statistical:
+                results = compute_statistical_metrics_post_training(
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
+                )
+                if results:
+                    save_metrics(exp_folder, model_id, "statistical_similarity", results)
+
+            if compute_detection:
+                results = compute_detection_metrics_post_training(
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
+                )
+                if results:
+                    save_metrics(exp_folder, model_id, "detection_evaluation", results)
+
+            if compute_hallucination:
+                results = compute_hallucination_metrics_post_training(
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
+                )
+                if results:
+                    save_metrics(exp_folder, model_id, "hallucination", results)
+
+            if compute_privacy:
+                results = compute_privacy_metrics_post_training(
+                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
+                )
+                if results:
+                    save_metrics(exp_folder, model_id, "privacy", results)
+
+            generations_processed += 1
+
+        return {
+            'folder': exp_folder,
+            'success': True,
+            'generations_processed': generations_processed,
+            'error': None
+        }
+
+    except Exception as e:
+        error_msg = f"Error processing folder {exp_folder}: {str(e)}"
+        console.print(f"[red]{error_msg}[/red]")
+        import traceback
+        traceback.print_exc()
+        return {
+            'folder': exp_folder,
+            'success': False,
+            'generations_processed': 0,
+            'error': error_msg
+        }
+
+
 @app.command()
 def main(
     folder: Annotated[
@@ -1539,7 +1762,14 @@ def main(
             "--show-tables/--no-show-tables",
             help="Display Rich tables in terminal (default: True)"
         )
-    ] = True
+    ] = True,
+    n_jobs: Annotated[
+        int,
+        typer.Option(
+            "--n-jobs",
+            help="Number of parallel jobs for folder processing (1=sequential, -1=all CPUs)"
+        )
+    ] = 1
 ):
     """
     [bold cyan]Compute metrics on experiment folders post-training[/bold cyan]
@@ -1563,11 +1793,27 @@ def main(
       # Compute specific metrics
       python compute_metrics_cli.py --folder ./exp/ --metrics statistical --metrics detection
 
-      # Batch process multiple folders
+      # Batch process multiple folders (sequential)
       python compute_metrics_cli.py --folders-pattern "./mimic_*dseed233*/"
+
+      # Batch process multiple folders in parallel (8 workers)
+      python compute_metrics_cli.py --folders-pattern "./mimic_*dseed233*/" --n-jobs 8
+
+      # Use all available CPU cores for parallel processing
+      python compute_metrics_cli.py --folders-pattern "./mimic_*/" --n-jobs -1
 
       # Force recompute
       python compute_metrics_cli.py --folder ./exp/ --force
+
+    [bold]Parallelization:[/bold]
+
+      Use --n-jobs to process multiple folders in parallel:
+      • n_jobs=1 (default): Sequential processing
+      • n_jobs=N: Use N parallel workers
+      • n_jobs=-1: Use all available CPU cores
+
+      Parallelization provides near-linear speedup for batch processing.
+      Example: 20 folders on 8-core machine → ~8x faster
 
     [bold]Config Integration:[/bold]
 
@@ -1603,161 +1849,85 @@ def main(
 
     # Process each folder
     console.print(f"\n[bold cyan]Post-Training Metrics Computation[/bold cyan]")
-    console.print(f"Processing {len(folders)} folder(s)\n")
+    console.print(f"Processing {len(folders)} folder(s)")
 
-    for exp_folder in folders:
-        console.print(f"\n[bold]Processing folder: {exp_folder}[/bold]")
+    # Determine execution mode
+    if n_jobs == 1:
+        console.print("[dim]Running in sequential mode (n_jobs=1)[/dim]\n")
+        # Sequential execution (original behavior)
+        for exp_folder in folders:
+            process_single_folder(
+                exp_folder=exp_folder,
+                metadata_path_override=metadata,
+                generation_filter=generation,
+                config_data=config_data,
+                force=force,
+                show_tables=show_tables,
+                user_specified_metrics=user_specified_metrics,
+                metrics=metrics
+            )
+    else:
+        # Parallel execution
+        import multiprocessing
 
-        # Load config for metadata discovery
-        # If user provided partial config (e.g., metrics_only.yaml), try to load checkpoint config
-        # for metadata path and other missing data paths
-        effective_config = config_data
-        checkpoint_config = None
-
-        if not metadata:
-            # Try to load checkpoint config for metadata discovery (even if user provided partial config)
-            checkpoint_config = load_generation_config(exp_folder, generation if generation is not None else 0)
-
-            # If no user config, use checkpoint config entirely
-            if not effective_config:
-                effective_config = checkpoint_config
-            # If user config exists, deep merge with checkpoint config
-            # User config takes precedence for overlapping keys (including metric lists)
-            elif checkpoint_config:
-                # Deep merge: checkpoint provides defaults, user config overrides
-                effective_config = deep_merge_configs(checkpoint_config, effective_config)
-                console.print("[dim]Merged user config with checkpoint config[/dim]")
-
-        # Debug: Show key config paths
-        if effective_config:
-            if 'data' in effective_config:
-                console.print(f"[dim]Config data paths:[/dim]")
-                if 'population_file' in effective_config['data']:
-                    console.print(f"[dim]  population_file: {effective_config['data']['population_file']}[/dim]")
-                if 'training_file' in effective_config['data']:
-                    console.print(f"[dim]  training_file: {effective_config['data']['training_file']}[/dim]")
-                if 'reference_file' in effective_config['data']:
-                    console.print(f"[dim]  reference_file: {effective_config['data']['reference_file']}[/dim]")
-            if 'encoding' in effective_config and 'config_file' in effective_config['encoding']:
-                console.print(f"[dim]  encoding_config: {effective_config['encoding']['config_file']}[/dim]")
-            if 'evaluation' in effective_config and 'statistical_similarity' in effective_config['evaluation']:
-                metrics_list = effective_config['evaluation']['statistical_similarity'].get('metrics', [])
-                metric_names = [m.get('name') for m in metrics_list if isinstance(m, dict)]
-                console.print(f"[dim]  statistical_metrics: {metric_names}[/dim]")
-
-        # Find metadata file
-        # Priority: --metadata flag > config['data']['metadata_file'] > checkpoint config > auto-discovery
-        metadata_path = metadata if metadata else find_metadata_file(exp_folder, effective_config)
-        if not metadata_path:
-            console.print(f"[red]Error: Could not find metadata.json for {exp_folder}[/red]")
-            console.print("[yellow]Specify with --metadata option or ensure checkpoint params exist[/yellow]")
-            continue
-
-        console.print(f"Using metadata: {metadata_path}")
-        metadata_obj = SingleTableMetadata.load_from_json(str(metadata_path))
-
-        # Discover generations
-        generations = discover_generation_files(exp_folder, generation)
-        if not generations:
-            console.print(f"[yellow]Warning: No generations found in {exp_folder}[/yellow]")
-            continue
-
-        console.print(f"Found {len(generations)} generation(s) to process")
-
-        # Determine which metrics to compute
-        # If user explicitly specified --metrics flag, use their choice
-        # Otherwise, auto-detect from config structure
-        if user_specified_metrics:
-            # User explicitly specified metrics via --metrics flag
-            metric_values = [m.value for m in metrics]
-            compute_all = MetricType.all.value in metric_values
-            compute_statistical = compute_all or MetricType.statistical.value in metric_values
-            compute_detection = compute_all or MetricType.detection.value in metric_values
-            compute_hallucination = compute_all or MetricType.hallucination.value in metric_values
-            compute_privacy = compute_all or MetricType.privacy.value in metric_values
+        # Handle n_jobs=-1 (use all CPUs)
+        if n_jobs == -1:
+            actual_n_jobs = multiprocessing.cpu_count()
         else:
-            # Auto-detect from config structure
-            # Use the USER'S config (config_data), not effective_config
-            # This ensures we only compute what the user explicitly configured
-            # (effective_config includes merged checkpoint data which has all metric types)
-            compute_statistical = False
-            compute_detection = False
-            compute_hallucination = False
-            compute_privacy = False
+            actual_n_jobs = min(n_jobs, len(folders))  # Don't use more jobs than folders
 
-            if config_data and 'evaluation' in config_data:
-                eval_config = config_data['evaluation']
+        console.print(f"[dim]Running in parallel mode with {actual_n_jobs} workers (n_jobs={n_jobs})[/dim]")
+        console.print("[dim]Progress will be reported by joblib verbose output[/dim]\n")
 
-                # Check for statistical metrics configuration
-                if 'statistical_similarity' in eval_config:
-                    compute_statistical = True
-                    console.print("[dim]Auto-detected: statistical metrics configured[/dim]")
-
-                # Check for detection metrics configuration
-                if 'detection_evaluation' in eval_config:
-                    compute_detection = True
-                    console.print("[dim]Auto-detected: detection metrics configured[/dim]")
-
-                # Check for hallucination metrics configuration
-                if 'hallucination' in eval_config:
-                    compute_hallucination = True
-                    console.print("[dim]Auto-detected: hallucination metrics configured[/dim]")
-
-                # Check for privacy metrics configuration
-                if 'privacy' in eval_config:
-                    compute_privacy = True
-                    console.print("[dim]Auto-detected: privacy metrics configured[/dim]")
-
-            # If no config provided or no evaluation section, fall back to computing all
-            if not config_data or not (compute_statistical or compute_detection or compute_hallucination or compute_privacy):
-                if not config_data:
-                    console.print("[dim]No config provided, computing all metrics[/dim]")
-                else:
-                    console.print("[dim]No metric configuration found, computing all metrics[/dim]")
-                compute_statistical = True
-                compute_detection = True
-                compute_hallucination = True
-                compute_privacy = True
-
-        # Process each generation
-        for gen_info in generations:
-            model_id = gen_info['model_id']
-            parsed = gen_info['parsed']
-            gen_num = gen_info['generation']
-
-            console.print(f"\n[bold yellow]Generation {gen_num}[/bold yellow] ({model_id})")
-
-            # Use effective_config (merged user + checkpoint config) for all metrics
-            # This ensures data paths, encoding config, etc. are available
-
-            # Compute metrics
-            if compute_statistical:
-                results = compute_statistical_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
+        try:
+            # Run folders in parallel
+            results = Parallel(n_jobs=actual_n_jobs, backend='multiprocessing', verbose=10)(
+                delayed(process_single_folder)(
+                    exp_folder=exp_folder,
+                    metadata_path_override=metadata,
+                    generation_filter=generation,
+                    config_data=config_data,
+                    force=force,
+                    show_tables=show_tables,
+                    user_specified_metrics=user_specified_metrics,
+                    metrics=metrics
                 )
-                if results:
-                    save_metrics(exp_folder, model_id, "statistical_similarity", results)
+                for exp_folder in folders
+            )
 
-            if compute_detection:
-                results = compute_detection_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
-                )
-                if results:
-                    save_metrics(exp_folder, model_id, "detection_evaluation", results)
+            # Print summary of results
+            console.print("\n[bold cyan]Parallel Processing Summary[/bold cyan]")
+            successful = sum(1 for r in results if r['success'])
+            failed = len(results) - successful
+            total_generations = sum(r['generations_processed'] for r in results)
 
-            if compute_hallucination:
-                results = compute_hallucination_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
-                )
-                if results:
-                    save_metrics(exp_folder, model_id, "hallucination", results)
+            console.print(f"  Folders processed: {len(results)}")
+            console.print(f"  Successful: {successful}")
+            console.print(f"  Failed: {failed}")
+            console.print(f"  Total generations processed: {total_generations}")
 
-            if compute_privacy:
-                results = compute_privacy_metrics_post_training(
-                    exp_folder, model_id, parsed, metadata_obj, metadata_path, effective_config, force, show_tables
+            if failed > 0:
+                console.print("\n[yellow]Failed folders:[/yellow]")
+                for r in results:
+                    if not r['success']:
+                        console.print(f"  - {r['folder']}: {r['error']}")
+
+        except Exception as e:
+            console.print(f"\n[red]Parallel execution failed: {e}[/red]")
+            console.print("[yellow]Falling back to sequential execution...[/yellow]\n")
+
+            # Fallback to sequential execution
+            for exp_folder in folders:
+                process_single_folder(
+                    exp_folder=exp_folder,
+                    metadata_path_override=metadata,
+                    generation_filter=generation,
+                    config_data=config_data,
+                    force=force,
+                    show_tables=show_tables,
+                    user_specified_metrics=user_specified_metrics,
+                    metrics=metrics
                 )
-                if results:
-                    save_metrics(exp_folder, model_id, "privacy", results)
 
     console.print("\n[bold green]✓ Post-training metrics computation complete![/bold green]\n")
 
