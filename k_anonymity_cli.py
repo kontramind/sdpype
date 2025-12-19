@@ -2,15 +2,16 @@
 """
 K-Anonymity Evaluation CLI Tool
 
-Computes k-anonymity metrics for real and synthetic datasets using synthcity's kAnonymization.
+Computes k-anonymity metrics for multiple datasets using synthcity's kAnonymization.
+Supports population, reference, training, and synthetic datasets.
 
 Note: Synthcity uses a clustering-based approach to compute k-anonymity, which may differ
-from traditional equivalence class-based k-anonymity. Only works with numeric QI columns.
+from traditional equivalence class-based k-anonymity.
 """
 
 import json
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 
 import pandas as pd
@@ -44,10 +45,26 @@ def interpret_k_value(k: int) -> tuple[str, str]:
         return "Poor", "red"
 
 
+def interpret_ratio(ratio: float) -> str:
+    """Interpret k-ratio value."""
+    if ratio > 1.5:
+        return "Much better privacy"
+    elif ratio > 1.1:
+        return "Better privacy"
+    elif ratio > 0.9:
+        return "Similar privacy"
+    elif ratio > 0.7:
+        return "Worse privacy"
+    else:
+        return "Much worse privacy"
+
+
 @app.command()
 def main(
-    real_csv: Path = typer.Argument(..., exists=True, help="Path to real dataset CSV."),
-    synthetic_csv: Path = typer.Argument(..., exists=True, help="Path to synthetic dataset CSV."),
+    population: Optional[Path] = typer.Option(None, "--population", help="Path to population dataset CSV."),
+    reference: Optional[Path] = typer.Option(None, "--reference", help="Path to reference dataset CSV."),
+    training: Optional[Path] = typer.Option(None, "--training", help="Path to training dataset CSV."),
+    synthetic: Optional[Path] = typer.Option(None, "--synthetic", help="Path to synthetic dataset CSV."),
     qi_cols: str = typer.Option(
         ...,
         "--qi-cols",
@@ -67,157 +84,200 @@ def main(
     ),
 ):
     """
-    🔒 Compute k-anonymity metrics between real and synthetic datasets.
+    🔒 Compute k-anonymity metrics across multiple datasets.
 
-    Uses synthcity's kAnonymization metric to evaluate privacy protection.
+    Supports population, reference, training, and synthetic datasets.
+    Computes k-anonymity values for all provided datasets and k-ratios between relevant pairs.
     """
 
     # Parse QI columns
     qi_list = [c.strip() for c in qi_cols.split(",") if c.strip()]
 
+    # Collect provided datasets
+    datasets_config = {
+        "population": population,
+        "reference": reference,
+        "training": training,
+        "synthetic": synthetic
+    }
+
+    provided_datasets = {name: path for name, path in datasets_config.items() if path is not None}
+
+    # Validate at least 2 datasets provided
+    if len(provided_datasets) < 2:
+        console.print("❌ [red]Error: At least 2 datasets must be provided[/red]\n", style="red")
+        console.print("Available options:")
+        console.print("  --population <path>")
+        console.print("  --reference <path>")
+        console.print("  --training <path>")
+        console.print("  --synthetic <path>")
+        raise typer.Exit(code=1)
+
     console.print(f"\n🔍 K-Anonymity Evaluation", style="bold cyan")
-    console.print(f"Real dataset:      {real_csv}")
-    console.print(f"Synthetic dataset: {synthetic_csv}")
-    console.print(f"QI columns:        {qi_list}\n")
+    console.print(f"Datasets provided: {', '.join(provided_datasets.keys())}")
+    console.print(f"QI columns: {qi_list}\n")
 
-    # Load datasets
+    # Load all datasets
+    datasets = {}
     with console.status("[bold blue]Loading datasets..."):
-        real_df = pd.read_csv(real_csv, sep=sep)
-        syn_df = pd.read_csv(synthetic_csv, sep=sep)
+        for name, path in provided_datasets.items():
+            if not path.exists():
+                console.print(f"❌ File not found: {path}", style="red")
+                raise typer.Exit(code=1)
+            datasets[name] = pd.read_csv(path, sep=sep)
+            console.print(f"✅ Loaded {name}: {datasets[name].shape[0]:,} rows × {datasets[name].shape[1]} columns")
 
-    console.print(f"✅ Loaded real dataset: {real_df.shape[0]:,} rows × {real_df.shape[1]} columns")
-    console.print(f"✅ Loaded synthetic dataset: {syn_df.shape[0]:,} rows × {syn_df.shape[1]} columns\n")
+    console.print()
 
-    # Validate QI presence
-    missing_real = [c for c in qi_list if c not in real_df.columns]
-    missing_syn = [c for c in qi_list if c not in syn_df.columns]
+    # Validate QI columns exist in all datasets
+    for name, df in datasets.items():
+        missing_cols = [c for c in qi_list if c not in df.columns]
+        if missing_cols:
+            console.print(f"❌ QI columns missing from {name} dataset: {missing_cols}", style="red")
+            raise typer.Exit(code=1)
 
-    if missing_real:
-        console.print(f"❌ QI columns missing from real dataset: {missing_real}", style="red")
-        raise typer.Exit(code=1)
+    # Filter to only QI columns
+    datasets_qi = {name: df[qi_list].copy() for name, df in datasets.items()}
 
-    if missing_syn:
-        console.print(f"❌ QI columns missing from synthetic dataset: {missing_syn}", style="red")
-        raise typer.Exit(code=1)
-
-    # Filter to only QI columns (synthcity approach)
-    real_qi = real_df[qi_list].copy()
-    syn_qi = syn_df[qi_list].copy()
-
-    # Check for categorical columns and apply label encoding
+    # Apply label encoding for categorical columns across ALL datasets
     categorical_cols = []
     label_encoders = {}
 
-    for col in qi_list:
-        if not pd.api.types.is_numeric_dtype(real_qi[col]) or not pd.api.types.is_numeric_dtype(syn_qi[col]):
-            categorical_cols.append(col)
+    console.print("🔄 Checking for categorical columns...\n")
 
-            # Apply label encoding
+    for col in qi_list:
+        # Check if any dataset has this column as non-numeric
+        is_categorical = any(
+            not pd.api.types.is_numeric_dtype(df[col])
+            for df in datasets_qi.values()
+        )
+
+        if is_categorical:
+            categorical_cols.append(col)
             console.print(f"🔄 Encoding categorical column: {col}")
 
-            # Fit encoder on combined real + synthetic to handle all categories
+            # Fit encoder on combined data from all datasets
             le = LabelEncoder()
-            combined_values = pd.concat([real_qi[col], syn_qi[col]]).astype(str)
+            combined_values = pd.concat([df[col] for df in datasets_qi.values()]).astype(str)
             le.fit(combined_values)
 
-            # Transform both datasets
-            real_qi[col] = le.transform(real_qi[col].astype(str))
-            syn_qi[col] = le.transform(syn_qi[col].astype(str))
+            # Transform all datasets
+            for name in datasets_qi.keys():
+                datasets_qi[name][col] = le.transform(datasets_qi[name][col].astype(str))
 
             label_encoders[col] = le
-
             console.print(f"  → Encoded {len(le.classes_)} categories: {list(le.classes_)}\n")
 
     if categorical_cols:
         console.print(f"✅ Encoded {len(categorical_cols)} categorical column(s): {categorical_cols}\n")
 
-    # Compute k-anonymity using synthcity
+    # Compute k-anonymity for each dataset using synthcity
     console.print("🔒 Computing k-anonymity using synthcity kAnonymization...\n")
 
+    k_values = {}
+    k_anon_metric = kAnonymization()
+
     try:
-        with console.status("[bold blue]Running synthcity kAnonymization..."):
-            # Create dataloaders
-            real_loader = GenericDataLoader(real_qi)
-            syn_loader = GenericDataLoader(syn_qi)
+        for name, df_qi in datasets_qi.items():
+            with console.status(f"[bold blue]Computing k-anonymity for {name}..."):
+                loader = GenericDataLoader(df_qi)
+                # Use evaluate_data() for single dataset
+                k = k_anon_metric.evaluate_data(loader)
+                k_values[name] = int(k)
+                console.print(f"✅ {name}: k = {k}")
 
-            # Compute k-anonymity using synthcity
-            # The evaluate() method returns {"gt": k_real, "syn": k_syn}
-            k_anon_metric = kAnonymization()
-            result = k_anon_metric.evaluate(real_loader, syn_loader)
-
-        # Extract results from synthcity
-        # Result format: {"gt": <k_real>, "syn": <k_syn>}
-        k_real = int(result["gt"])
-        k_syn = int(result["syn"])
-
-        console.print(f"✅ Synthcity computation complete\n", style="green")
+        console.print(f"\n✅ All k-anonymity computations complete\n", style="green")
 
     except Exception as e:
         console.print(f"\n❌ [red bold]Error: Synthcity kAnonymization failed[/red bold]", style="red")
         console.print(f"[red]Error details: {e}[/red]\n")
         raise typer.Exit(code=1)
 
-    # Compute k-ratio
-    k_ratio = k_syn / k_real if k_real > 0 else float("inf")
+    # Compute k-ratios for relevant pairs
+    k_ratios = {}
 
-    # Interpret k-values
-    real_interp, real_color = interpret_k_value(k_real)
-    syn_interp, syn_color = interpret_k_value(k_syn)
+    ratio_pairs = [
+        ("reference", "population", "Reference / Population"),
+        ("synthetic", "population", "Synthetic / Population"),
+        ("synthetic", "reference", "Synthetic / Reference"),
+        ("synthetic", "training", "Synthetic / Training"),
+    ]
 
-    # Display results in Rich table
-    results_table = Table(
-        title="🔒 K-Anonymity Results (Synthcity)",
+    for numerator, denominator, label in ratio_pairs:
+        if numerator in k_values and denominator in k_values:
+            ratio = k_values[numerator] / k_values[denominator] if k_values[denominator] > 0 else float("inf")
+            k_ratios[label] = ratio
+
+    # Display K-Anonymity Values Table
+    k_values_table = Table(
+        title="🔒 K-Anonymity Values",
         show_header=True,
         header_style="bold blue"
     )
-    results_table.add_column("Metric", style="cyan", no_wrap=True)
-    results_table.add_column("Value", justify="right", style="white")
-    results_table.add_column("Interpretation", style="yellow")
+    k_values_table.add_column("Dataset", style="cyan", no_wrap=True)
+    k_values_table.add_column("k-anonymity", justify="right", style="white")
+    k_values_table.add_column("Interpretation", style="yellow")
 
-    results_table.add_row(
-        "k-anonymity (Real)",
-        f"[{real_color}]{k_real}[/{real_color}]",
-        real_interp
-    )
+    for name in ["population", "reference", "training", "synthetic"]:
+        if name in k_values:
+            k = k_values[name]
+            interp, color = interpret_k_value(k)
+            k_values_table.add_row(
+                name.capitalize(),
+                f"[{color}]{k}[/{color}]",
+                interp
+            )
 
-    results_table.add_row(
-        "k-anonymity (Synthetic)",
-        f"[{syn_color}]{k_syn}[/{syn_color}]",
-        syn_interp
-    )
+    console.print(k_values_table)
+    console.print()
 
-    results_table.add_row(
-        "k-ratio (syn/real)",
-        f"{k_ratio:.4f}",
-        "Higher = better synthetic privacy"
-    )
+    # Display K-Ratios Table
+    if k_ratios:
+        k_ratios_table = Table(
+            title="📊 K-Anonymity Ratios",
+            show_header=True,
+            header_style="bold blue"
+        )
+        k_ratios_table.add_column("Comparison", style="cyan")
+        k_ratios_table.add_column("Ratio", justify="right", style="white")
+        k_ratios_table.add_column("Interpretation", style="yellow")
 
-    console.print(results_table)
+        for label, ratio in k_ratios.items():
+            ratio_interp = interpret_ratio(ratio)
+            # Color code ratios: green if > 1 (better), red if < 1 (worse)
+            color = "green" if ratio > 1.0 else "red" if ratio < 0.9 else "yellow"
+            k_ratios_table.add_row(
+                label,
+                f"[{color}]{ratio:.4f}[/{color}]",
+                ratio_interp
+            )
+
+        console.print(k_ratios_table)
+        console.print()
 
     # Interpretation guide
     guide_panel = Panel.fit(
-        """🔒 Synthcity K-Anonymity Guide:
+        """🔒 K-Anonymity Evaluation Guide:
 
-• k-anonymity (Real) = Privacy protection level of real dataset
-• k-anonymity (Synthetic) = Privacy protection level of synthetic dataset
+K-Anonymity Values:
 • Higher k values indicate better privacy protection
+• k ≥ 10: Excellent privacy protection
+• k ≥ 5:  Good privacy protection
+• k ≥ 3:  Moderate privacy protection
+• k < 3:  Poor privacy protection
 
-Interpretation thresholds:
-• k ≥ 10:  Excellent privacy protection
-• k ≥ 5:   Good privacy protection
-• k ≥ 3:   Moderate privacy protection
-• k < 3:   Poor privacy protection
-
-• k-ratio = Synthetic k / Real k
-• k-ratio > 1.0: Synthetic data provides better privacy than real data
-• k-ratio < 1.0: Synthetic data provides worse privacy than real data
+K-Ratios:
+• Ratio > 1.0: Numerator dataset has better privacy than denominator
+• Ratio < 1.0: Numerator dataset has worse privacy than denominator
+• Synthetic / Population: Overall privacy improvement from synthesis
+• Synthetic / Reference: Privacy protection on holdout data
+• Synthetic / Training: Direct comparison with training data
 
 Note: Synthcity uses a clustering-based approach, not traditional equivalence classes.
 Categorical columns are automatically label-encoded before evaluation.""",
         title="📖 Interpretation Guide",
         border_style="blue"
     )
-    console.print("\n")
     console.print(guide_panel)
 
     # Prepare results for JSON export
@@ -225,10 +285,13 @@ Categorical columns are automatically label-encoded before evaluation.""",
         "metadata": {
             "experiment_name": experiment_name,
             "evaluation_timestamp": datetime.now().isoformat(),
-            "real_dataset": str(real_csv),
-            "synthetic_dataset": str(synthetic_csv),
-            "real_shape": list(real_df.shape),
-            "synthetic_shape": list(syn_df.shape),
+            "datasets": {
+                name: {
+                    "path": str(path),
+                    "shape": list(datasets[name].shape)
+                }
+                for name, path in provided_datasets.items()
+            },
             "qi_columns": qi_list,
             "categorical_columns": categorical_cols,
             "encoded_categories": {
@@ -239,14 +302,19 @@ Categorical columns are automatically label-encoded before evaluation.""",
             "method": "synthcity_kAnonymization"
         },
         "metrics": {
-            "k_anonymization": {
-                "status": "success",
-                "k_real": int(k_real),
-                "k_synthetic": int(k_syn),
-                "k_ratio": float(k_ratio),
-                "interpretation_real": real_interp,
-                "interpretation_synthetic": syn_interp,
-                "source": "synthcity"
+            "k_values": {
+                name: {
+                    "k": int(k),
+                    "interpretation": interpret_k_value(k)[0]
+                }
+                for name, k in k_values.items()
+            },
+            "k_ratios": {
+                label: {
+                    "ratio": float(ratio),
+                    "interpretation": interpret_ratio(ratio)
+                }
+                for label, ratio in k_ratios.items()
             }
         }
     }
