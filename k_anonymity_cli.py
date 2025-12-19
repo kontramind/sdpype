@@ -2,7 +2,10 @@
 """
 K-Anonymity Evaluation CLI Tool
 
-Computes k-anonymity metrics for real and synthetic datasets using synthcity.
+Computes k-anonymity metrics for real and synthetic datasets using synthcity's kAnonymization.
+
+Note: Synthcity uses a clustering-based approach to compute k-anonymity, which may differ
+from traditional equivalence class-based k-anonymity. Only works with numeric QI columns.
 """
 
 import json
@@ -21,23 +24,6 @@ from synthcity.metrics.eval_privacy import kAnonymization
 
 console = Console()
 app = typer.Typer(add_completion=False)
-
-
-def compute_k_anonymity_manual(df: pd.DataFrame, qi_cols: List[str]) -> int:
-    """
-    Manually compute k-anonymity for validation.
-
-    k-anonymity is the minimum equivalence class size when grouping by QI columns.
-    """
-    ec_sizes = df.groupby(qi_cols, dropna=False).size()
-    if ec_sizes.empty:
-        raise ValueError("No equivalence classes found. Check QI columns.")
-    return int(ec_sizes.min())
-
-
-def compute_equivalence_classes(df: pd.DataFrame, qi_cols: List[str]) -> pd.Series:
-    """Return equivalence class sizes as a Pandas Series."""
-    return df.groupby(qi_cols, dropna=False).size()
 
 
 def interpret_k_value(k: int) -> tuple[str, str]:
@@ -117,8 +103,19 @@ def main(
     real_qi = real_df[qi_list]
     syn_qi = syn_df[qi_list]
 
+    # Check if all QI columns are numeric
+    non_numeric_cols = []
+    for col in qi_list:
+        if not pd.api.types.is_numeric_dtype(real_qi[col]) or not pd.api.types.is_numeric_dtype(syn_qi[col]):
+            non_numeric_cols.append(col)
+
+    if non_numeric_cols:
+        console.print(f"\n⚠️  [yellow]Warning: Non-numeric QI columns detected: {non_numeric_cols}[/yellow]")
+        console.print(f"[yellow]Synthcity's kAnonymization requires numeric data only.[/yellow]")
+        console.print(f"[yellow]This may cause errors or unexpected results.[/yellow]\n")
+
     # Compute k-anonymity using synthcity
-    console.print("🔒 Computing k-anonymity using synthcity...\n")
+    console.print("🔒 Computing k-anonymity using synthcity kAnonymization...\n")
 
     try:
         with console.status("[bold blue]Running synthcity kAnonymization..."):
@@ -133,29 +130,21 @@ def main(
 
         # Extract results from synthcity
         # Result format: {"gt": <k_real>, "syn": <k_syn>}
-        k_real_synthcity = int(result["gt"]) if "gt" in result else None
-        k_syn_synthcity = int(result["syn"]) if "syn" in result else None
+        k_real = int(result["gt"])
+        k_syn = int(result["syn"])
 
-        # Note: synthcity adds epsilon (1e-8) to synthetic score, but int() will floor it
         console.print(f"✅ Synthcity computation complete\n", style="green")
 
     except Exception as e:
-        console.print(f"❌ Error computing synthcity k-anonymity: {e}", style="red")
-        console.print("\n⚠️  Falling back to manual calculation only...\n", style="yellow")
-        k_real_synthcity = None
-        k_syn_synthcity = None
+        console.print(f"\n❌ [red bold]Error: Synthcity kAnonymization failed[/red bold]", style="red")
+        console.print(f"[red]Error details: {e}[/red]\n")
 
-    # Also compute manual k-anonymity for validation
-    with console.status("[bold blue]Computing manual k-anonymity for validation..."):
-        real_ec = compute_equivalence_classes(real_qi, qi_list)
-        syn_ec = compute_equivalence_classes(syn_qi, qi_list)
+        if non_numeric_cols:
+            console.print("[yellow]This is likely due to non-numeric QI columns.[/yellow]")
+            console.print("[yellow]Synthcity's kAnonymization only supports numeric data.[/yellow]")
+            console.print(f"[yellow]Non-numeric columns: {non_numeric_cols}[/yellow]\n")
 
-        k_real_manual = int(real_ec.min())
-        k_syn_manual = int(syn_ec.min())
-
-    # Use synthcity values if available, otherwise use manual
-    k_real = k_real_synthcity if k_real_synthcity is not None else k_real_manual
-    k_syn = k_syn_synthcity if k_syn_synthcity is not None else k_syn_manual
+        raise typer.Exit(code=1)
 
     # Compute k-ratio
     k_ratio = k_syn / k_real if k_real > 0 else float("inf")
@@ -166,90 +155,54 @@ def main(
 
     # Display results in Rich table
     results_table = Table(
-        title="🔒 K-Anonymity Results",
+        title="🔒 K-Anonymity Results (Synthcity)",
         show_header=True,
         header_style="bold blue"
     )
     results_table.add_column("Metric", style="cyan", no_wrap=True)
-    results_table.add_column("Real Dataset", justify="right")
-    results_table.add_column("Synthetic Dataset", justify="right")
+    results_table.add_column("Value", justify="right", style="white")
     results_table.add_column("Interpretation", style="yellow")
 
     results_table.add_row(
-        "k-anonymity",
+        "k-anonymity (Real)",
         f"[{real_color}]{k_real}[/{real_color}]",
-        f"[{syn_color}]{k_syn}[/{syn_color}]",
-        f"Real: {real_interp} | Syn: {syn_interp}"
+        real_interp
     )
 
     results_table.add_row(
-        "Equivalence Classes",
-        f"{len(real_ec):,}",
-        f"{len(syn_ec):,}",
-        ""
+        "k-anonymity (Synthetic)",
+        f"[{syn_color}]{k_syn}[/{syn_color}]",
+        syn_interp
     )
 
     results_table.add_row(
         "k-ratio (syn/real)",
-        "",
         f"{k_ratio:.4f}",
-        "Higher means better synthetic privacy"
+        "Higher = better synthetic privacy"
     )
 
     console.print(results_table)
 
-    # Validation table (compare synthcity vs manual)
-    if k_real_synthcity is not None and k_syn_synthcity is not None:
-        validation_table = Table(
-            title="🔍 Validation: Synthcity vs Manual",
-            show_header=True,
-            header_style="bold magenta"
-        )
-        validation_table.add_column("Method", style="cyan")
-        validation_table.add_column("Real k", justify="right")
-        validation_table.add_column("Synthetic k", justify="right")
-        validation_table.add_column("Match", justify="center")
-
-        real_match = "✅" if k_real_synthcity == k_real_manual else "❌"
-        syn_match = "✅" if k_syn_synthcity == k_syn_manual else "❌"
-
-        validation_table.add_row(
-            "Synthcity",
-            str(k_real_synthcity),
-            str(k_syn_synthcity),
-            ""
-        )
-        validation_table.add_row(
-            "Manual",
-            str(k_real_manual),
-            str(k_syn_manual),
-            ""
-        )
-        validation_table.add_row(
-            "Match?",
-            real_match,
-            syn_match,
-            ""
-        )
-
-        console.print("\n")
-        console.print(validation_table)
-
     # Interpretation guide
     guide_panel = Panel.fit(
-        """🔒 K-Anonymity Guide:
+        """🔒 Synthcity K-Anonymity Guide:
 
-• k-anonymity = Minimum equivalence class size (privacy protection level)
+• k-anonymity (Real) = Privacy protection level of real dataset
+• k-anonymity (Synthetic) = Privacy protection level of synthetic dataset
+• Higher k values indicate better privacy protection
+
+Interpretation thresholds:
 • k ≥ 10:  Excellent privacy protection
 • k ≥ 5:   Good privacy protection
 • k ≥ 3:   Moderate privacy protection
 • k < 3:   Poor privacy protection
 
-• k-ratio = How much better synthetic data protects privacy vs real data
+• k-ratio = Synthetic k / Real k
 • k-ratio > 1.0: Synthetic data provides better privacy than real data
 • k-ratio < 1.0: Synthetic data provides worse privacy than real data
 
-• Equivalence Classes = Number of unique QI combinations in dataset""",
+Note: Synthcity uses a clustering-based approach, not traditional equivalence classes.
+Only supports numeric QI columns.""",
         title="📖 Interpretation Guide",
         border_style="blue"
     )
@@ -266,7 +219,8 @@ def main(
             "real_shape": list(real_df.shape),
             "synthetic_shape": list(syn_df.shape),
             "qi_columns": qi_list,
-            "evaluation_type": "k_anonymity"
+            "evaluation_type": "k_anonymity",
+            "method": "synthcity_kAnonymization"
         },
         "metrics": {
             "k_anonymization": {
@@ -274,25 +228,12 @@ def main(
                 "k_real": int(k_real),
                 "k_synthetic": int(k_syn),
                 "k_ratio": float(k_ratio),
-                "equivalence_classes_real": int(len(real_ec)),
-                "equivalence_classes_synthetic": int(len(syn_ec)),
                 "interpretation_real": real_interp,
                 "interpretation_synthetic": syn_interp,
-                "source": "synthcity" if k_real_synthcity is not None else "manual"
+                "source": "synthcity"
             }
         }
     }
-
-    # Add validation info if available
-    if k_real_synthcity is not None and k_syn_synthcity is not None:
-        results_dict["metrics"]["k_anonymization"]["validation"] = {
-            "synthcity_k_real": int(k_real_synthcity),
-            "synthcity_k_synthetic": int(k_syn_synthcity),
-            "manual_k_real": int(k_real_manual),
-            "manual_k_synthetic": int(k_syn_manual),
-            "synthcity_manual_match": (k_real_synthcity == k_real_manual and
-                                       k_syn_synthcity == k_syn_manual)
-        }
 
     # Save to JSON if output path provided
     if output:
