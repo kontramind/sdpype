@@ -18,6 +18,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
+from sklearn.preprocessing import LabelEncoder
 
 from synthcity.plugins.core.dataloader import GenericDataLoader
 from synthcity.metrics.eval_privacy import kAnonymization
@@ -100,19 +101,35 @@ def main(
         raise typer.Exit(code=1)
 
     # Filter to only QI columns (synthcity approach)
-    real_qi = real_df[qi_list]
-    syn_qi = syn_df[qi_list]
+    real_qi = real_df[qi_list].copy()
+    syn_qi = syn_df[qi_list].copy()
 
-    # Check if all QI columns are numeric
-    non_numeric_cols = []
+    # Check for categorical columns and apply label encoding
+    categorical_cols = []
+    label_encoders = {}
+
     for col in qi_list:
         if not pd.api.types.is_numeric_dtype(real_qi[col]) or not pd.api.types.is_numeric_dtype(syn_qi[col]):
-            non_numeric_cols.append(col)
+            categorical_cols.append(col)
 
-    if non_numeric_cols:
-        console.print(f"\n⚠️  [yellow]Warning: Non-numeric QI columns detected: {non_numeric_cols}[/yellow]")
-        console.print(f"[yellow]Synthcity's kAnonymization requires numeric data only.[/yellow]")
-        console.print(f"[yellow]This may cause errors or unexpected results.[/yellow]\n")
+            # Apply label encoding
+            console.print(f"🔄 Encoding categorical column: {col}")
+
+            # Fit encoder on combined real + synthetic to handle all categories
+            le = LabelEncoder()
+            combined_values = pd.concat([real_qi[col], syn_qi[col]]).astype(str)
+            le.fit(combined_values)
+
+            # Transform both datasets
+            real_qi[col] = le.transform(real_qi[col].astype(str))
+            syn_qi[col] = le.transform(syn_qi[col].astype(str))
+
+            label_encoders[col] = le
+
+            console.print(f"  → Encoded {len(le.classes_)} categories: {list(le.classes_)}\n")
+
+    if categorical_cols:
+        console.print(f"✅ Encoded {len(categorical_cols)} categorical column(s): {categorical_cols}\n")
 
     # Compute k-anonymity using synthcity
     console.print("🔒 Computing k-anonymity using synthcity kAnonymization...\n")
@@ -138,12 +155,6 @@ def main(
     except Exception as e:
         console.print(f"\n❌ [red bold]Error: Synthcity kAnonymization failed[/red bold]", style="red")
         console.print(f"[red]Error details: {e}[/red]\n")
-
-        if non_numeric_cols:
-            console.print("[yellow]This is likely due to non-numeric QI columns.[/yellow]")
-            console.print("[yellow]Synthcity's kAnonymization only supports numeric data.[/yellow]")
-            console.print(f"[yellow]Non-numeric columns: {non_numeric_cols}[/yellow]\n")
-
         raise typer.Exit(code=1)
 
     # Compute k-ratio
@@ -202,7 +213,7 @@ Interpretation thresholds:
 • k-ratio < 1.0: Synthetic data provides worse privacy than real data
 
 Note: Synthcity uses a clustering-based approach, not traditional equivalence classes.
-Only supports numeric QI columns.""",
+Categorical columns are automatically label-encoded before evaluation.""",
         title="📖 Interpretation Guide",
         border_style="blue"
     )
@@ -219,6 +230,11 @@ Only supports numeric QI columns.""",
             "real_shape": list(real_df.shape),
             "synthetic_shape": list(syn_df.shape),
             "qi_columns": qi_list,
+            "categorical_columns": categorical_cols,
+            "encoded_categories": {
+                col: list(label_encoders[col].classes_)
+                for col in categorical_cols
+            } if categorical_cols else {},
             "evaluation_type": "k_anonymity",
             "method": "synthcity_kAnonymization"
         },
