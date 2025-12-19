@@ -167,13 +167,18 @@ def main(cfg: DictConfig) -> None:
     # Define which privacy metrics need encoded vs decoded data
     # DCR and other distance-based privacy metrics need encoded data
     ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
-    DECODED_PRIVACY_METRICS = set()
+    DECODED_PRIVACY_METRICS = {'k_anonymization'}
+    MULTIDATASET_METRICS = {'k_anonymization'}
 
     # Define data paths
     encoded_reference = Path(f"experiments/data/encoded/reference_{experiment_name}_{config_hash}_{seed}.csv")
     decoded_reference = Path(f"experiments/data/decoded/reference_{experiment_name}_{config_hash}_{seed}.csv")
     encoded_synthetic = Path(f"experiments/data/encoded/synthetic_{experiment_name}_{config_hash}_{seed}.csv")
     decoded_synthetic = Path(f"experiments/data/synthetic/synthetic_data_{experiment_name}_{config_hash}_{seed}_decoded.csv")
+
+    # Additional datasets for k-anonymization (if configured)
+    decoded_population = Path(cfg.data.population_file) if hasattr(cfg.data, 'population_file') and cfg.data.population_file else None
+    decoded_training = Path(cfg.data.training_file) if hasattr(cfg.data, 'training_file') and cfg.data.training_file else None
 
     metadata_file = Path(cfg.data.metadata_file)
 
@@ -197,6 +202,25 @@ def main(cfg: DictConfig) -> None:
     reference_decoded = load_csv_with_metadata(decoded_reference, metadata_file)
     synthetic_decoded = load_csv_with_metadata(decoded_synthetic, metadata_file)
 
+    # Load population and training data if k-anonymization is configured
+    needs_multidataset = any(m.get('name') in MULTIDATASET_METRICS for m in metrics_config)
+
+    population_data = None
+    training_data = None
+
+    if needs_multidataset:
+        if decoded_population and decoded_population.exists():
+            print(f"📊 Loading population data for k-anonymization: {decoded_population}")
+            population_data = load_csv_with_metadata(decoded_population, metadata_file)
+        else:
+            print(f"⚠️  Population data not available for k-anonymization")
+
+        if decoded_training and decoded_training.exists():
+            print(f"📊 Loading training data for k-anonymization: {decoded_training}")
+            training_data = load_csv_with_metadata(decoded_training, metadata_file)
+        else:
+            print(f"⚠️  Training data not available for k-anonymization")
+
     # Load encoding config if available
     encoding_config = None
     if cfg.encoding.get('config_file'):
@@ -217,7 +241,9 @@ def main(cfg: DictConfig) -> None:
         synthetic_data_decoded=synthetic_decoded,
         reference_data_encoded=reference_encoded,
         synthetic_data_encoded=synthetic_encoded,
-        encoding_config=encoding_config
+        encoding_config=encoding_config,
+        population_data=population_data,
+        training_data=training_data
     )
 
     # Display results in rich tables
