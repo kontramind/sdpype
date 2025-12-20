@@ -216,6 +216,26 @@ AVAILABLE_METRICS = {
                 "good": "> 0.6",
                 "moderate": "> 0.4"
             }
+        },
+        "k_anonymization": {
+            "description": "K-Anonymization privacy metric using synthcity's clustering-based approach. Evaluates k-anonymity across multiple datasets (population, reference, training, synthetic)",
+            "library": "synthcity",
+            "parameters": {
+                "qi_columns": {
+                    "type": "list",
+                    "required": True,
+                    "description": "List of quasi-identifier column names (e.g., ['AGE', 'GENDER'])"
+                }
+            },
+            "outputs": ["k_values", "k_ratios", "qi_columns", "categorical_columns", "datasets_evaluated"],
+            "reference": "Synthcity library - Clustering-based k-anonymity evaluation. Automatically encodes categorical QI columns.",
+            "direction": "maximize",
+            "interpretation": {
+                "excellent": "k ≥ 10",
+                "good": "k ≥ 5",
+                "moderate": "k ≥ 3",
+                "poor": "k < 3"
+            }
         }
     }
 }
