@@ -38,62 +38,63 @@ def _display_privacy_tables(results: dict) -> None:
 
     metrics_data = results.get("metrics", {})
 
-    # Create privacy results table
-    privacy_table = Table(
-        title="📊 DCR Baseline Protection Results",
-        show_header=True,
-        header_style="bold blue"
-    )
-    privacy_table.add_column("Metric", style="cyan", no_wrap=True)
-    privacy_table.add_column("Score", style="bright_green", justify="right")
-    privacy_table.add_column("Interpretation", style="yellow")
+    # Create privacy results table for DCR
+    if "dcr_baseline_protection" in metrics_data:
+        privacy_table = Table(
+            title="📊 DCR Baseline Protection Results",
+            show_header=True,
+            header_style="bold blue"
+        )
+        privacy_table.add_column("Metric", style="cyan", no_wrap=True)
+        privacy_table.add_column("Score", style="bright_green", justify="right")
+        privacy_table.add_column("Interpretation", style="yellow")
 
-    # Process DCR baseline protection results
-    dcr_result = metrics_data.get("dcr_baseline_protection", {})
+        # Process DCR baseline protection results
+        dcr_result = metrics_data.get("dcr_baseline_protection", {})
 
-    if dcr_result.get("status") == "success":
-        score = dcr_result.get("score", 0.0)
-        median_dcr_synthetic = dcr_result.get("median_dcr_synthetic", 0.0)
-        median_dcr_random = dcr_result.get("median_dcr_random", 0.0)
+        if dcr_result.get("status") == "success":
+            score = dcr_result.get("score", 0.0)
+            median_dcr_synthetic = dcr_result.get("median_dcr_synthetic", 0.0)
+            median_dcr_random = dcr_result.get("median_dcr_random", 0.0)
 
-        # Interpret privacy score
-        if score > 0.8:
-            interpretation = "Excellent"
-        elif score > 0.6:
-            interpretation = "Good"
-        elif score > 0.4:
-            interpretation = "Moderate"
+            # Interpret privacy score
+            if score > 0.8:
+                interpretation = "Excellent"
+            elif score > 0.6:
+                interpretation = "Good"
+            elif score > 0.4:
+                interpretation = "Moderate"
+            else:
+                interpretation = "Poor"
+
+            privacy_table.add_row(
+                "Privacy Score",
+                f"{score:.3f}",
+                interpretation
+            )
+            privacy_table.add_row(
+                "Median DCR (Synthetic)",
+                f"{median_dcr_synthetic:.6f}",
+                ""
+            )
+            privacy_table.add_row(
+                "Median DCR (Random)",
+                f"{median_dcr_random:.6f}",
+                "Higher is better"
+            )
         else:
-            interpretation = "Poor"
+            error_msg = dcr_result.get("error_message", "Unknown error")
+            privacy_table.add_row(
+                "DCR Baseline Protection",
+                "N/A",
+                f"❌ Error: {error_msg[:40]}..."
+            )
 
-        privacy_table.add_row(
-            "Privacy Score",
-            f"{score:.3f}",
-            interpretation
-        )
-        privacy_table.add_row(
-            "Median DCR (Synthetic)",
-            f"{median_dcr_synthetic:.6f}",
-            ""
-        )
-        privacy_table.add_row(
-            "Median DCR (Random)",
-            f"{median_dcr_random:.6f}",
-            "Higher is better"
-        )
-    else:
-        error_msg = dcr_result.get("error_message", "Unknown error")
-        privacy_table.add_row(
-            "DCR Baseline Protection",
-            "N/A",
-            f"❌ Error: {error_msg[:40]}..."
-        )
+        console.print(privacy_table)
 
-    console.print(privacy_table)
-
-    # Add interpretation guide
-    guide_panel = Panel.fit(
-        """🔒 DCR Privacy Metric Guide:
+        # Add DCR interpretation guide
+        guide_panel = Panel.fit(
+            """🔒 DCR Privacy Metric Guide:
 • Privacy Score = How well synthetic data protects individual record privacy
 • Score > 0.8 = Excellent privacy protection
 • Score > 0.6 = Good privacy protection
@@ -103,10 +104,118 @@ def _display_privacy_tables(results: dict) -> None:
 • Median DCR (Synthetic) = Distance from synthetic records to nearest real record
 • Median DCR (Random) = Distance from random baseline to nearest real record
 • Higher distances indicate better privacy protection""",
-        title="📖 Privacy Metrics Guide",
-        border_style="blue"
-    )
-    console.print(guide_panel)
+            title="📖 Privacy Metrics Guide",
+            border_style="blue"
+        )
+        console.print(guide_panel)
+
+    # Create k-anonymization results tables
+    if "k_anonymization" in metrics_data:
+        k_anon_result = metrics_data.get("k_anonymization", {})
+
+        if k_anon_result.get("status") == "success":
+            # K-Anonymity Values Table
+            k_values_table = Table(
+                title="🔒 K-Anonymity Values",
+                show_header=True,
+                header_style="bold blue"
+            )
+            k_values_table.add_column("Dataset", style="cyan", no_wrap=True)
+            k_values_table.add_column("k-anonymity", justify="right", style="white")
+            k_values_table.add_column("Interpretation", style="yellow")
+
+            k_values = k_anon_result.get("k_values", {})
+            for dataset_name in ["population", "reference", "training", "synthetic"]:
+                if dataset_name in k_values:
+                    k_data = k_values[dataset_name]
+                    k_val = k_data["k"]
+                    interp = k_data["interpretation"]
+
+                    # Color code based on interpretation
+                    if interp == "Excellent":
+                        color = "green"
+                    elif interp == "Good":
+                        color = "yellow"
+                    elif interp == "Moderate":
+                        color = "orange"
+                    else:
+                        color = "red"
+
+                    k_values_table.add_row(
+                        dataset_name.capitalize(),
+                        f"[{color}]{k_val}[/{color}]",
+                        interp
+                    )
+
+            console.print("\n")
+            console.print(k_values_table)
+
+            # K-Anonymity Ratios Table
+            k_ratios = k_anon_result.get("k_ratios", {})
+            if k_ratios:
+                k_ratios_table = Table(
+                    title="📊 K-Anonymity Ratios",
+                    show_header=True,
+                    header_style="bold blue"
+                )
+                k_ratios_table.add_column("Comparison", style="cyan")
+                k_ratios_table.add_column("Ratio", justify="right", style="white")
+                k_ratios_table.add_column("Interpretation", style="yellow")
+
+                for label, ratio_data in k_ratios.items():
+                    ratio_val = ratio_data["ratio"]
+                    interp = ratio_data["interpretation"]
+
+                    # Color code ratios
+                    color = "green" if ratio_val > 1.0 else "red" if ratio_val < 0.9 else "yellow"
+
+                    k_ratios_table.add_row(
+                        label,
+                        f"[{color}]{ratio_val:.4f}[/{color}]",
+                        interp
+                    )
+
+                console.print("\n")
+                console.print(k_ratios_table)
+
+            # K-Anonymization interpretation guide
+            qi_cols = k_anon_result.get("qi_columns", [])
+            cat_cols = k_anon_result.get("categorical_columns", [])
+            datasets_eval = k_anon_result.get("datasets_evaluated", [])
+
+            guide_text = f"""🔒 K-Anonymization Results:
+
+QI Columns: {', '.join(qi_cols)}
+Datasets Evaluated: {', '.join(datasets_eval)}"""
+
+            if cat_cols:
+                guide_text += f"\nCategorical Columns (Auto-Encoded): {', '.join(cat_cols)}"
+
+            guide_text += """
+
+K-Anonymity Guide:
+• Higher k values = Better privacy protection
+• k ≥ 10: Excellent privacy protection
+• k ≥ 5:  Good privacy protection
+• k ≥ 3:  Moderate privacy protection
+• k < 3:  Poor privacy protection
+
+K-Ratios:
+• Ratio > 1.0: Numerator has better privacy
+• Ratio < 1.0: Numerator has worse privacy
+
+Note: Uses synthcity's clustering-based approach"""
+
+            k_anon_guide = Panel.fit(
+                guide_text,
+                title="📖 K-Anonymization Guide",
+                border_style="blue"
+            )
+            console.print("\n")
+            console.print(k_anon_guide)
+        else:
+            error_msg = k_anon_result.get("error_message", "Unknown error")
+            console.print(f"\n❌ [red]K-Anonymization Error: {error_msg}[/red]")
 
 
 @hydra.main(version_base=None, config_path="../", config_name="params")
