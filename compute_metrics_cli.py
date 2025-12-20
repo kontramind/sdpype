@@ -528,6 +528,65 @@ def display_privacy_metrics(results: Dict[str, Any]):
 
         console.print(dcr_table)
 
+    # K-Anonymization
+    if "k_anonymization" in metrics and metrics["k_anonymization"]["status"] == "success":
+        k_anon_result = metrics["k_anonymization"]
+        params_info = k_anon_result["parameters"]
+        params_display = str(params_info) if params_info else "default settings"
+
+        # K-Anonymity Values Table
+        k_values_table = Table(
+            title=f"✅ K-Anonymity Values ({params_display})",
+            show_header=True,
+            header_style="bold blue"
+        )
+        k_values_table.add_column("Dataset", style="cyan", no_wrap=True)
+        k_values_table.add_column("k-anonymity", justify="right", style="bright_green")
+        k_values_table.add_column("Interpretation", style="yellow")
+
+        k_values = k_anon_result.get("k_values", {})
+        for dataset_name in ["population", "reference", "training", "synthetic"]:
+            if dataset_name in k_values:
+                k_data = k_values[dataset_name]
+                k_val = k_data["k"]
+                interp = k_data["interpretation"]
+                k_values_table.add_row(dataset_name.capitalize(), str(k_val), interp)
+
+        console.print(k_values_table)
+
+        # K-Anonymity Ratios Table (if available)
+        k_ratios = k_anon_result.get("k_ratios", {})
+        if k_ratios:
+            k_ratios_table = Table(
+                title="📊 K-Anonymity Ratios",
+                show_header=True,
+                header_style="bold blue"
+            )
+            k_ratios_table.add_column("Comparison", style="cyan")
+            k_ratios_table.add_column("Ratio", justify="right", style="bright_green")
+            k_ratios_table.add_column("Interpretation", style="yellow")
+
+            for label, ratio_data in k_ratios.items():
+                ratio_val = ratio_data["ratio"]
+                interp = ratio_data["interpretation"]
+                k_ratios_table.add_row(label, f"{ratio_val:.4f}", interp)
+
+            console.print(k_ratios_table)
+
+        # Display QI columns info
+        qi_cols = k_anon_result.get("qi_columns", [])
+        cat_cols = k_anon_result.get("categorical_columns", [])
+        datasets_eval = k_anon_result.get("datasets_evaluated", [])
+
+        info_lines = [
+            f"QI Columns: {', '.join(qi_cols)}",
+            f"Datasets: {', '.join(datasets_eval)}"
+        ]
+        if cat_cols:
+            info_lines.append(f"Categorical (Encoded): {', '.join(cat_cols)}")
+
+        console.print("\n" + " | ".join(info_lines), style="dim")
+
     console.print("\n✅ Privacy metrics evaluation completed", style="bold green")
 
 
