@@ -1359,7 +1359,8 @@ def compute_privacy_metrics_post_training(
 
     # Define encoded vs decoded privacy metrics
     ENCODED_PRIVACY_METRICS = {'dcr_baseline_protection'}
-    DECODED_PRIVACY_METRICS = set()
+    DECODED_PRIVACY_METRICS = {'k_anonymization'}
+    MULTIDATASET_PRIVACY_METRICS = {'k_anonymization'}
 
     # Get metrics config first (use default if not provided)
     if config and 'evaluation' in config and 'privacy' in config['evaluation']:
@@ -1370,14 +1371,53 @@ def compute_privacy_metrics_post_training(
             {'name': 'dcr_baseline_protection'}
         ]
 
-    # Check if any metrics need encoding
+    # Check if any metrics need encoding or multi-dataset support
     needs_encoding = any(m.get('name') in ENCODED_PRIVACY_METRICS for m in metrics_config)
+    needs_multidataset = any(m.get('name') in MULTIDATASET_PRIVACY_METRICS for m in metrics_config)
+
+    # Get population file path from config (for k-anonymization and other multi-dataset metrics)
+    population_file = None
+    if needs_multidataset and config and 'data' in config:
+        pop_file_str = config['data'].get('population_file')
+        if pop_file_str:
+            population_file_path = Path(pop_file_str)
+
+            # Try multiple resolution strategies for relative paths
+            if not population_file_path.is_absolute():
+                # Try 1: As-is (relative to CWD) - handles ../downloads/... paths
+                if population_file_path.exists():
+                    population_file = population_file_path.resolve()
+                    console.print(f"[dim]Found population file: {population_file}[/dim]")
+                # Try 2: Relative to experiment folder (for paths like data/file.csv)
+                elif not str(population_file_path).startswith('..') and (folder / population_file_path).exists():
+                    population_file = (folder / population_file_path).resolve()
+                    console.print(f"[dim]Found population file (relative to folder): {population_file}[/dim]")
+                # Try 3: Just filename in common locations
+                else:
+                    filename = population_file_path.name
+                    candidates = [
+                        Path("..") / "downloads" / filename,
+                        Path("downloads") / filename,
+                        folder / "data" / filename,
+                        folder / ".." / "downloads" / filename,
+                        Path("data") / filename,
+                    ]
+                    for candidate in candidates:
+                        if candidate.exists():
+                            population_file = candidate.resolve()
+                            console.print(f"[dim]Found population file: {population_file}[/dim]")
+                            break
+            else:
+                # Absolute path - use directly
+                if population_file_path.exists():
+                    population_file = population_file_path
+                    console.print(f"[dim]Using population file: {population_file}[/dim]")
 
     # Load data files - use pre-encoded files from encode_evaluation stage if needed (matches DVC)
     if needs_encoding:
         # Load both decoded and pre-encoded files
-        ref_dec, syn_dec, trn_dec, _, ref_enc, syn_enc = load_generation_data(
-            folder, model_id, metadata_path, population_file=None, config=config,
+        ref_dec, syn_dec, trn_dec, pop_dec, ref_enc, syn_enc = load_generation_data(
+            folder, model_id, metadata_path, population_file=population_file, config=config,
             use_original_files=False, load_encoded=True
         )
 
@@ -1385,8 +1425,8 @@ def compute_privacy_metrics_post_training(
             console.print("[yellow]Warning: Pre-encoded files not found, some encoded privacy metrics may fail[/yellow]")
     else:
         # Only load decoded files
-        ref_dec, syn_dec, trn_dec, _ = load_generation_data(
-            folder, model_id, metadata_path, population_file=None, config=config,
+        ref_dec, syn_dec, trn_dec, pop_dec = load_generation_data(
+            folder, model_id, metadata_path, population_file=population_file, config=config,
             use_original_files=False, load_encoded=False
         )
         ref_enc = None
@@ -1433,7 +1473,9 @@ def compute_privacy_metrics_post_training(
             synthetic_data_decoded=syn_dec,
             reference_data_encoded=ref_enc,
             synthetic_data_encoded=syn_enc,
-            encoding_config=encoding_config
+            encoding_config=encoding_config,
+            population_data=pop_dec,
+            training_data=trn_dec
         )
 
         # Display results in terminal with Rich tables
