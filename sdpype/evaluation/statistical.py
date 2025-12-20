@@ -12,6 +12,7 @@ from typing import Dict, Any, List
 import torch
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 from geomloss import SamplesLoss
+from omegaconf import OmegaConf
 
 from sdv.metadata import SingleTableMetadata
 
@@ -1859,6 +1860,10 @@ def evaluate_statistical_metrics(original: pd.DataFrame,
         metric_name = metric_config.get("name")
         parameters = metric_config.get("parameters", {})
 
+        # Convert OmegaConf types to native Python types (for Hydra compatibility)
+        if OmegaConf.is_config(parameters):
+            parameters = OmegaConf.to_container(parameters, resolve=True)
+
         # Route to correct data format
         if encoded_metrics and metric_name in encoded_metrics:
             # Use encoded data for synthcity metrics
@@ -1977,6 +1982,10 @@ def evaluate_privacy_metrics(original: pd.DataFrame,
     for metric_config in metrics_config:
         metric_name = metric_config.get("name")
         parameters = metric_config.get("parameters", {})
+
+        # Convert OmegaConf types to native Python types (for Hydra compatibility)
+        if OmegaConf.is_config(parameters):
+            parameters = OmegaConf.to_container(parameters, resolve=True)
 
         # Route to correct data format
         if metric_name in ENCODED_PRIVACY_METRICS:
