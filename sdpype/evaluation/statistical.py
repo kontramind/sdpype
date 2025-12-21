@@ -1602,12 +1602,15 @@ class KAnonymizationMetric:
         self.qi_columns = qi_columns
         self.parameters = parameters
 
-    def _apply_label_encoding(self, datasets_dict: Dict[str, pd.DataFrame]) -> tuple[Dict[str, pd.DataFrame], Dict[str, LabelEncoder], List[str]]:
+    def _apply_label_encoding(self, datasets_dict: Dict[str, pd.DataFrame], metadata: SingleTableMetadata) -> tuple[Dict[str, pd.DataFrame], Dict[str, LabelEncoder], List[str]]:
         """
         Apply label encoding to categorical QI columns across all datasets.
 
+        Uses metadata as single source of truth to determine which columns are categorical.
+
         Args:
             datasets_dict: Dictionary of {dataset_name: dataframe} with QI columns only
+            metadata: SDV metadata object (single source of truth for column types)
 
         Returns:
             Tuple of (encoded_datasets_dict, label_encoders, categorical_columns)
@@ -1617,12 +1620,14 @@ class KAnonymizationMetric:
         encoded_datasets = {name: df.copy() for name, df in datasets_dict.items()}
 
         for col in self.qi_columns:
-            # Check if any dataset has this column as non-numeric
-            is_categorical = any(
-                not pd.api.types.is_numeric_dtype(df[col])
-                for df in datasets_dict.values()
-                if col in df.columns
-            )
+            # Use metadata as single source of truth for categorical detection
+            col_meta = metadata.columns.get(col)
+            if col_meta is None:
+                # Column not in metadata - skip with warning
+                print(f"⚠️  Warning: QI column '{col}' not found in metadata, skipping encoding")
+                continue
+
+            is_categorical = col_meta.sdtype == "categorical"
 
             if is_categorical:
                 categorical_cols.append(col)
@@ -1729,8 +1734,8 @@ class KAnonymizationMetric:
             # Filter to only QI columns
             datasets_qi = {name: df[self.qi_columns].copy() for name, df in datasets.items()}
 
-            # Apply label encoding for categorical columns
-            encoded_datasets, label_encoders, categorical_cols = self._apply_label_encoding(datasets_qi)
+            # Apply label encoding for categorical columns (using metadata as single source of truth)
+            encoded_datasets, label_encoders, categorical_cols = self._apply_label_encoding(datasets_qi, metadata)
 
             if categorical_cols:
                 print(f"   Encoded {len(categorical_cols)} categorical column(s): {categorical_cols}")
