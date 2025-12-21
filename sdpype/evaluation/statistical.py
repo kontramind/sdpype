@@ -1621,13 +1621,13 @@ class KAnonymizationMetric:
 
         for col in self.qi_columns:
             # Use metadata as single source of truth for categorical detection
-            col_meta = metadata.columns.get(col)
-            if col_meta is None:
+            if col not in metadata.columns:
                 # Column not in metadata - skip with warning
                 print(f"⚠️  Warning: QI column '{col}' not found in metadata, skipping encoding")
                 continue
 
-            is_categorical = col_meta.sdtype == "categorical"
+            col_meta = metadata.columns[col]
+            is_categorical = col_meta.get("sdtype") == "categorical"
 
             if is_categorical:
                 categorical_cols.append(col)
