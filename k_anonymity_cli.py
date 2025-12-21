@@ -20,9 +20,11 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from sklearn.preprocessing import LabelEncoder
+from sdv.metadata import SingleTableMetadata
 
 from synthcity.plugins.core.dataloader import GenericDataLoader
 from synthcity.metrics.eval_privacy import kAnonymization
+from sdpype.metadata import load_csv_with_metadata
 
 console = Console()
 app = typer.Typer(add_completion=False)
@@ -65,12 +67,21 @@ def main(
     reference: Optional[Path] = typer.Option(None, "--reference", help="Path to reference dataset CSV."),
     training: Optional[Path] = typer.Option(None, "--training", help="Path to training dataset CSV."),
     synthetic: Optional[Path] = typer.Option(None, "--synthetic", help="Path to synthetic dataset CSV."),
+    metadata: Path = typer.Option(
+        ...,
+        "--metadata",
+        help="Path to SDV metadata.json file (required for proper type enforcement).",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True
+    ),
     qi_cols: str = typer.Option(
         ...,
         "--qi-cols",
         help="Comma-separated quasi-identifier columns.",
     ),
-    sep: str = typer.Option(",", "--sep", help="CSV delimiter."),
+    sep: str = typer.Option(",", "--sep", help="CSV delimiter (only used as fallback if metadata loading fails)."),
     output: Optional[Path] = typer.Option(
         None,
         "--output",
@@ -88,6 +99,10 @@ def main(
 
     Supports population, reference, training, and synthetic datasets.
     Computes k-anonymity values for all provided datasets and k-ratios between relevant pairs.
+
+    IMPORTANT: Requires metadata.json file for proper type enforcement and categorical detection.
+    Data is loaded using metadata to ensure consistent dtypes (nullable Int64, categorical as str, etc.).
+    Categorical columns are detected from metadata (sdtype='categorical'), not inferred from dtypes.
     """
 
     # Parse QI columns
@@ -115,17 +130,30 @@ def main(
 
     console.print(f"\n🔍 K-Anonymity Evaluation", style="bold cyan")
     console.print(f"Datasets provided: {', '.join(provided_datasets.keys())}")
-    console.print(f"QI columns: {qi_list}\n")
+    console.print(f"QI columns: {qi_list}")
+    console.print(f"Metadata: {metadata}\n")
 
-    # Load all datasets
+    # Load metadata (single source of truth for column types)
+    try:
+        metadata_obj = SingleTableMetadata.load_from_json(str(metadata))
+        console.print(f"✅ Loaded metadata with {len(metadata_obj.columns)} columns\n")
+    except Exception as e:
+        console.print(f"❌ Failed to load metadata: {e}", style="red")
+        raise typer.Exit(code=1)
+
+    # Load all datasets using metadata for type enforcement
     datasets = {}
-    with console.status("[bold blue]Loading datasets..."):
+    with console.status("[bold blue]Loading datasets with metadata-enforced dtypes..."):
         for name, path in provided_datasets.items():
             if not path.exists():
                 console.print(f"❌ File not found: {path}", style="red")
                 raise typer.Exit(code=1)
-            datasets[name] = pd.read_csv(path, sep=sep)
-            console.print(f"✅ Loaded {name}: {datasets[name].shape[0]:,} rows × {datasets[name].shape[1]} columns")
+            try:
+                datasets[name] = load_csv_with_metadata(path, metadata)
+                console.print(f"✅ Loaded {name}: {datasets[name].shape[0]:,} rows × {datasets[name].shape[1]} columns")
+            except Exception as e:
+                console.print(f"❌ Failed to load {name}: {e}", style="red")
+                raise typer.Exit(code=1)
 
     console.print()
 
@@ -139,22 +167,24 @@ def main(
     # Filter to only QI columns
     datasets_qi = {name: df[qi_list].copy() for name, df in datasets.items()}
 
-    # Apply label encoding for categorical columns across ALL datasets
+    # Apply label encoding for categorical columns using metadata as single source of truth
     categorical_cols = []
     label_encoders = {}
 
-    console.print("🔄 Checking for categorical columns...\n")
+    console.print("🔄 Detecting categorical columns from metadata...\n")
 
     for col in qi_list:
-        # Check if any dataset has this column as non-numeric
-        is_categorical = any(
-            not pd.api.types.is_numeric_dtype(df[col])
-            for df in datasets_qi.values()
-        )
+        # Use metadata as single source of truth for categorical detection
+        if col not in metadata_obj.columns:
+            console.print(f"⚠️  Warning: QI column '{col}' not found in metadata, skipping encoding", style="yellow")
+            continue
+
+        col_meta = metadata_obj.columns[col]
+        is_categorical = col_meta.get("sdtype") == "categorical"
 
         if is_categorical:
             categorical_cols.append(col)
-            console.print(f"🔄 Encoding categorical column: {col}")
+            console.print(f"🔄 Encoding categorical column: {col} (sdtype=categorical)")
 
             # Fit encoder on combined data from all datasets
             le = LabelEncoder()
@@ -169,7 +199,9 @@ def main(
             console.print(f"  → Encoded {len(le.classes_)} categories: {list(le.classes_)}\n")
 
     if categorical_cols:
-        console.print(f"✅ Encoded {len(categorical_cols)} categorical column(s): {categorical_cols}\n")
+        console.print(f"✅ Encoded {len(categorical_cols)} categorical column(s) from metadata: {categorical_cols}\n")
+    else:
+        console.print(f"✅ No categorical QI columns found in metadata\n")
 
     # Compute k-anonymity for each dataset using synthcity
     console.print("🔒 Computing k-anonymity using synthcity kAnonymization...\n")
@@ -273,8 +305,11 @@ K-Ratios:
 • Synthetic / Reference: Privacy protection on holdout data
 • Synthetic / Training: Direct comparison with training data
 
-Note: Synthcity uses a clustering-based approach, not traditional equivalence classes.
-Categorical columns are automatically label-encoded before evaluation.""",
+Implementation Details:
+• Metadata is the single source of truth for column types
+• Categorical QI columns (sdtype='categorical') are label-encoded
+• Data loaded with metadata-enforced dtypes (nullable Int64, etc.)
+• Synthcity uses clustering-based approach, not traditional equivalence classes""",
         title="📖 Interpretation Guide",
         border_style="blue"
     )
