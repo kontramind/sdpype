@@ -102,7 +102,8 @@ def load_metrics_csv(folder: Path) -> Tuple[bool, Optional[pd.DataFrame], Option
                          "ks_complement", "tv_complement", "wasserstein_dist", "jsd_syndat", "mmd",
                          "alpha_delta_precision_OC", "alpha_delta_coverage_OC", "alpha_authenticity_OC",
                          "prdc_precision", "prdc_recall", "prdc_density", "prdc_coverage",
-                         "detection_gmm", "detection_xgb", "detection_mlp", "detection_linear"}
+                         "detection_gmm", "detection_xgb", "detection_mlp", "detection_linear",
+                         "sdmetrics_column_shapes", "sdmetrics_column_pair_trends", "sdmetrics_overall"}
         missing_cols = required_cols - set(df.columns)
 
         if missing_cols:
@@ -323,7 +324,8 @@ def create_plotly_visualization(
                    "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
                    "alpha_delta_coverage_OC", "alpha_authenticity_OC", "prdc_precision",
                    "prdc_recall", "prdc_density", "prdc_coverage", "detection_gmm",
-                   "detection_xgb", "detection_mlp", "detection_linear"]
+                   "detection_xgb", "detection_mlp", "detection_linear",
+                   "sdmetrics_column_shapes", "sdmetrics_column_pair_trends", "sdmetrics_overall"]
 
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728", "#17becf", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#ff9896", "#9edae5", "#c5b0d5", "#c49c94", "#f1c40f", "#16a085", "#e91e63", "#808000", "#3498db", "#e74c3c", "#9b59b6", "#1abc9c"]
     # Blue, Orange, Green, Purple, Red, Cyan, Brown, Pink, Gray, Lime, Light Red, Light Cyan, Light Purple, Light Brown, Gold, Teal, Magenta, Olive, Sky Blue, Crimson, Amethyst, Turquoise
@@ -744,7 +746,8 @@ def main(
                "wasserstein_dist", "jsd_syndat", "mmd", "alpha_delta_precision_OC",
                "alpha_delta_coverage_OC", "alpha_authenticity_OC", "prdc_precision",
                "prdc_recall", "prdc_density", "prdc_coverage", "detection_gmm",
-               "detection_xgb", "detection_mlp", "detection_linear"]
+               "detection_xgb", "detection_mlp", "detection_linear",
+               "sdmetrics_column_shapes", "sdmetrics_column_pair_trends", "sdmetrics_overall"]
 
     with Progress() as progress:
         task = progress.add_task("[cyan]Loading and parsing folders...", total=len(folders))
