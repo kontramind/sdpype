@@ -500,102 +500,263 @@ def display_statistical_metrics(results: Dict[str, Any]):
 
 
 def display_sdmetrics_quality(result: Dict[str, Any]):
-    """Display SDMetrics quality analysis results in terminal."""
+    """Display comprehensive SDMetrics quality analysis results in terminal."""
+    import pandas as pd
+    from rich.text import Text
+
     console.print()
 
-    # Overall Quality Scores Table
-    quality_table = Table(title="✅ SDMetrics Quality Report", show_header=True, header_style="bold blue")
-    quality_table.add_column("Property", style="cyan", no_wrap=True)
-    quality_table.add_column("Score", style="bright_green", justify="right")
-    quality_table.add_column("Interpretation", style="yellow")
+    # Helper functions for comprehensive display
+    def get_score_color(score: float) -> str:
+        """Return color based on score threshold."""
+        if pd.isna(score):
+            return "dim"
+        elif score >= 0.8:
+            return "green"
+        elif score >= 0.6:
+            return "yellow"
+        else:
+            return "red"
+
+    def get_confidence_flag(n_samples: int) -> str:
+        """Return confidence flag based on sample size."""
+        if n_samples >= 1000:
+            return '✓'
+        elif n_samples >= 500:
+            return '⚠'
+        elif n_samples >= 50:
+            return '✗'
+        else:
+            return '-'
+
+    def get_diagnostic_flag(real_corr: float, synth_corr: float, quality_score: float) -> str:
+        """Generate diagnostic flag based on three metrics."""
+        if pd.isna(real_corr) or pd.isna(synth_corr) or pd.isna(quality_score):
+            return '-'
+        if real_corr >= 0.70 and quality_score >= 0.80:
+            return '✓'
+        if real_corr < 0.30 and synth_corr < 0.30:
+            return '✓'
+        if real_corr >= 0.50 and quality_score >= 0.65:
+            return '✓'
+        if real_corr >= 0.70 and quality_score < 0.60:
+            return '✗'
+        return '⚠'
+
+    # Get parameters
+    params_info = result["parameters"]
+    max_display = params_info.get("max_display_cols", 10)
+
+    # 1. Column Shapes Details
+    column_shapes_details = result.get("column_shapes_details", [])
+    if column_shapes_details:
+        console.print(f"\n[bold cyan]{'═' * 100}[/bold cyan]")
+        console.print("[bold cyan]Column Shapes Details (Distribution Similarity)[/bold cyan]")
+        console.print(f"[bold cyan]{'═' * 100}[/bold cyan]\n")
+
+        shapes_table = Table(show_header=True, header_style="bold cyan")
+        shapes_table.add_column("Column", style="dim white", width=25)
+        shapes_table.add_column("Metric", style="magenta", width=15)
+        shapes_table.add_column("Score", justify="center", width=12)
+        shapes_table.add_column("Interpretation", style="dim", width=50)
+
+        for detail in column_shapes_details:
+            col_name = detail.get("Column", "")
+            metric = detail.get("Metric", "")
+            score = detail.get("Score")
+
+            if score is None or pd.isna(score):
+                interpretation = "Insufficient data"
+                color = "dim"
+            elif score >= 0.9:
+                interpretation = "Excellent - distributions very similar"
+                color = "green"
+            elif score >= 0.8:
+                interpretation = "Good - distributions similar"
+                color = "green"
+            elif score >= 0.7:
+                interpretation = "Acceptable - distributions somewhat similar"
+                color = "yellow"
+            elif score >= 0.5:
+                interpretation = "Poor - distributions quite different"
+                color = "yellow"
+            else:
+                interpretation = "Very poor - distributions very different"
+                color = "red"
+
+            shapes_table.add_row(
+                col_name,
+                metric,
+                f"[{color}]{score:.3f}[/{color}]" if score is not None else "[dim]N/A[/dim]",
+                interpretation,
+            )
+
+        console.print(shapes_table)
+
+    # 2. Quality Report Scores
+    console.print(f"\n[bold cyan]{'═' * 70}[/bold cyan]")
+    console.print("[bold cyan]Quality Report Scores (Real vs Synthetic)[/bold cyan]")
+    console.print(f"[bold cyan]{'═' * 70}[/bold cyan]\n")
+
+    scores_table = Table(show_header=True, header_style="bold cyan")
+    scores_table.add_column("Property", style="dim white")
+    scores_table.add_column("Score", justify="center")
 
     property_scores = result.get("property_scores", {})
     overall_score = result.get("score", 0.0)
 
-    def interpret_score(score: float) -> str:
-        if score >= 0.8:
-            return "Excellent"
-        elif score >= 0.6:
-            return "Good"
-        elif score >= 0.4:
-            return "Fair"
-        else:
-            return "Poor"
+    for prop_name, prop_key in [("Column Shapes", "column_shapes"), ("Column Pair Trends", "column_pair_trends")]:
+        if prop_key in property_scores:
+            score = property_scores[prop_key]
+            color = get_score_color(score)
+            scores_table.add_row(prop_name, f"[{color}]{score:.2%}[/{color}]")
 
-    # Add property scores
-    if "column_shapes" in property_scores:
-        score = property_scores["column_shapes"]
-        quality_table.add_row(
-            "Column Shapes",
-            f"{score:.2%}",
-            interpret_score(score)
-        )
-
-    if "column_pair_trends" in property_scores:
-        score = property_scores["column_pair_trends"]
-        quality_table.add_row(
-            "Column Pair Trends",
-            f"{score:.2%}",
-            interpret_score(score)
-        )
-
-    quality_table.add_section()
-    quality_table.add_row(
-        "[bold]Overall Quality[/bold]",
-        f"[bold]{overall_score:.2%}[/bold]",
-        f"[bold]{interpret_score(overall_score)}[/bold]"
+    overall_color = get_score_color(overall_score)
+    scores_table.add_row(
+        "[bold]Overall Quality Score[/bold]",
+        f"[bold {overall_color}]{overall_score:.2%}[/bold {overall_color}]",
     )
 
-    console.print(quality_table)
+    console.print(scores_table)
 
-    # Display summary statistics
+    # Display null value info
     null_values = result.get("null_values", {})
     if null_values:
         real_nulls = null_values.get("real_data", {})
         synth_nulls = null_values.get("synthetic_data", {})
+        total_real = sum(real_nulls.values()) if real_nulls else 0
+        total_synth = sum(synth_nulls.values()) if synth_nulls else 0
+        if total_real > 0 or total_synth > 0:
+            console.print(f"\n[dim]Null values: Real={total_real:,}, Synthetic={total_synth:,}[/dim]")
 
-        total_real_nulls = sum(real_nulls.values()) if real_nulls else 0
-        total_synth_nulls = sum(synth_nulls.values()) if synth_nulls else 0
+    # 3. Display Correlation Matrices
+    matrices = result.get("matrices", {})
+    if matrices:
+        # Reconstruct matrices from dicts
+        real_corr = pd.DataFrame(matrices.get("real_correlations", {}))
+        real_samples = pd.DataFrame(matrices.get("real_sample_sizes", {}))
+        synth_corr = pd.DataFrame(matrices.get("synthetic_correlations", {}))
+        quality_matrix = pd.DataFrame(matrices.get("quality_scores", {}))
 
-        if total_real_nulls > 0 or total_synth_nulls > 0:
-            console.print(f"\n[dim]Null values: Real={total_real_nulls:,}, Synthetic={total_synth_nulls:,}[/dim]")
+        # Confidence levels legend
+        console.print(f"\n[bold cyan]Correlation Confidence Levels:[/bold cyan]")
+        console.print("  ✓ = ≥1000 samples (high confidence)")
+        console.print("  ⚠ = 500-1000 samples (moderate confidence)")
+        console.print("  ✗ = 50-499 samples (low confidence)")
+        console.print("  - = <50 samples (insufficient data)")
 
-    # Display execution time
-    exec_time = result.get("execution_time", 0)
-    console.print(f"[dim]Execution time: {exec_time:.2f}s[/dim]")
+        # Display each matrix
+        for matrix_data, title in [
+            (real_corr, "Matrix 1: Real Data Correlations (with pairwise deletion)"),
+            (synth_corr, "Matrix 2: Synthetic Data Correlations"),
+            (quality_matrix, "Matrix 3: Quality Scores (Correlation Preservation)")
+        ]:
+            if not matrix_data.empty:
+                console.print(f"\n[bold cyan]{'═' * 100}[/bold cyan]")
+                console.print(f"[bold cyan]{title}[/bold cyan]")
+                console.print(f"[bold cyan]{'═' * 100}[/bold cyan]\n")
 
-    # Display top problematic pairs if diagnostics available
+                cols = sorted(matrix_data.columns)
+                display_cols = cols[:max_display]
+
+                matrix_table = Table(show_header=True, header_style="dim cyan", width=160)
+                matrix_table.add_column("", style="bold dim white", width=18)
+
+                for col in display_cols:
+                    matrix_table.add_column(col[:11], width=13, justify="center")
+
+                for row_col in display_cols:
+                    row_data = [Text(row_col[:11], style="bold dim white")]
+
+                    for col_col in display_cols:
+                        if row_col in matrix_data.index and col_col in matrix_data.columns:
+                            corr = matrix_data.loc[row_col, col_col]
+
+                            if pd.isna(corr):
+                                row_data.append(Text("    -     ", style="dim"))
+                            else:
+                                color = get_score_color(corr)
+                                # For real correlation matrix, show confidence flags
+                                if "Real Data" in title and row_col in real_samples.index and col_col in real_samples.columns:
+                                    n_samples = real_samples.loc[row_col, col_col]
+                                    confidence = get_confidence_flag(int(n_samples)) if not pd.isna(n_samples) else '-'
+                                    row_data.append(Text(f"{corr:.3f}({confidence})", style=color, justify="center"))
+                                else:
+                                    row_data.append(Text(f"{corr:.3f}", style=color, justify="center"))
+                        else:
+                            row_data.append(Text("    -     ", style="dim"))
+
+                    matrix_table.add_row(*row_data)
+
+                console.print(matrix_table)
+
+                if len(cols) > max_display:
+                    console.print(f"[dim]... and {len(cols) - max_display} more columns[/dim]")
+
+    # 4. Diagnostic Analysis
     diagnostics = result.get("diagnostics", {})
     if diagnostics:
-        # Sort pairs by quality score
+        console.print(f"\n[bold cyan]{'═' * 140}[/bold cyan]")
+        console.print("[bold cyan]Diagnostic Analysis: Correlation Preservation (Bottom 10 Pairs)[/bold cyan]")
+        console.print(f"[bold cyan]{'═' * 140}[/bold cyan]\n")
+
+        diag_table = Table(show_header=True, header_style="bold cyan", width=160)
+        diag_table.add_column("Column Pair", style="dim white", width=28)
+        diag_table.add_column("Real Corr", justify="center", width=12)
+        diag_table.add_column("n_samples", justify="center", width=10)
+        diag_table.add_column("Synth Corr", justify="center", width=12)
+        diag_table.add_column("Quality", justify="center", width=10)
+        diag_table.add_column("Status", justify="center", width=8)
+        diag_table.add_column("Diagnosis", style="dim", width=60)
+
+        # Sort by quality score
         pairs_list = [(k, v) for k, v in diagnostics.items()]
         pairs_sorted = sorted(pairs_list, key=lambda x: x[1].get("quality_score", 1.0))
 
-        # Show bottom 5 pairs
-        if len(pairs_sorted) >= 5:
-            console.print("\n[bold yellow]⚠ Lowest Quality Pairs (Bottom 5):[/bold yellow]")
+        # Show bottom 10
+        for pair_key, pair_data in pairs_sorted[:10]:
+            real_corr = pair_data.get("real_correlation")
+            synth_corr = pair_data.get("synthetic_correlation")
+            quality = pair_data.get("quality_score")
+            n_samples = pair_data.get("real_n_samples", 0)
 
-            pairs_table = Table(show_header=True, header_style="bold yellow")
-            pairs_table.add_column("Pair", style="dim white", width=30)
-            pairs_table.add_column("Real Corr", justify="right", width=10)
-            pairs_table.add_column("Synth Corr", justify="right", width=11)
-            pairs_table.add_column("Quality", justify="right", width=10)
+            real_str = f"{real_corr:.3f}" if real_corr is not None else "-"
+            synth_str = f"{synth_corr:.3f}" if synth_corr is not None else "-"
+            quality_str = f"{quality:.3f}" if quality is not None else "-"
 
-            for pair_key, pair_data in pairs_sorted[:5]:
-                real_corr = pair_data.get("real_correlation", 0.0)
-                synth_corr = pair_data.get("synthetic_correlation", 0.0)
-                quality = pair_data.get("quality_score", 0.0)
+            confidence = get_confidence_flag(n_samples) if n_samples else '-'
+            flag = get_diagnostic_flag(real_corr or 0, synth_corr or 0, quality or 0)
+            flag_color = "green" if flag == "✓" else "yellow" if flag == "⚠" else "red" if flag == "✗" else "dim"
 
-                color = "green" if quality >= 0.8 else "yellow" if quality >= 0.6 else "red"
+            # Generate diagnosis
+            if real_corr is None or synth_corr is None or quality is None:
+                diagnosis = "Insufficient data"
+            elif real_corr >= 0.75 and quality >= 0.75:
+                diagnosis = "Strong relationship preserved"
+            elif real_corr < 0.25 and synth_corr < 0.25:
+                diagnosis = "Weak relationship reproduced"
+            elif real_corr >= 0.70 and quality < 0.50:
+                diagnosis = "Strong trend lost in synthesis"
+            elif confidence in ['✗', '-']:
+                diagnosis = f"Low confidence ({n_samples} samples)"
+            else:
+                diagnosis = "Moderate preservation"
 
-                pairs_table.add_row(
-                    pair_key,
-                    f"{real_corr:.3f}",
-                    f"{synth_corr:.3f}",
-                    f"[{color}]{quality:.3f}[/{color}]"
-                )
+            diag_table.add_row(
+                pair_key[:26],
+                real_str,
+                f"{n_samples}" if n_samples > 0 else "-",
+                synth_str,
+                quality_str,
+                Text(flag, style=f"bold {flag_color}"),
+                diagnosis[:55] + ("..." if len(diagnosis) > 55 else ""),
+            )
 
-            console.print(pairs_table)
+        console.print(diag_table)
+
+    # Display execution time
+    exec_time = result.get("execution_time", 0)
+    console.print(f"\n[dim]Execution time: {exec_time:.2f}s[/dim]")
 
 
 def display_privacy_metrics(results: Dict[str, Any]):
