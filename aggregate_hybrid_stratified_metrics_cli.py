@@ -336,18 +336,11 @@ def create_plotly_visualization(
     # Complexity metrics to be combined into one graph
     complexity_metrics = ["complexity_population", "complexity_training", "complexity_reference", "complexity_synthetic"]
 
-    # SDMetrics quality metrics to be combined into one graph
-    sdmetrics_metrics = ["sdmetrics_column_shapes", "sdmetrics_column_pair_trends", "sdmetrics_overall"]
-
     figures = []
 
     for metric_idx, metric in enumerate(metrics):
         # Skip individual complexity metrics - we'll create a combined graph later
         if metric in complexity_metrics:
-            continue
-
-        # Skip individual SDMetrics metrics - we'll create a combined graph later
-        if metric in sdmetrics_metrics:
             continue
 
         fig = go.Figure()
@@ -530,68 +523,6 @@ def create_plotly_visualization(
 
     # Insert combined complexity figure after ddr_novel_factual (position 2)
     figures.insert(2, complexity_fig)
-
-    # Create combined SDMetrics quality graph
-    sdmetrics_fig = go.Figure()
-    df_sorted = summary_df.sort_values("generation")
-    generations = df_sorted["generation"].values
-
-    # Define colors for each SDMetrics metric
-    sdmetrics_colors = {
-        "sdmetrics_column_shapes": ("#2ca02c", "#1a6b1a"),      # Green
-        "sdmetrics_column_pair_trends": ("#ff7f0e", "#d64a0a"),  # Orange
-        "sdmetrics_overall": ("#1f77b4", "#0d3b7a")              # Blue
-    }
-
-    sdmetrics_names = {
-        "sdmetrics_column_shapes": "Column Shapes",
-        "sdmetrics_column_pair_trends": "Column Pair Trends",
-        "sdmetrics_overall": "Overall Quality"
-    }
-
-    for sdmetrics_metric in sdmetrics_metrics:
-        mean_col = f"{sdmetrics_metric}_mean"
-
-        if mean_col not in summary_df.columns:
-            continue
-
-        means = df_sorted[mean_col].values
-        color, line_color = sdmetrics_colors[sdmetrics_metric]
-        name = sdmetrics_names[sdmetrics_metric]
-
-        # Add mean line for each SDMetrics metric
-        sdmetrics_fig.add_trace(
-            go.Scatter(
-                x=generations,
-                y=means,
-                mode="lines+markers",
-                name=name,
-                line=dict(color=line_color, width=3),
-                marker=dict(size=8, color=line_color, line=dict(color="white", width=1)),
-                hovertemplate=f"<b>{name}</b><br>Gen %{{x}}<br>Score: %{{y:.3f}}<extra></extra>",
-            ),
-        )
-
-    # Update layout for combined SDMetrics figure
-    sdmetrics_fig.update_layout(
-        title_text="SDMetrics Quality Scores (Distribution & Correlation Similarity)",
-        xaxis_title="Generation",
-        yaxis_title="Quality Score (0-1, higher is better)",
-        height=500,
-        hovermode="x unified",
-        template="plotly_white",
-        font=dict(family="Arial, sans-serif", size=11),
-        showlegend=True,
-        legend=dict(
-            x=1.02,
-            y=1,
-            xanchor="left",
-            yanchor="top",
-        ),
-    )
-
-    # Append SDMetrics figure at the end
-    figures.append(sdmetrics_fig)
 
     return figures
 
