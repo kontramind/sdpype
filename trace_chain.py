@@ -220,6 +220,15 @@ def read_metrics(model_id: str, generation: int, experiments_root: str) -> Dict:
                     if nrs_score is not None:
                         metrics['new_row_synthesis'] = nrs_score
 
+            # SDMetrics Quality Report - comprehensive quality assessment
+            if 'sdmetrics_quality' in metrics_data:
+                sdmetrics = metrics_data['sdmetrics_quality']
+                if sdmetrics.get('status') == 'success':
+                    property_scores = sdmetrics.get('property_scores', {})
+                    metrics['sdmetrics_column_shapes'] = property_scores.get('column_shapes', 0)
+                    metrics['sdmetrics_column_pair_trends'] = property_scores.get('column_pair_trends', 0)
+                    metrics['sdmetrics_overall'] = sdmetrics.get('score', 0)
+
     # Detection metrics
     det_file = Path(experiments_root) / "metrics" / f"detection_evaluation_{experiment_name}_{config_hash}_{seed}.json"
 
@@ -478,9 +487,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb\n"
+        return "generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb\n"
 
-    lines = ["generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb"]
 
     for r in results:
         gen = r['generation']
@@ -510,6 +519,11 @@ def export_csv(results: List[Dict]) -> str:
         det_linear = metrics.get('detection_linear', '')
         nrs = metrics.get('new_row_synthesis', '')
 
+        # SDMetrics Quality metrics
+        sdm_shapes = metrics.get('sdmetrics_column_shapes', '')
+        sdm_trends = metrics.get('sdmetrics_column_pair_trends', '')
+        sdm_overall = metrics.get('sdmetrics_overall', '')
+
         # Hallucination metrics
         factual = metrics.get('factual_total', '')
         ddr = metrics.get('ddr_novel_factual', '')
@@ -531,7 +545,7 @@ def export_csv(results: List[Dict]) -> str:
 
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{alpha_delta_prec_oc},{alpha_delta_cov_oc},{alpha_auth_oc},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{det_gmm},{det_xgb},{det_mlp},{det_linear},{nrs},{factual},{ddr},{plaus},{plaus_nov},{cat_ddr},{cat_train_valid},{cat_train_prop},{cat_halluc},{comp_pop},{comp_train},{comp_ref},{comp_synth},{comp_ratio_pop},{comp_ratio_train},{comp_ratio_ref},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{alpha_delta_prec_oc},{alpha_delta_cov_oc},{alpha_auth_oc},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{det_gmm},{det_xgb},{det_mlp},{det_linear},{nrs},{sdm_shapes},{sdm_trends},{sdm_overall},{factual},{ddr},{plaus},{plaus_nov},{cat_ddr},{cat_train_valid},{cat_train_prop},{cat_halluc},{comp_pop},{comp_train},{comp_ref},{comp_synth},{comp_ratio_pop},{comp_ratio_train},{comp_ratio_ref},{size}")
 
     return "\n".join(lines)
 
