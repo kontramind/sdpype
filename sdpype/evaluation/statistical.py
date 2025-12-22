@@ -7,12 +7,13 @@ import time
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 import torch
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 from geomloss import SamplesLoss
 from omegaconf import OmegaConf
+from scipy.stats import pearsonr, chi2_contingency
 
 from sdv.metadata import SingleTableMetadata
 
@@ -33,6 +34,7 @@ from sdmetrics.single_column import KSComplement
 from sdmetrics.single_column import TVComplement
 from sdmetrics.single_table.new_row_synthesis import NewRowSynthesis
 from sdmetrics.single_table.privacy import DCRBaselineProtection
+from sdmetrics.reports.single_table import QualityReport
 
 # SYNDAT imports for alternative implementations
 from syndat.metrics import jensen_shannon_distance as syndat_jsd
@@ -1810,6 +1812,271 @@ class KAnonymizationMetric:
             }
 
 
+class SDMetricsQualityMetric:
+    """
+    SDMetrics comprehensive quality analysis with correlation matrices.
+
+    Evaluates:
+    - Column Shapes (distribution similarity using KS test, TV distance, etc.)
+    - Column Pair Trends (correlation preservation across column pairs)
+
+    Generates three correlation matrices:
+    1. Real data correlations (with pairwise deletion and confidence metrics)
+    2. Synthetic data correlations (complete data analysis)
+    3. Quality scores (SDMetrics similarity assessment)
+
+    Uses pairwise deletion to handle missing values in real data.
+    Supports mixed data types (numerical, categorical, boolean).
+    """
+
+    def __init__(self, max_display_cols: int = 10, **parameters):
+        """
+        Initialize SDMetrics Quality metric.
+
+        Args:
+            max_display_cols: Maximum number of columns to display in matrices
+            **parameters: Additional parameters (reserved for future use)
+        """
+        self.max_display_cols = max_display_cols
+        self.parameters = parameters
+
+    def _cramers_v(self, x: pd.Series, y: pd.Series) -> float:
+        """Calculate Cramér's V statistic for categorical-categorical association."""
+        confusion_matrix = pd.crosstab(x, y)
+        chi2 = chi2_contingency(confusion_matrix)[0]
+        n = confusion_matrix.sum().sum()
+        min_dim = min(confusion_matrix.shape) - 1
+
+        if min_dim == 0:
+            return 0.0
+
+        return np.sqrt(chi2 / (n * min_dim)) if n > 0 else 0.0
+
+    def _correlation_ratio(self, categories: pd.Series, values: pd.Series) -> float:
+        """Calculate correlation ratio (eta) for categorical-numerical association."""
+        categories = categories.fillna('Missing')
+        values = values.fillna(values.mean())
+
+        categories = pd.Categorical(categories)
+        grouped_mean = values.groupby(categories, observed=True).mean()
+        overall_mean = values.mean()
+        group_counts = values.groupby(categories, observed=True).size()
+
+        ss_between = ((grouped_mean - overall_mean) ** 2 * group_counts).sum()
+        ss_total = ((values - overall_mean) ** 2).sum()
+
+        if ss_total == 0:
+            return 0.0
+
+        return np.sqrt(ss_between / ss_total)
+
+    def _compute_correlation_matrix(
+        self,
+        data: pd.DataFrame,
+        metadata: dict,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Compute correlation matrix using pairwise deletion.
+
+        Args:
+            data: DataFrame to analyze
+            metadata: SDV metadata dictionary
+
+        Returns:
+            Tuple of (correlation_matrix, sample_size_matrix)
+        """
+        columns = list(data.columns)
+        corr_matrix = pd.DataFrame(index=columns, columns=columns, dtype=float)
+        sample_matrix = pd.DataFrame(index=columns, columns=columns, dtype=int)
+
+        sdtypes = {col: metadata['columns'][col]['sdtype'] for col in columns}
+
+        for i, col1 in enumerate(columns):
+            for col2 in columns[i:]:
+                if col1 == col2:
+                    corr_matrix.loc[col1, col2] = 1.0
+                    sample_matrix.loc[col1, col2] = len(data)
+                    continue
+
+                sdtype1 = sdtypes[col1].lower()
+                sdtype2 = sdtypes[col2].lower()
+
+                # Skip datetime columns
+                if sdtype1 == 'datetime' or sdtype2 == 'datetime':
+                    corr_matrix.loc[col1, col2] = np.nan
+                    corr_matrix.loc[col2, col1] = np.nan
+                    sample_matrix.loc[col1, col2] = 0
+                    sample_matrix.loc[col2, col1] = 0
+                    continue
+
+                try:
+                    # Pairwise deletion: only rows where BOTH columns are not null
+                    valid_mask = data[[col1, col2]].notna().all(axis=1)
+                    n_valid = valid_mask.sum()
+
+                    if n_valid < 2:  # Need at least 2 samples
+                        corr_matrix.loc[col1, col2] = np.nan
+                        corr_matrix.loc[col2, col1] = np.nan
+                        sample_matrix.loc[col1, col2] = n_valid
+                        sample_matrix.loc[col2, col1] = n_valid
+                        continue
+
+                    data1 = data.loc[valid_mask, col1]
+                    data2 = data.loc[valid_mask, col2]
+
+                    # Both numerical - Pearson
+                    if sdtype1 == 'numerical' and sdtype2 == 'numerical':
+                        corr, _ = pearsonr(data1, data2)
+                        corr_matrix.loc[col1, col2] = abs(corr)
+                        corr_matrix.loc[col2, col1] = abs(corr)
+
+                    # Both categorical - Cramér's V
+                    elif sdtype1 in ['categorical', 'boolean'] and sdtype2 in ['categorical', 'boolean']:
+                        v = self._cramers_v(data1, data2)
+                        corr_matrix.loc[col1, col2] = v
+                        corr_matrix.loc[col2, col1] = v
+
+                    # Mixed - Correlation ratio
+                    else:
+                        if sdtype1 in ['categorical', 'boolean']:
+                            eta = self._correlation_ratio(data1, data2)
+                        else:
+                            eta = self._correlation_ratio(data2, data1)
+
+                        corr_matrix.loc[col1, col2] = eta
+                        corr_matrix.loc[col2, col1] = eta
+
+                    sample_matrix.loc[col1, col2] = n_valid
+                    sample_matrix.loc[col2, col1] = n_valid
+
+                except Exception:
+                    corr_matrix.loc[col1, col2] = np.nan
+                    corr_matrix.loc[col2, col1] = np.nan
+                    sample_matrix.loc[col1, col2] = 0
+                    sample_matrix.loc[col2, col1] = 0
+
+        return corr_matrix, sample_matrix
+
+    def _build_quality_pair_matrix(self, report: QualityReport) -> pd.DataFrame:
+        """Extract pairwise quality scores from QualityReport."""
+        details = report.get_details('Column Pair Trends')
+
+        all_cols = sorted(set(details['Column 1'].unique()) | set(details['Column 2'].unique()))
+        matrix = pd.DataFrame(index=all_cols, columns=all_cols, dtype=float)
+
+        for _, row in details.iterrows():
+            col1, col2 = row['Column 1'], row['Column 2']
+            score = row['Score']
+            matrix.loc[col1, col2] = score
+            matrix.loc[col2, col1] = score
+
+        for col in all_cols:
+            matrix.loc[col, col] = 1.0
+
+        return matrix
+
+    def evaluate(self,
+                 original: pd.DataFrame,
+                 synthetic: pd.DataFrame,
+                 metadata: SingleTableMetadata,
+                 encoding_config: dict = None) -> Dict[str, Any]:
+        """
+        Evaluate using SDMetrics QualityReport.
+
+        Args:
+            original: Original/reference dataset (decoded)
+            synthetic: Synthetic dataset (decoded)
+            metadata: SDV metadata object
+            encoding_config: Optional encoding configuration (unused)
+
+        Returns:
+            Dictionary with:
+            - status: "success" or "error"
+            - score: Overall quality score (0-1)
+            - property_scores: Column Shapes and Column Pair Trends scores
+            - matrices: Real/synthetic correlations and quality scores
+            - diagnostics: Pairwise diagnostic information
+            - null_values: Null count information
+            - column_shapes_details: Per-column distribution scores
+            - execution_time: Time taken in seconds
+        """
+        start_time = time.time()
+
+        try:
+            metadata_dict = metadata.to_dict()
+
+            # Generate SDMetrics QualityReport
+            report = QualityReport()
+            report.generate(original, synthetic, metadata_dict, verbose=False)
+
+            # Compute correlation matrices
+            real_matrix, real_samples = self._compute_correlation_matrix(original, metadata_dict)
+            synth_matrix, synth_samples = self._compute_correlation_matrix(synthetic, metadata_dict)
+            quality_matrix = self._build_quality_pair_matrix(report)
+
+            # Get property scores
+            column_shapes_score = report._properties["Column Shapes"]._compute_average()
+            column_pair_trends_score = report._properties["Column Pair Trends"]._compute_average()
+            overall_score = report.get_score()
+
+            # Get column shapes details
+            column_shapes_details = report.get_details('Column Shapes').to_dict(orient='records')
+
+            # Build diagnostics for each pair
+            cols = sorted(real_matrix.columns)
+            diagnostics = {}
+
+            for i, col1 in enumerate(cols):
+                for col2 in cols[i+1:]:
+                    pair_key = f"{col1}×{col2}"
+
+                    real_corr = float(real_matrix.loc[col1, col2]) if not pd.isna(real_matrix.loc[col1, col2]) else None
+                    n_samples = int(real_samples.loc[col1, col2])
+                    synth_corr = float(synth_matrix.loc[col1, col2]) if not pd.isna(synth_matrix.loc[col1, col2]) else None
+                    quality_score = float(quality_matrix.loc[col1, col2]) if not pd.isna(quality_matrix.loc[col1, col2]) else None
+
+                    if all(x is not None for x in [real_corr, synth_corr, quality_score]):
+                        diagnostics[pair_key] = {
+                            "column_1": col1,
+                            "column_2": col2,
+                            "real_correlation": real_corr,
+                            "real_n_samples": n_samples,
+                            "synthetic_correlation": synth_corr,
+                            "quality_score": quality_score,
+                        }
+
+            return {
+                "status": "success",
+                "score": float(overall_score),
+                "property_scores": {
+                    "column_shapes": float(column_shapes_score),
+                    "column_pair_trends": float(column_pair_trends_score),
+                },
+                "matrices": {
+                    "real_correlations": real_matrix.to_dict(),
+                    "real_sample_sizes": real_samples.to_dict(),
+                    "synthetic_correlations": synth_matrix.to_dict(),
+                    "quality_scores": quality_matrix.to_dict(),
+                },
+                "diagnostics": diagnostics,
+                "null_values": {
+                    "real_data": original.isnull().sum().to_dict(),
+                    "synthetic_data": synthetic.isnull().sum().to_dict(),
+                },
+                "column_shapes_details": column_shapes_details,
+                "parameters": {"max_display_cols": self.max_display_cols, **self.parameters},
+                "execution_time": time.time() - start_time,
+            }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "error_message": str(e),
+                "parameters": {"max_display_cols": self.max_display_cols, **self.parameters},
+                "execution_time": time.time() - start_time,
+            }
+
+
 def evaluate_statistical_metrics(original: pd.DataFrame,
                                 synthetic: pd.DataFrame,
                                 metrics_config: list,
@@ -2089,6 +2356,8 @@ def get_metric_evaluator(metric_name: str, parameters: Dict[str, Any]):
             return DCRBaselineProtectionMetric(**parameters)
         case "k_anonymization":
             return KAnonymizationMetric(**parameters)
+        case "sdmetrics_quality":
+            return SDMetricsQualityMetric(**parameters)
         case _:
             raise ValueError(f"Unknown metric: {metric_name}")
 
@@ -2527,6 +2796,62 @@ Metrics Results
   Error: {ca_result.get('error_message', 'Unknown error')}
 """
 
+    # SDMetrics Quality Report results
+    if "sdmetrics_quality" in metrics:
+        sq_result = metrics["sdmetrics_quality"]
+        if sq_result["status"] == "success":
+            params_info = sq_result["parameters"]
+            max_display = params_info.get("max_display_cols", 10)
+
+            property_scores = sq_result.get("property_scores", {})
+            overall_score = sq_result.get("score", 0.0)
+
+            report += f"""SDMetrics Quality Report:
+  Parameters: max_display_cols={max_display}, pairwise deletion for real data
+  Execution time: {sq_result['execution_time']:.2f}s
+
+  Quality Scores:
+  → Overall Quality:       {overall_score:.2%}
+  → Column Shapes:         {property_scores.get('column_shapes', 0.0):.2%}
+  → Column Pair Trends:    {property_scores.get('column_pair_trends', 0.0):.2%}
+"""
+
+            # Add null value summary
+            null_values = sq_result.get("null_values", {})
+            if null_values:
+                real_nulls = null_values.get("real_data", {})
+                synth_nulls = null_values.get("synthetic_data", {})
+
+                total_real = sum(real_nulls.values()) if real_nulls else 0
+                total_synth = sum(synth_nulls.values()) if synth_nulls else 0
+
+                report += f"""
+  Null Values:
+  → Real data:       {total_real:,} null values
+  → Synthetic data:  {total_synth:,} null values
+"""
+
+            # Add diagnostics for worst pairs
+            diagnostics = sq_result.get("diagnostics", {})
+            if diagnostics:
+                pairs_list = [(k, v) for k, v in diagnostics.items()]
+                pairs_sorted = sorted(pairs_list, key=lambda x: x[1].get("quality_score", 1.0))
+
+                if len(pairs_sorted) >= 5:
+                    report += f"""
+  Lowest Quality Pairs (Bottom 5):"""
+                    for pair_key, pair_data in pairs_sorted[:5]:
+                        quality = pair_data.get("quality_score", 0.0)
+                        real_corr = pair_data.get("real_correlation", 0.0)
+                        synth_corr = pair_data.get("synthetic_correlation", 0.0)
+                        report += f"""
+    → {pair_key}: Quality={quality:.3f}, Real={real_corr:.3f}, Synth={synth_corr:.3f}"""
+                    report += "\n"
+        else:
+            report += f"""SDMetrics Quality Report: ERROR
+  Error: {sq_result.get('error_message', 'Unknown error')}
+"""
+
     # Individual metric insights
     insights = []
 
@@ -2678,6 +3003,17 @@ Metrics Results
             else:
                 insights.append("Poor category adherence")
         # If ca_score is None, we simply don't add any insight (no categorical/boolean columns to evaluate)
+
+    if "sdmetrics_quality" in metrics and metrics["sdmetrics_quality"]["status"] == "success":
+        overall_quality = metrics["sdmetrics_quality"]["score"]
+        if overall_quality >= 0.8:
+            insights.append("Excellent overall quality (SDMetrics)")
+        elif overall_quality >= 0.6:
+            insights.append("Good overall quality (SDMetrics)")
+        elif overall_quality >= 0.4:
+            insights.append("Fair overall quality (SDMetrics)")
+        else:
+            insights.append("Poor overall quality (SDMetrics)")
 
     assessment = ", ".join(insights) if insights else "No successful metrics"
 

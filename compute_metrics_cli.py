@@ -492,7 +492,110 @@ def display_statistical_metrics(results: Dict[str, Any]):
 
         console.print(tv_table)
 
+    # SDMetrics Quality Report
+    if "sdmetrics_quality" in metrics and metrics["sdmetrics_quality"]["status"] == "success":
+        display_sdmetrics_quality(metrics["sdmetrics_quality"])
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
+
+
+def display_sdmetrics_quality(result: Dict[str, Any]):
+    """Display SDMetrics quality analysis results in terminal."""
+    console.print()
+
+    # Overall Quality Scores Table
+    quality_table = Table(title="✅ SDMetrics Quality Report", show_header=True, header_style="bold blue")
+    quality_table.add_column("Property", style="cyan", no_wrap=True)
+    quality_table.add_column("Score", style="bright_green", justify="right")
+    quality_table.add_column("Interpretation", style="yellow")
+
+    property_scores = result.get("property_scores", {})
+    overall_score = result.get("score", 0.0)
+
+    def interpret_score(score: float) -> str:
+        if score >= 0.8:
+            return "Excellent"
+        elif score >= 0.6:
+            return "Good"
+        elif score >= 0.4:
+            return "Fair"
+        else:
+            return "Poor"
+
+    # Add property scores
+    if "column_shapes" in property_scores:
+        score = property_scores["column_shapes"]
+        quality_table.add_row(
+            "Column Shapes",
+            f"{score:.2%}",
+            interpret_score(score)
+        )
+
+    if "column_pair_trends" in property_scores:
+        score = property_scores["column_pair_trends"]
+        quality_table.add_row(
+            "Column Pair Trends",
+            f"{score:.2%}",
+            interpret_score(score)
+        )
+
+    quality_table.add_section()
+    quality_table.add_row(
+        "[bold]Overall Quality[/bold]",
+        f"[bold]{overall_score:.2%}[/bold]",
+        f"[bold]{interpret_score(overall_score)}[/bold]"
+    )
+
+    console.print(quality_table)
+
+    # Display summary statistics
+    null_values = result.get("null_values", {})
+    if null_values:
+        real_nulls = null_values.get("real_data", {})
+        synth_nulls = null_values.get("synthetic_data", {})
+
+        total_real_nulls = sum(real_nulls.values()) if real_nulls else 0
+        total_synth_nulls = sum(synth_nulls.values()) if synth_nulls else 0
+
+        if total_real_nulls > 0 or total_synth_nulls > 0:
+            console.print(f"\n[dim]Null values: Real={total_real_nulls:,}, Synthetic={total_synth_nulls:,}[/dim]")
+
+    # Display execution time
+    exec_time = result.get("execution_time", 0)
+    console.print(f"[dim]Execution time: {exec_time:.2f}s[/dim]")
+
+    # Display top problematic pairs if diagnostics available
+    diagnostics = result.get("diagnostics", {})
+    if diagnostics:
+        # Sort pairs by quality score
+        pairs_list = [(k, v) for k, v in diagnostics.items()]
+        pairs_sorted = sorted(pairs_list, key=lambda x: x[1].get("quality_score", 1.0))
+
+        # Show bottom 5 pairs
+        if len(pairs_sorted) >= 5:
+            console.print("\n[bold yellow]⚠ Lowest Quality Pairs (Bottom 5):[/bold yellow]")
+
+            pairs_table = Table(show_header=True, header_style="bold yellow")
+            pairs_table.add_column("Pair", style="dim white", width=30)
+            pairs_table.add_column("Real Corr", justify="right", width=10)
+            pairs_table.add_column("Synth Corr", justify="right", width=11)
+            pairs_table.add_column("Quality", justify="right", width=10)
+
+            for pair_key, pair_data in pairs_sorted[:5]:
+                real_corr = pair_data.get("real_correlation", 0.0)
+                synth_corr = pair_data.get("synthetic_correlation", 0.0)
+                quality = pair_data.get("quality_score", 0.0)
+
+                color = "green" if quality >= 0.8 else "yellow" if quality >= 0.6 else "red"
+
+                pairs_table.add_row(
+                    pair_key,
+                    f"{real_corr:.3f}",
+                    f"{synth_corr:.3f}",
+                    f"[{color}]{quality:.3f}[/{color}]"
+                )
+
+            console.print(pairs_table)
 
 
 def display_privacy_metrics(results: Dict[str, Any]):
@@ -1004,7 +1107,8 @@ def compute_statistical_metrics_post_training(
 
     DECODED_METRICS = {
         'tv_complement', 'table_structure', 'semantic_structure',
-        'boundary_adherence', 'category_adherence', 'new_row_synthesis'
+        'boundary_adherence', 'category_adherence', 'new_row_synthesis',
+        'sdmetrics_quality'
     }
 
     # Get metrics config first (use default if not provided)
