@@ -164,7 +164,8 @@ def main(cfg: DictConfig) -> None:
         'boundary_adherence',   # Needs original numeric ranges
         'category_adherence',   # Needs original categories
         'new_row_synthesis',    # Needs to compare original rows
-        'sdmetrics_quality'     # Needs decoded data for correlation analysis
+        'sdmetrics_quality',    # Needs decoded data for correlation analysis
+        'k_anonymization'       # Needs original categorical values for quasi-identifiers
     }
 
     # Determine which data formats we need based on configured metrics
