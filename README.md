@@ -287,6 +287,63 @@ python trace_chain.py MODEL_ID --format csv --output chain.csv
 python trace_chain.py MODEL_ID --plot --plot-output degradation.png
 ```
 
+## Standalone Evaluation Tools
+
+SDPype provides standalone CLI tools for specific evaluation tasks:
+
+### SDMetrics Quality Report
+
+Comprehensive synthesis quality analysis using SDMetrics QualityReport with pairwise correlation matrices.
+
+```bash
+# Run quality analysis
+python sdmetrics_quality_cli.py \
+  --real experiments/data/real/test.csv \
+  --synthetic experiments/data/synthetic/test.csv \
+  --metadata experiments/data/metadata.json \
+  --output quality_report.json
+```
+
+**What it does:**
+- Generates three correlation matrices:
+  1. Real data correlations (with pairwise deletion and confidence metrics)
+  2. Synthetic data correlations (complete data analysis)
+  3. Quality scores (SDMetrics similarity assessment)
+- Computes distribution similarity for individual columns
+- Analyzes correlation preservation across column pairs
+- Provides diagnostic analysis with flags (✓/⚠/✗) for each pair
+
+**Key features:**
+- Uses pairwise deletion to handle missing values in real data
+- Supports mixed data types (numerical, categorical, boolean)
+- Confidence flags based on sample sizes (✓ ≥1000, ⚠ 500-999, ✗ 50-499, - <50)
+- Diagnostic analysis identifies learning failures and spurious correlations
+- JSON export for automated pipelines
+
+**Interpreting results:**
+- Quality scores ≥0.8: Excellent preservation
+- Quality scores ≥0.6: Good preservation
+- Quality scores <0.6: Poor preservation
+- Diagnostic flags:
+  - ✓ = Good preservation of correlations
+  - ⚠ = Mixed quality or moderate issues
+  - ✗ = Poor preservation or learning failure
+
+### K-Anonymity Evaluation
+
+Compute k-anonymity metrics for privacy assessment:
+
+```bash
+# Run k-anonymity analysis
+python k_anonymity_cli.py \
+  --population data/population.csv \
+  --reference data/reference.csv \
+  --synthetic data/synthetic.csv \
+  --metadata data/metadata.json \
+  --qi-cols "age,gender,zipcode" \
+  --output k_anonymity_results.json
+```
+
 ## Statistical Analysis
 
 ### Aggregating Metrics Across Experiments
