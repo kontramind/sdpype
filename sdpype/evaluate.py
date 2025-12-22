@@ -163,7 +163,8 @@ def main(cfg: DictConfig) -> None:
         'semantic_structure',   # Needs original sdtypes for comparison
         'boundary_adherence',   # Needs original numeric ranges
         'category_adherence',   # Needs original categories
-        'new_row_synthesis'     # Needs to compare original rows
+        'new_row_synthesis',    # Needs to compare original rows
+        'sdmetrics_quality'     # Needs decoded data for correlation analysis
     }
 
     # Determine which data formats we need based on configured metrics
