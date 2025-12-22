@@ -817,6 +817,90 @@ def main(cfg: DictConfig) -> None:
     else:
         console.print("❌ Jensen-Shannon Distance (NannyML) failed", style="bold red")
 
+    # SDMetrics Quality Report results table
+    if "sdmetrics_quality" in metrics and metrics["sdmetrics_quality"]["status"] == "success":
+        sq_result = metrics["sdmetrics_quality"]
+
+        # Get parameters info for display
+        params_info = sq_result["parameters"]
+        max_display = params_info.get("max_display_cols", 10)
+        params_display = f"max_display_cols={max_display}, pairwise deletion"
+
+        # Create SDMetrics Quality results table
+        sq_table = Table(title=f"✅ SDMetrics Quality Report ({params_display})", show_header=True, header_style="bold blue")
+        sq_table.add_column("Property", style="cyan", no_wrap=True)
+        sq_table.add_column("Score", style="bright_green", justify="right")
+        sq_table.add_column("Interpretation", style="yellow")
+
+        property_scores = sq_result.get("property_scores", {})
+        overall_score = sq_result.get("score", 0.0)
+
+        def interpret_quality(score: float) -> str:
+            if score >= 0.8:
+                return "Excellent"
+            elif score >= 0.6:
+                return "Good"
+            elif score >= 0.4:
+                return "Fair"
+            else:
+                return "Poor"
+
+        # Add property scores
+        if "column_shapes" in property_scores:
+            score = property_scores["column_shapes"]
+            sq_table.add_row("Column Shapes", f"{score:.2%}", interpret_quality(score))
+
+        if "column_pair_trends" in property_scores:
+            score = property_scores["column_pair_trends"]
+            sq_table.add_row("Column Pair Trends", f"{score:.2%}", interpret_quality(score))
+
+        sq_table.add_section()
+        sq_table.add_row("[bold]Overall Quality[/bold]", f"[bold]{overall_score:.2%}[/bold]", f"[bold]{interpret_quality(overall_score)}[/bold]")
+
+        console.print(sq_table)
+
+        # Display null value summary
+        null_values = sq_result.get("null_values", {})
+        if null_values:
+            real_nulls = null_values.get("real_data", {})
+            synth_nulls = null_values.get("synthetic_data", {})
+            total_real = sum(real_nulls.values()) if real_nulls else 0
+            total_synth = sum(synth_nulls.values()) if synth_nulls else 0
+            if total_real > 0 or total_synth > 0:
+                console.print(f"  [dim]Null values: Real={total_real:,}, Synthetic={total_synth:,}[/dim]")
+
+        # Display lowest quality pairs
+        diagnostics = sq_result.get("diagnostics", {})
+        if diagnostics:
+            pairs_list = [(k, v) for k, v in diagnostics.items()]
+            pairs_sorted = sorted(pairs_list, key=lambda x: x[1].get("quality_score", 1.0))
+
+            if len(pairs_sorted) >= 5:
+                console.print("\n  [bold yellow]⚠ Lowest Quality Pairs (Bottom 5):[/bold yellow]")
+                pairs_table = Table(show_header=True, header_style="bold yellow", box=None, padding=(0, 1))
+                pairs_table.add_column("Pair", style="dim white", width=30)
+                pairs_table.add_column("Real Corr", justify="right", width=10)
+                pairs_table.add_column("Synth Corr", justify="right", width=11)
+                pairs_table.add_column("Quality", justify="right", width=10)
+
+                for pair_key, pair_data in pairs_sorted[:5]:
+                    real_corr = pair_data.get("real_correlation", 0.0)
+                    synth_corr = pair_data.get("synthetic_correlation", 0.0)
+                    quality = pair_data.get("quality_score", 0.0)
+                    color = "green" if quality >= 0.8 else "yellow" if quality >= 0.6 else "red"
+
+                    pairs_table.add_row(
+                        pair_key,
+                        f"{real_corr:.3f}",
+                        f"{synth_corr:.3f}",
+                        f"[{color}]{quality:.3f}[/{color}]"
+                    )
+
+                console.print(pairs_table)
+    else:
+        if "sdmetrics_quality" in metrics:
+            console.print("❌ SDMetrics Quality Report failed", style="bold red")
+
     console.print("\n✅ Statistical metrics evaluation completed", style="bold green")
 
 
