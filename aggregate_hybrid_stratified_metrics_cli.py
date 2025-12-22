@@ -337,6 +337,7 @@ def create_plotly_visualization(
     complexity_metrics = ["complexity_population", "complexity_training", "complexity_reference", "complexity_synthetic"]
 
     figures = []
+    color_idx = 0  # Separate counter for color assignment
 
     for metric_idx, metric in enumerate(metrics):
         # Skip individual complexity metrics - we'll create a combined graph later
@@ -368,8 +369,9 @@ def create_plotly_visualization(
         pred_lowers = means - t_crits * stds * pi_multiplier
         pred_uppers = means + t_crits * stds * pi_multiplier
 
-        color = colors[metric_idx]
-        line_color = line_colors[metric_idx]
+        color = colors[color_idx % len(colors)]
+        line_color = line_colors[color_idx % len(line_colors)]
+        color_idx += 1
 
         # Convert colors to rgba with transparency
         outer_band_color = hex_to_rgba(gray_color, alpha=0.75)  # Gray outer band
