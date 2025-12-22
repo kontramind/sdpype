@@ -947,7 +947,6 @@ def main(cfg: DictConfig) -> None:
         # 3. Display Correlation Matrices
         matrices = sq_result.get("matrices", {})
         if matrices:
-            import pandas as pd
             from rich.text import Text
 
             # Reconstruct matrices from dicts
