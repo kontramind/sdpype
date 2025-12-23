@@ -198,7 +198,7 @@ def transform(
     output: Path = typer.Option(None, "--output", "-o", help="Output CSV path (default: <input>_transformed.csv)"),
 ):
     """
-    Transform XLSX file: drop unwanted columns, rename to abbreviated format, and export to CSV.
+    Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
 
     Steps:
     1. Drop unwanted columns (19 total):
@@ -212,6 +212,12 @@ def transform(
        CREATININE_FIRST → CREAT, BUN_FIRST → BUN, POTASSIUM_FIRST → POTASS,
        TOTAL_CHOLESTEROL_FIRST → CHOL, HR_FIRST → HR, SYSBP_FIRST → SBP,
        DIASBP_FIRST → DBP, RESPRATE_FIRST → RR, IS_READMISSION_30D → READMIT
+
+    3. Transform numeric columns:
+       - Int16 (whole numbers): AGE, HR, SBP, DBP, RR, BUN, CHOL
+       - Int32 (whole numbers): NTproBNP
+       - Float (2 decimals): CREAT, POTASS
+       All numeric types allow NULL values
     """
     if not xlsx_path.exists():
         console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
@@ -292,6 +298,39 @@ def transform(
             df = df.rename(columns=columns_to_rename)
         else:
             console.print(f"  [yellow]No columns found to rename[/yellow]")
+
+        console.print(f"\n[cyan]Dataset after renaming: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+
+        # Transform numeric columns
+        console.print("[bold cyan]Transforming numeric columns:[/bold cyan]")
+
+        # AGE: convert to Int16 (whole numbers, nullable)
+        if 'AGE' in df.columns:
+            df['AGE'] = pd.to_numeric(df['AGE'], errors='coerce')
+            df['AGE'] = df['AGE'].round().astype('Int16')
+            console.print(f"  [green]>[/green] AGE → Int16 (whole numbers, allows NULL)")
+
+        # Other Int16 columns: HR, SBP, DBP, RR, BUN, CHOL
+        int16_columns = ['HR', 'SBP', 'DBP', 'RR', 'BUN', 'CHOL']
+        for col in int16_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+                df[col] = df[col].round().astype('Int16')
+                console.print(f"  [green]>[/green] {col} → Int16 (whole numbers, allows NULL)")
+
+        # Int32 columns: NTproBNP (larger range needed)
+        if 'NTproBNP' in df.columns:
+            df['NTproBNP'] = pd.to_numeric(df['NTproBNP'], errors='coerce')
+            df['NTproBNP'] = df['NTproBNP'].round().astype('Int32')
+            console.print(f"  [green]>[/green] NTproBNP → Int32 (whole numbers, allows NULL)")
+
+        # Float columns: CREAT, POTASS (need decimals)
+        float_columns = ['CREAT', 'POTASS']
+        for col in float_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+                df[col] = df[col].round(2)  # Round to 2 decimal places
+                console.print(f"  [green]>[/green] {col} → Float (2 decimals, allows NULL)")
 
         console.print(f"\n[cyan]Final dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
