@@ -213,10 +213,11 @@ def transform(
        TOTAL_CHOLESTEROL_FIRST → CHOL, HR_FIRST → HR, SYSBP_FIRST → SBP,
        DIASBP_FIRST → DBP, RESPRATE_FIRST → RR, IS_READMISSION_30D → READMIT
 
-    3. Transform numeric columns:
+    3. Transform column types:
        - Int16 (whole numbers): AGE, HR, SBP, DBP, RR, BUN, CHOL
        - Int32 (whole numbers): NTproBNP
        - Float (2 decimals): CREAT, POTASS
+       - Boolean: READMIT (0→False, 1→True)
        All numeric types allow NULL values
     """
     if not xlsx_path.exists():
@@ -331,6 +332,11 @@ def transform(
                 df[col] = pd.to_numeric(df[col], errors='coerce')
                 df[col] = df[col].round(2)  # Round to 2 decimal places
                 console.print(f"  [green]>[/green] {col} → Float (2 decimals, allows NULL)")
+
+        # Boolean column: READMIT (convert 0/1 to True/False)
+        if 'READMIT' in df.columns:
+            df['READMIT'] = df['READMIT'].astype('boolean')
+            console.print(f"  [green]>[/green] READMIT → Boolean (0→False, 1→True)")
 
         console.print(f"\n[cyan]Final dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
