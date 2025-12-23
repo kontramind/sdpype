@@ -183,20 +183,33 @@ def transform(
         # Rename columns to abbreviated uppercase versions
         console.print("[bold cyan]Renaming columns:[/bold cyan]")
         column_mapping = {
+            # Handle various possible column name formats
             'ADMISSION_TYPE': 'ADMTYPE',
+            'ADMTYPE': 'ADMTYPE',
             'AGE': 'AGE',
             'ETHNICITY_GROUPED': 'ETHGRP',
+            'ETHNICITY_GROUP': 'ETHGRP',
             'GENDER': 'GENDER',
             'NTPROBNP_FIRST': 'NTproBNP',
+            'NT-proBNP': 'NTproBNP',
             'CREATININE_FIRST': 'CREAT',
+            'Creatinine': 'CREAT',
             'BUN_FIRST': 'BUN',
+            'BLOOD_UREA_NITRO': 'BUN',
             'POTASSIUM_FIRST': 'POTASS',
+            'POTASSIUM': 'POTASS',
             'TOTAL_CHOLESTEROL_FIRST': 'CHOL',
+            'CHOLESTEROL': 'CHOL',
             'HR_FIRST': 'HR',
+            'HEARTRATE': 'HR',
             'SYSBP_FIRST': 'SBP',
+            'SYSTOLIC': 'SBP',
             'DIASBP_FIRST': 'DBP',
+            'DIASTOLIC': 'DBP',
             'RESPRATE_FIRST': 'RR',
+            'RESP': 'RR',
             'IS_READMISSION_30D': 'READMIT',
+            'READMISSION': 'READMIT',
         }
 
         # Only rename columns that exist in the dataframe
