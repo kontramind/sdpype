@@ -125,6 +125,71 @@ def info(
 
 
 @app.command()
+def unique(
+    file_path: Path = typer.Argument(..., help="Path to data file (XLSX or CSV)"),
+    column: str = typer.Argument(..., help="Column name to get unique values from"),
+):
+    """
+    Display all unique values in a specified column.
+    """
+    if not file_path.exists():
+        console.print(f"[red]Error: File not found: {file_path}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        console.print(f"[blue]Loading file: {file_path}[/blue]")
+
+        # Read file based on extension
+        df = load_data_file(file_path)
+        console.print(f"[green]Successfully loaded data[/green]")
+        console.print(f"[cyan]Dataset shape: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+
+        # Check if column exists
+        if column not in df.columns:
+            console.print(f"[red]Error: Column '{column}' not found in dataset[/red]")
+            console.print(f"\n[yellow]Available columns:[/yellow]")
+            for col in df.columns:
+                console.print(f"  - {col}")
+            raise typer.Exit(1)
+
+        # Get unique values
+        unique_values = df[column].unique()
+        null_count = df[column].isna().sum()
+
+        console.print(f"[bold cyan]Column: {column}[/bold cyan]")
+        console.print(f"[cyan]Total unique values: {len(unique_values):,}[/cyan]")
+        console.print(f"[cyan]Null/NaN values: {null_count:,}[/cyan]\n")
+
+        # Create table for unique values
+        table = Table(title=f"Unique values in '{column}'", show_lines=False)
+        table.add_column("#", style="dim", width=6, justify="right")
+        table.add_column("Value", style="cyan")
+        table.add_column("Count", style="green", justify="right")
+        table.add_column("Percentage", style="magenta", justify="right")
+
+        # Get value counts
+        value_counts = df[column].value_counts(dropna=False)
+        total_rows = len(df)
+
+        for idx, (value, count) in enumerate(value_counts.items(), 1):
+            percentage = (count / total_rows) * 100
+            value_str = str(value) if pd.notna(value) else "[dim]<null>[/dim]"
+            table.add_row(
+                str(idx),
+                value_str,
+                f"{count:,}",
+                f"{percentage:.1f}%"
+            )
+
+        console.print(table)
+        console.print()
+
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def transform(
     xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
     output: Path = typer.Option(None, "--output", "-o", help="Output CSV path (default: <input>_transformed.csv)"),
