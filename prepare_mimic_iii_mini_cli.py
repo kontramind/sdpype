@@ -37,7 +37,7 @@ def generate_encoding_config() -> dict:
         'SBP': 'numerical',
         'DBP': 'numerical',
         'RR': 'numerical',
-        'READMIT': 'categorical',  # Boolean as categorical
+        'READMIT': 'boolean',
     }
 
     transformers = {
@@ -134,7 +134,7 @@ def generate_encoding_config() -> dict:
                 'learn_rounding_scheme': True
             }
         },
-        'READMIT': {'type': 'UniformEncoder', 'params': {}},  # Boolean as categorical
+        'READMIT': {'type': 'BinaryEncoder', 'params': {}},
     }
 
     return {
@@ -159,7 +159,7 @@ def generate_metadata() -> dict:
         'SBP': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
         'DBP': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
         'RR': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
-        'READMIT': {'sdtype': 'categorical'},  # Boolean as categorical
+        'READMIT': {'sdtype': 'boolean'},
     }
 
     return {
