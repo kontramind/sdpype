@@ -310,6 +310,30 @@ def read_metrics(model_id: str, generation: int, experiments_root: str) -> Dict:
                 metrics['complexity_ratio_vs_training'] = comparisons.get('synthetic_vs_training_ratio', 0)
                 metrics['complexity_ratio_vs_reference'] = comparisons.get('synthetic_vs_reference_ratio', 0)
 
+    # K-Anonymity metrics (from privacy metrics file)
+    privacy_file = Path(experiments_root) / "metrics" / f"privacy_{experiment_name}_{config_hash}_{seed}.json"
+
+    if privacy_file.exists():
+        with privacy_file.open() as f:
+            data = json.load(f)
+            k_anon_data = data.get('metrics', {}).get('k_anonymization', {})
+
+            if k_anon_data.get('status') == 'success':
+                k_values = k_anon_data.get('k_values', {})
+                k_ratios = k_anon_data.get('k_ratios', {})
+
+                # Store k-anonymity for reference dataset
+                if 'reference' in k_values:
+                    metrics['k_anonymity_reference'] = k_values['reference'].get('k', 0)
+
+                # Store k-anonymity for synthetic dataset
+                if 'synthetic' in k_values:
+                    metrics['k_anonymity_synthetic'] = k_values['synthetic'].get('k', 0)
+
+                # Store Synthetic / Reference ratio
+                if 'Synthetic / Reference' in k_ratios:
+                    metrics['k_ratio_synthetic_reference'] = k_ratios['Synthetic / Reference'].get('ratio', 0)
+
     return metrics
 
 
