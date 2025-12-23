@@ -110,7 +110,7 @@ def process_folder(
         return False, {"folder": str(folder), "error": error}
 
     try:
-        # Run trace_chain
+        # Run trace_chain (reads k-anonymity from privacy_*.json if available)
         results = trace_chain(
             model_id=model_id,
             max_generations=max_generations,
