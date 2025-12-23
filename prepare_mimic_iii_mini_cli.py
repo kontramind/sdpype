@@ -130,12 +130,11 @@ def transform(
     output: Path = typer.Option(None, "--output", "-o", help="Output CSV path (default: <input>_transformed.csv)"),
 ):
     """
-    Transform XLSX file: drop ID columns and export to CSV.
+    Transform XLSX file: drop ID and unwanted columns and export to CSV.
 
-    Drops the following ID columns if present:
-    - SUBJECT_ID
-    - HADM_ID
-    - ICUSTAY_ID
+    Drops the following columns if present:
+    - ID columns: SUBJECT_ID, HADM_ID, ICUSTAY_ID
+    - Unwanted columns: IS_NEWBORN, ICD9_CHAPTER, WEIGHT, HEIGHT, INSURANCE, RELIGION_GROUP, TEMP
     """
     if not xlsx_path.exists():
         console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
@@ -149,17 +148,23 @@ def transform(
         console.print(f"[green]Successfully loaded data[/green]")
         console.print(f"[cyan]Original dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
-        # Drop ID columns
-        console.print("[bold cyan]Dropping ID columns:[/bold cyan]")
-        id_columns = ['SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID']
-        columns_to_drop = [col for col in id_columns if col in df.columns]
+        # Drop unwanted columns
+        console.print("[bold cyan]Dropping unwanted columns:[/bold cyan]")
+        unwanted_columns = [
+            # ID columns
+            'SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID',
+            # Other unwanted columns
+            'IS_NEWBORN', 'ICD9_CHAPTER', 'WEIGHT', 'HEIGHT',
+            'INSURANCE', 'RELIGION_GROUP', 'TEMP'
+        ]
+        columns_to_drop = [col for col in unwanted_columns if col in df.columns]
 
         if columns_to_drop:
             df = df.drop(columns=columns_to_drop)
             for col in columns_to_drop:
                 console.print(f"  [green]>[/green] Dropped: {col}")
         else:
-            console.print(f"  [yellow]No ID columns found to drop[/yellow]")
+            console.print(f"  [yellow]No unwanted columns found to drop[/yellow]")
 
         console.print(f"\n[cyan]Transformed dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
