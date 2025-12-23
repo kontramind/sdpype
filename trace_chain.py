@@ -511,9 +511,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb\n"
+        return "generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,k_anonymity_reference,k_anonymity_synthetic,k_ratio_synthetic_reference,model_size_mb\n"
 
-    lines = ["generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,k_anonymity_reference,k_anonymity_synthetic,k_ratio_synthetic_reference,model_size_mb"]
 
     for r in results:
         gen = r['generation']
@@ -567,9 +567,14 @@ def export_csv(results: List[Dict]) -> str:
         comp_ratio_train = metrics.get('complexity_ratio_vs_training', '')
         comp_ratio_ref = metrics.get('complexity_ratio_vs_reference', '')
 
+        # K-Anonymity metrics
+        k_anon_ref = metrics.get('k_anonymity_reference', '')
+        k_anon_synth = metrics.get('k_anonymity_synthetic', '')
+        k_ratio = metrics.get('k_ratio_synthetic_reference', '')
+
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{alpha_delta_prec_oc},{alpha_delta_cov_oc},{alpha_auth_oc},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{det_gmm},{det_xgb},{det_mlp},{det_linear},{nrs},{sdm_shapes},{sdm_trends},{sdm_overall},{factual},{ddr},{plaus},{plaus_nov},{cat_ddr},{cat_train_valid},{cat_train_prop},{cat_halluc},{comp_pop},{comp_train},{comp_ref},{comp_synth},{comp_ratio_pop},{comp_ratio_train},{comp_ratio_ref},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{alpha_delta_prec_oc},{alpha_delta_cov_oc},{alpha_auth_oc},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{det_gmm},{det_xgb},{det_mlp},{det_linear},{nrs},{sdm_shapes},{sdm_trends},{sdm_overall},{factual},{ddr},{plaus},{plaus_nov},{cat_ddr},{cat_train_valid},{cat_train_prop},{cat_halluc},{comp_pop},{comp_train},{comp_ref},{comp_synth},{comp_ratio_pop},{comp_ratio_train},{comp_ratio_ref},{k_anon_ref},{k_anon_synth},{k_ratio},{size}")
 
     return "\n".join(lines)
 
