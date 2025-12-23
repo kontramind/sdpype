@@ -10,7 +10,6 @@ import pandas as pd
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
-from typing import Optional
 
 console = Console()
 app = typer.Typer(
@@ -20,30 +19,36 @@ app = typer.Typer(
 )
 
 
+def load_data_file(file_path: Path) -> pd.DataFrame:
+    """Load data from XLSX or CSV file based on extension."""
+    suffix = file_path.suffix.lower()
+
+    if suffix == '.xlsx':
+        return pd.read_excel(file_path)
+    elif suffix == '.csv':
+        return pd.read_csv(file_path)
+    else:
+        raise ValueError(f"Unsupported file format: {suffix}. Use .xlsx or .csv")
+
+
 @app.command()
 def show(
-    xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
+    file_path: Path = typer.Argument(..., help="Path to data file (XLSX or CSV)"),
     rows: int = typer.Option(10, "--rows", "-n", help="Number of rows to display"),
-    sheet: Optional[str] = typer.Option(None, "--sheet", "-s", help="Sheet name (default: first sheet)"),
 ):
     """
-    Load an XLSX file and display the first N rows in a table.
+    Load a data file (XLSX or CSV) and display the first N rows in a table.
     """
-    if not xlsx_path.exists():
-        console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
+    if not file_path.exists():
+        console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
 
     try:
-        console.print(f"[blue]Loading XLSX file: {xlsx_path}[/blue]")
+        console.print(f"[blue]Loading file: {file_path}[/blue]")
 
-        # Read XLSX file
-        if sheet:
-            df = pd.read_excel(xlsx_path, sheet_name=sheet)
-            console.print(f"[green]Successfully loaded sheet: {sheet}[/green]")
-        else:
-            df = pd.read_excel(xlsx_path)
-            console.print(f"[green]Successfully loaded first sheet[/green]")
-
+        # Read file based on extension
+        df = load_data_file(file_path)
+        console.print(f"[green]Successfully loaded data[/green]")
         console.print(f"[cyan]Dataset shape: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
         # Limit rows to display
@@ -65,33 +70,27 @@ def show(
         console.print()
 
     except Exception as e:
-        console.print(f"[red]Error loading XLSX file: {str(e)}[/red]")
+        console.print(f"[red]Error loading file: {str(e)}[/red]")
         raise typer.Exit(1)
 
 
 @app.command()
 def info(
-    xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
-    sheet: Optional[str] = typer.Option(None, "--sheet", "-s", help="Sheet name (default: first sheet)"),
+    file_path: Path = typer.Argument(..., help="Path to data file (XLSX or CSV)"),
 ):
     """
-    Display information about the XLSX file (columns, types, null counts).
+    Display information about the data file (columns, types, null counts).
     """
-    if not xlsx_path.exists():
-        console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
+    if not file_path.exists():
+        console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
 
     try:
-        console.print(f"[blue]Loading XLSX file: {xlsx_path}[/blue]")
+        console.print(f"[blue]Loading file: {file_path}[/blue]")
 
-        # Read XLSX file
-        if sheet:
-            df = pd.read_excel(xlsx_path, sheet_name=sheet)
-            console.print(f"[green]Successfully loaded sheet: {sheet}[/green]")
-        else:
-            df = pd.read_excel(xlsx_path)
-            console.print(f"[green]Successfully loaded first sheet[/green]")
-
+        # Read file based on extension
+        df = load_data_file(file_path)
+        console.print(f"[green]Successfully loaded data[/green]")
         console.print(f"[cyan]Dataset shape: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
         # Create info table
@@ -121,16 +120,22 @@ def info(
         console.print()
 
     except Exception as e:
-        console.print(f"[red]Error loading XLSX file: {str(e)}[/red]")
+        console.print(f"[red]Error loading file: {str(e)}[/red]")
         raise typer.Exit(1)
 
 
 @app.command()
-def sheets(
+def transform(
     xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
+    output: Path = typer.Option(None, "--output", "-o", help="Output CSV path (default: <input>_transformed.csv)"),
 ):
     """
-    List all sheet names in the XLSX file.
+    Transform XLSX file: drop ID columns and export to CSV.
+
+    Drops the following ID columns if present:
+    - SUBJECT_ID
+    - HADM_ID
+    - ICUSTAY_ID
     """
     if not xlsx_path.exists():
         console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
@@ -139,19 +144,35 @@ def sheets(
     try:
         console.print(f"[blue]Loading XLSX file: {xlsx_path}[/blue]")
 
-        # Get sheet names
-        xl_file = pd.ExcelFile(xlsx_path)
-        sheet_names = xl_file.sheet_names
+        # Read XLSX file (first sheet)
+        df = pd.read_excel(xlsx_path)
+        console.print(f"[green]Successfully loaded data[/green]")
+        console.print(f"[cyan]Original dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
-        console.print(f"\n[green]Found {len(sheet_names)} sheet(s):[/green]\n")
+        # Drop ID columns
+        console.print("[bold cyan]Dropping ID columns:[/bold cyan]")
+        id_columns = ['SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID']
+        columns_to_drop = [col for col in id_columns if col in df.columns]
 
-        for idx, sheet_name in enumerate(sheet_names, 1):
-            console.print(f"  {idx}. [cyan]{sheet_name}[/cyan]")
+        if columns_to_drop:
+            df = df.drop(columns=columns_to_drop)
+            for col in columns_to_drop:
+                console.print(f"  [green]>[/green] Dropped: {col}")
+        else:
+            console.print(f"  [yellow]No ID columns found to drop[/yellow]")
 
-        console.print()
+        console.print(f"\n[cyan]Transformed dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+
+        # Determine output path
+        if output is None:
+            output = xlsx_path.parent / f"{xlsx_path.stem}_transformed.csv"
+
+        # Export to CSV
+        df.to_csv(output, index=False)
+        console.print(f"[green]✓ Saved to: {output}[/green]\n")
 
     except Exception as e:
-        console.print(f"[red]Error loading XLSX file: {str(e)}[/red]")
+        console.print(f"[red]Error transforming file: {str(e)}[/red]")
         raise typer.Exit(1)
 
 
