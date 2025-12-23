@@ -7,6 +7,8 @@ A simplified CLI tool for exploring and transforming MIMIC-III data from XLSX fi
 
 import typer
 import pandas as pd
+import yaml
+import json
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
@@ -17,6 +19,153 @@ app = typer.Typer(
     rich_markup_mode="rich",
     no_args_is_help=True
 )
+
+
+def generate_encoding_config() -> dict:
+    """Generate RDT encoding configuration."""
+    sdtypes = {
+        'ADMTYPE': 'categorical',
+        'AGE': 'numerical',
+        'ETHGRP': 'categorical',
+        'GENDER': 'categorical',
+        'NTproBNP': 'numerical',
+        'CREAT': 'numerical',
+        'BUN': 'numerical',
+        'POTASS': 'numerical',
+        'CHOL': 'numerical',
+        'HR': 'numerical',
+        'SBP': 'numerical',
+        'DBP': 'numerical',
+        'RR': 'numerical',
+        'READMIT': 'categorical',  # Boolean as categorical
+    }
+
+    transformers = {
+        'ADMTYPE': {'type': 'UniformEncoder', 'params': {}},
+        'AGE': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'ETHGRP': {'type': 'UniformEncoder', 'params': {}},
+        'GENDER': {'type': 'UniformEncoder', 'params': {}},
+        'NTproBNP': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int32',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'CREAT': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Float',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'BUN': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'POTASS': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Float',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'CHOL': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'HR': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'SBP': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'DBP': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'RR': {
+            'type': 'FloatFormatter',
+            'params': {
+                'computer_representation': 'Int16',
+                'missing_value_generation': '',
+                'enforce_min_max_values': True,
+                'learn_rounding_scheme': True
+            }
+        },
+        'READMIT': {'type': 'UniformEncoder', 'params': {}},  # Boolean as categorical
+    }
+
+    return {
+        'sdtypes': sdtypes,
+        'transformers': transformers,
+    }
+
+
+def generate_metadata() -> dict:
+    """Generate SDV metadata."""
+    columns = {
+        'ADMTYPE': {'sdtype': 'categorical'},
+        'AGE': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
+        'ETHGRP': {'sdtype': 'categorical'},
+        'GENDER': {'sdtype': 'categorical'},
+        'NTproBNP': {'sdtype': 'numerical', 'computer_representation': 'Int32'},
+        'CREAT': {'sdtype': 'numerical', 'computer_representation': 'Float'},
+        'BUN': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
+        'POTASS': {'sdtype': 'numerical', 'computer_representation': 'Float'},
+        'CHOL': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
+        'HR': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
+        'SBP': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
+        'DBP': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
+        'RR': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
+        'READMIT': {'sdtype': 'categorical'},  # Boolean as categorical
+    }
+
+    return {
+        'METADATA_SPEC_VERSION': 'SINGLE_TABLE_V1',
+        'columns': columns,
+    }
 
 
 def load_data_file(file_path: Path) -> pd.DataFrame:
@@ -196,6 +345,7 @@ def unique(
 def transform(
     xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
     output: Path = typer.Option(None, "--output", "-o", help="Output CSV path (default: <input>_transformed.csv)"),
+    encoding_config: bool = typer.Option(False, "--encoding-config", "-e", help="Generate RDT encoding config YAML and SDV metadata JSON files"),
 ):
     """
     Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
@@ -217,8 +367,12 @@ def transform(
        - Int16 (whole numbers): AGE, HR, SBP, DBP, RR, BUN, CHOL
        - Int32 (whole numbers): NTproBNP
        - Float (2 decimals): CREAT, POTASS
-       - Boolean: READMIT (0→False, 1→True)
+       - Int8 (0/1): READMIT (kept as integers, marked as categorical boolean in metadata)
        All numeric types allow NULL values
+
+    With --encoding-config flag, also generates:
+    - YAML encoding config file (for RDT transformers)
+    - JSON metadata file (for SDV)
     """
     if not xlsx_path.exists():
         console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
@@ -333,10 +487,10 @@ def transform(
                 df[col] = df[col].round(2)  # Round to 2 decimal places
                 console.print(f"  [green]>[/green] {col} → Float (2 decimals, allows NULL)")
 
-        # Boolean column: READMIT (convert 0/1 to True/False)
+        # READMIT: keep as 0/1 integers (will be marked as categorical in metadata)
         if 'READMIT' in df.columns:
-            df['READMIT'] = df['READMIT'].astype('boolean')
-            console.print(f"  [green]>[/green] READMIT → Boolean (0→False, 1→True)")
+            df['READMIT'] = pd.to_numeric(df['READMIT'], errors='coerce').astype('Int8')
+            console.print(f"  [green]>[/green] READMIT → Int8 (0/1 as categorical boolean)")
 
         console.print(f"\n[cyan]Final dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
@@ -346,7 +500,24 @@ def transform(
 
         # Export to CSV
         df.to_csv(output, index=False)
-        console.print(f"[green]✓ Saved to: {output}[/green]\n")
+        console.print(f"[green]✓ Saved CSV to: {output}[/green]")
+
+        # Generate encoding config and metadata if requested
+        if encoding_config:
+            console.print()
+            config = generate_encoding_config()
+            encoding_path = output.parent / f"{output.stem}_encoding.yaml"
+            with open(encoding_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
+
+            metadata = generate_metadata()
+            metadata_path = output.parent / f"{output.stem}_metadata.json"
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
+
+        console.print()
 
     except Exception as e:
         console.print(f"[red]Error transforming file: {str(e)}[/red]")
