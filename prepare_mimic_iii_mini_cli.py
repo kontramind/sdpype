@@ -7,11 +7,13 @@ A simplified CLI tool for exploring and transforming MIMIC-III data from XLSX fi
 
 import typer
 import pandas as pd
+import numpy as np
 import yaml
 import json
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
+from typing import Optional
 
 console = Console()
 app = typer.Typer(
@@ -180,6 +182,128 @@ def load_data_file(file_path: Path) -> pd.DataFrame:
         raise ValueError(f"Unsupported file format: {suffix}. Use .xlsx or .csv")
 
 
+def apply_transformations(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
+    """Apply all transformations to a dataframe."""
+
+    # Drop unwanted columns (but NOT ICUSTAY_ID yet - it may have been dropped already for sampling)
+    if verbose:
+        console.print("[bold cyan]Dropping unwanted columns:[/bold cyan]")
+    unwanted_columns = [
+        # ID columns (ICUSTAY_ID handled separately for sampling)
+        'SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID',
+        # Other unwanted columns
+        'IS_NEWBORN', 'ICD9_CHAPTER', 'WEIGHT', 'HEIGHT',
+        'INSURANCE', 'RELIGION_GROUP', 'TEMP',
+        'EXPIRE_FLAG', 'HOSPITAL_EXPIRE_FLAG', 'SPO2',
+        'ICUSTAY_EXPIRE', 'HEMOGLOBIN', 'ALBUMIN',
+        'LANGUAGE_GROUP', 'MARITAL_GROUP', 'GLUCOSE_BLOOD'
+    ]
+    columns_to_drop = [col for col in unwanted_columns if col in df.columns]
+
+    if columns_to_drop:
+        df = df.drop(columns=columns_to_drop)
+        if verbose:
+            for col in columns_to_drop:
+                console.print(f"  [green]>[/green] Dropped: {col}")
+    elif verbose:
+        console.print(f"  [yellow]No unwanted columns found to drop[/yellow]")
+
+    if verbose:
+        console.print(f"\n[cyan]Dataset after dropping: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+
+    # Rename columns
+    if verbose:
+        console.print("[bold cyan]Renaming columns:[/bold cyan]")
+    column_mapping = {
+        'ADMISSION_TYPE': 'ADMTYPE',
+        'ADMTYPE': 'ADMTYPE',
+        'AGE': 'AGE',
+        'ETHNICITY_GROUPED': 'ETHGRP',
+        'ETHNICITY_GROUP': 'ETHGRP',
+        'GENDER': 'GENDER',
+        'NTPROBNP_FIRST': 'NTproBNP',
+        'NT-proBNP': 'NTproBNP',
+        'CREATININE_FIRST': 'CREAT',
+        'Creatinine': 'CREAT',
+        'BUN_FIRST': 'BUN',
+        'BLOOD_UREA_NITRO': 'BUN',
+        'POTASSIUM_FIRST': 'POTASS',
+        'POTASSIUM': 'POTASS',
+        'TOTAL_CHOLESTEROL_FIRST': 'CHOL',
+        'CHOLESTEROL': 'CHOL',
+        'HR_FIRST': 'HR',
+        'HEARTRATE': 'HR',
+        'SYSBP_FIRST': 'SBP',
+        'SYSTOLIC': 'SBP',
+        'DIASBP_FIRST': 'DBP',
+        'DIASTOLIC': 'DBP',
+        'RESPRATE_FIRST': 'RR',
+        'RESP': 'RR',
+        'IS_READMISSION_30D': 'READMIT',
+        'READMISSION': 'READMIT',
+    }
+
+    columns_to_rename = {old: new for old, new in column_mapping.items() if old in df.columns}
+
+    if columns_to_rename:
+        if verbose:
+            for old_name, new_name in columns_to_rename.items():
+                if old_name != new_name:
+                    console.print(f"  [green]>[/green] {old_name} → {new_name}")
+                else:
+                    console.print(f"  [dim]·[/dim] {old_name} (unchanged)")
+        df = df.rename(columns=columns_to_rename)
+    elif verbose:
+        console.print(f"  [yellow]No columns found to rename[/yellow]")
+
+    if verbose:
+        console.print(f"\n[cyan]Dataset after renaming: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+
+    # Transform numeric columns
+    if verbose:
+        console.print("[bold cyan]Transforming numeric columns:[/bold cyan]")
+
+    # AGE: convert to Int16
+    if 'AGE' in df.columns:
+        df['AGE'] = pd.to_numeric(df['AGE'], errors='coerce')
+        df['AGE'] = df['AGE'].round().astype('Int16')
+        if verbose:
+            console.print(f"  [green]>[/green] AGE → Int16 (whole numbers, allows NULL)")
+
+    # Other Int16 columns
+    int16_columns = ['HR', 'SBP', 'DBP', 'RR', 'BUN', 'CHOL']
+    for col in int16_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            df[col] = df[col].round().astype('Int16')
+            if verbose:
+                console.print(f"  [green]>[/green] {col} → Int16 (whole numbers, allows NULL)")
+
+    # Int32 columns
+    if 'NTproBNP' in df.columns:
+        df['NTproBNP'] = pd.to_numeric(df['NTproBNP'], errors='coerce')
+        df['NTproBNP'] = df['NTproBNP'].round().astype('Int32')
+        if verbose:
+            console.print(f"  [green]>[/green] NTproBNP → Int32 (whole numbers, allows NULL)")
+
+    # Float columns
+    float_columns = ['CREAT', 'POTASS']
+    for col in float_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            df[col] = df[col].round(2)
+            if verbose:
+                console.print(f"  [green]>[/green] {col} → Float (2 decimals, allows NULL)")
+
+    # READMIT
+    if 'READMIT' in df.columns:
+        df['READMIT'] = pd.to_numeric(df['READMIT'], errors='coerce').astype('Int8')
+        if verbose:
+            console.print(f"  [green]>[/green] READMIT → Int8 (0/1 as categorical boolean)")
+
+    return df
+
+
 @app.command()
 def show(
     file_path: Path = typer.Argument(..., help="Path to data file (XLSX or CSV)"),
@@ -345,177 +469,159 @@ def unique(
 def transform(
     xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
     output: Path = typer.Option(None, "--output", "-o", help="Output CSV path (default: <input>_transformed.csv)"),
+    sample: Optional[int] = typer.Option(None, "--sample", "-s", help="Sample size PER SET (creates N train + N test rows, requires --seed)"),
+    seed: Optional[int] = typer.Option(None, "--seed", help="Random seed for reproducible train/test split (required with --sample)"),
     encoding_config: bool = typer.Option(False, "--encoding-config", "-e", help="Generate RDT encoding config YAML and SDV metadata JSON files"),
 ):
     """
     Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
 
+    With --sample and --seed flags, creates train/test/unsampled split at ICUSTAY_ID level to avoid data leakage.
+    Example: --sample 10000 --seed 42 creates 10k train + 10k test + remaining unsampled rows.
+
     Steps:
-    1. Drop unwanted columns (19 total):
-       - ID columns: SUBJECT_ID, HADM_ID, ICUSTAY_ID
-       - Other: IS_NEWBORN, ICD9_CHAPTER, WEIGHT, HEIGHT, INSURANCE, RELIGION_GROUP, TEMP,
-                EXPIRE_FLAG, HOSPITAL_EXPIRE_FLAG, SPO2, ICUSTAY_EXPIRE, HEMOGLOBIN, ALBUMIN,
-                LANGUAGE_GROUP, MARITAL_GROUP, GLUCOSE_BLOOD
+    1. Drop unwanted columns (19 total including ICUSTAY_ID after splitting)
+    2. Rename remaining columns to abbreviated uppercase format
+    3. Transform column types (Int16, Int32, Float, Int8)
+    4. With --encoding-config flag, also generates YAML and JSON metadata files
 
-    2. Rename remaining columns to abbreviated uppercase format:
-       ADMISSION_TYPE → ADMTYPE, ETHNICITY_GROUPED → ETHGRP, NTPROBNP_FIRST → NTproBNP,
-       CREATININE_FIRST → CREAT, BUN_FIRST → BUN, POTASSIUM_FIRST → POTASS,
-       TOTAL_CHOLESTEROL_FIRST → CHOL, HR_FIRST → HR, SYSBP_FIRST → SBP,
-       DIASBP_FIRST → DBP, RESPRATE_FIRST → RR, IS_READMISSION_30D → READMIT
-
-    3. Transform column types:
-       - Int16 (whole numbers): AGE, HR, SBP, DBP, RR, BUN, CHOL
-       - Int32 (whole numbers): NTproBNP
-       - Float (2 decimals): CREAT, POTASS
-       - Int8 (0/1): READMIT (kept as integers, marked as categorical boolean in metadata)
-       All numeric types allow NULL values
-
-    With --encoding-config flag, also generates:
-    - YAML encoding config file (for RDT transformers)
-    - JSON metadata file (for SDV)
+    All numeric types allow NULL values.
     """
     if not xlsx_path.exists():
         console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
         raise typer.Exit(1)
 
+    # Validate sample/seed must be used together
+    if (sample is not None) != (seed is not None):
+        console.print(f"[red]Error: --sample and --seed must be used together[/red]")
+        raise typer.Exit(1)
+
     try:
         console.print(f"[blue]Loading XLSX file: {xlsx_path}[/blue]")
-
-        # Read XLSX file (first sheet)
         df = pd.read_excel(xlsx_path)
         console.print(f"[green]Successfully loaded data[/green]")
         console.print(f"[cyan]Original dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
-        # Drop unwanted columns
-        console.print("[bold cyan]Dropping unwanted columns:[/bold cyan]")
-        unwanted_columns = [
-            # ID columns
-            'SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID',
-            # Other unwanted columns
-            'IS_NEWBORN', 'ICD9_CHAPTER', 'WEIGHT', 'HEIGHT',
-            'INSURANCE', 'RELIGION_GROUP', 'TEMP',
-            'EXPIRE_FLAG', 'HOSPITAL_EXPIRE_FLAG', 'SPO2',
-            'ICUSTAY_EXPIRE', 'HEMOGLOBIN', 'ALBUMIN',
-            'LANGUAGE_GROUP', 'MARITAL_GROUP', 'GLUCOSE_BLOOD'
-        ]
-        columns_to_drop = [col for col in unwanted_columns if col in df.columns]
+        # Handle train/test split if sampling is requested
+        if sample is not None:
+            console.print(f"[bold cyan]Creating train/test split (sample={sample:,}, seed={seed}):[/bold cyan]")
 
-        if columns_to_drop:
-            df = df.drop(columns=columns_to_drop)
-            for col in columns_to_drop:
-                console.print(f"  [green]>[/green] Dropped: {col}")
+            # Check for ICUSTAY_ID column
+            if 'ICUSTAY_ID' not in df.columns:
+                console.print(f"[red]Error: ICUSTAY_ID column not found (required for sampling)[/red]")
+                raise typer.Exit(1)
+
+            # Get unique ICUSTAY_IDs and shuffle them
+            unique_ids = df['ICUSTAY_ID'].unique()
+            rng = np.random.RandomState(seed)
+            shuffled_ids = rng.permutation(unique_ids)
+
+            # Split IDs 50/50
+            split_point = len(shuffled_ids) // 2
+            train_ids = shuffled_ids[:split_point]
+            test_ids = shuffled_ids[split_point:]
+
+            # Get rows for each group
+            train_group = df[df['ICUSTAY_ID'].isin(train_ids)].copy()
+            test_group = df[df['ICUSTAY_ID'].isin(test_ids)].copy()
+
+            console.print(f"  [green]>[/green] Split ICUSTAY_IDs: {len(train_ids):,} train, {len(test_ids):,} test")
+            console.print(f"  [green]>[/green] Train group: {len(train_group):,} rows")
+            console.print(f"  [green]>[/green] Test group: {len(test_group):,} rows")
+
+            # Check if we have enough rows in each group
+            if len(train_group) < sample:
+                console.print(f"[red]Error: Cannot sample {sample:,} rows from train group (only {len(train_group):,} available)[/red]")
+                console.print(f"[yellow]Suggestion: Use --sample {len(train_group)} or smaller[/yellow]")
+                raise typer.Exit(1)
+            if len(test_group) < sample:
+                console.print(f"[red]Error: Cannot sample {sample:,} rows from test group (only {len(test_group):,} available)[/red]")
+                console.print(f"[yellow]Suggestion: Use --sample {len(test_group)} or smaller[/yellow]")
+                raise typer.Exit(1)
+
+            # Sample exact number of rows from each group
+            train_df = train_group.sample(n=sample, random_state=seed)
+            test_df = test_group.sample(n=sample, random_state=seed)
+
+            # Get unsampled data
+            sampled_indices = set(train_df.index).union(set(test_df.index))
+            unsampled_indices = df.index.difference(sampled_indices)
+            unsampled_df = df.loc[unsampled_indices].copy()
+
+            console.print(f"  [green]>[/green] Sampled: {len(train_df):,} train, {len(test_df):,} test")
+            console.print(f"  [green]>[/green] Unsampled: {len(unsampled_df):,} rows\n")
+
+            # Apply transformations to all 3 sets
+            console.print("[bold cyan]Applying transformations to training set:[/bold cyan]")
+            train_df = apply_transformations(train_df, verbose=True)
+            console.print(f"\n[cyan]Training dataset: {len(train_df):,} rows x {train_df.shape[1]} columns[/cyan]\n")
+
+            console.print("[bold cyan]Applying transformations to test set:[/bold cyan]")
+            test_df = apply_transformations(test_df, verbose=True)
+            console.print(f"\n[cyan]Test dataset: {len(test_df):,} rows x {test_df.shape[1]} columns[/cyan]\n")
+
+            console.print("[bold cyan]Applying transformations to unsampled set:[/bold cyan]")
+            unsampled_df = apply_transformations(unsampled_df, verbose=True)
+            console.print(f"\n[cyan]Unsampled dataset: {len(unsampled_df):,} rows x {unsampled_df.shape[1]} columns[/cyan]\n")
+
+            # Determine output paths
+            base_name = f"{xlsx_path.stem}_transformed_sample{sample}_seed{seed}"
+            train_output = xlsx_path.parent / f"{base_name}_training.csv"
+            test_output = xlsx_path.parent / f"{base_name}_test.csv"
+            unsampled_output = xlsx_path.parent / f"{base_name}_unsampled.csv"
+
+            # Save all 3 files
+            train_df.to_csv(train_output, index=False)
+            console.print(f"[green]✓ Saved training data to: {train_output}[/green]")
+
+            test_df.to_csv(test_output, index=False)
+            console.print(f"[green]✓ Saved test data to: {test_output}[/green]")
+
+            unsampled_df.to_csv(unsampled_output, index=False)
+            console.print(f"[green]✓ Saved unsampled data to: {unsampled_output}[/green]")
+
+            # Generate encoding config and metadata if requested (once, shared for all files)
+            if encoding_config:
+                console.print()
+                config = generate_encoding_config()
+                encoding_path = xlsx_path.parent / f"{base_name}_encoding.yaml"
+                with open(encoding_path, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
+
+                metadata = generate_metadata()
+                metadata_path = xlsx_path.parent / f"{base_name}_metadata.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
+
         else:
-            console.print(f"  [yellow]No unwanted columns found to drop[/yellow]")
+            # Standard transformation without splitting
+            df = apply_transformations(df, verbose=True)
+            console.print(f"\n[cyan]Final dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
-        console.print(f"\n[cyan]Dataset after dropping: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+            # Determine output path
+            if output is None:
+                output = xlsx_path.parent / f"{xlsx_path.stem}_transformed.csv"
 
-        # Rename columns to abbreviated uppercase versions
-        console.print("[bold cyan]Renaming columns:[/bold cyan]")
-        column_mapping = {
-            # Handle various possible column name formats
-            'ADMISSION_TYPE': 'ADMTYPE',
-            'ADMTYPE': 'ADMTYPE',
-            'AGE': 'AGE',
-            'ETHNICITY_GROUPED': 'ETHGRP',
-            'ETHNICITY_GROUP': 'ETHGRP',
-            'GENDER': 'GENDER',
-            'NTPROBNP_FIRST': 'NTproBNP',
-            'NT-proBNP': 'NTproBNP',
-            'CREATININE_FIRST': 'CREAT',
-            'Creatinine': 'CREAT',
-            'BUN_FIRST': 'BUN',
-            'BLOOD_UREA_NITRO': 'BUN',
-            'POTASSIUM_FIRST': 'POTASS',
-            'POTASSIUM': 'POTASS',
-            'TOTAL_CHOLESTEROL_FIRST': 'CHOL',
-            'CHOLESTEROL': 'CHOL',
-            'HR_FIRST': 'HR',
-            'HEARTRATE': 'HR',
-            'SYSBP_FIRST': 'SBP',
-            'SYSTOLIC': 'SBP',
-            'DIASBP_FIRST': 'DBP',
-            'DIASTOLIC': 'DBP',
-            'RESPRATE_FIRST': 'RR',
-            'RESP': 'RR',
-            'IS_READMISSION_30D': 'READMIT',
-            'READMISSION': 'READMIT',
-        }
+            # Export to CSV
+            df.to_csv(output, index=False)
+            console.print(f"[green]✓ Saved CSV to: {output}[/green]")
 
-        # Only rename columns that exist in the dataframe
-        columns_to_rename = {old: new for old, new in column_mapping.items() if old in df.columns}
+            # Generate encoding config and metadata if requested
+            if encoding_config:
+                console.print()
+                config = generate_encoding_config()
+                encoding_path = output.parent / f"{output.stem}_encoding.yaml"
+                with open(encoding_path, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
 
-        if columns_to_rename:
-            for old_name, new_name in columns_to_rename.items():
-                if old_name != new_name:
-                    console.print(f"  [green]>[/green] {old_name} → {new_name}")
-                else:
-                    console.print(f"  [dim]·[/dim] {old_name} (unchanged)")
-            df = df.rename(columns=columns_to_rename)
-        else:
-            console.print(f"  [yellow]No columns found to rename[/yellow]")
-
-        console.print(f"\n[cyan]Dataset after renaming: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
-
-        # Transform numeric columns
-        console.print("[bold cyan]Transforming numeric columns:[/bold cyan]")
-
-        # AGE: convert to Int16 (whole numbers, nullable)
-        if 'AGE' in df.columns:
-            df['AGE'] = pd.to_numeric(df['AGE'], errors='coerce')
-            df['AGE'] = df['AGE'].round().astype('Int16')
-            console.print(f"  [green]>[/green] AGE → Int16 (whole numbers, allows NULL)")
-
-        # Other Int16 columns: HR, SBP, DBP, RR, BUN, CHOL
-        int16_columns = ['HR', 'SBP', 'DBP', 'RR', 'BUN', 'CHOL']
-        for col in int16_columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-                df[col] = df[col].round().astype('Int16')
-                console.print(f"  [green]>[/green] {col} → Int16 (whole numbers, allows NULL)")
-
-        # Int32 columns: NTproBNP (larger range needed)
-        if 'NTproBNP' in df.columns:
-            df['NTproBNP'] = pd.to_numeric(df['NTproBNP'], errors='coerce')
-            df['NTproBNP'] = df['NTproBNP'].round().astype('Int32')
-            console.print(f"  [green]>[/green] NTproBNP → Int32 (whole numbers, allows NULL)")
-
-        # Float columns: CREAT, POTASS (need decimals)
-        float_columns = ['CREAT', 'POTASS']
-        for col in float_columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-                df[col] = df[col].round(2)  # Round to 2 decimal places
-                console.print(f"  [green]>[/green] {col} → Float (2 decimals, allows NULL)")
-
-        # READMIT: keep as 0/1 integers (will be marked as categorical in metadata)
-        if 'READMIT' in df.columns:
-            df['READMIT'] = pd.to_numeric(df['READMIT'], errors='coerce').astype('Int8')
-            console.print(f"  [green]>[/green] READMIT → Int8 (0/1 as categorical boolean)")
-
-        console.print(f"\n[cyan]Final dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
-
-        # Determine output path
-        if output is None:
-            output = xlsx_path.parent / f"{xlsx_path.stem}_transformed.csv"
-
-        # Export to CSV
-        df.to_csv(output, index=False)
-        console.print(f"[green]✓ Saved CSV to: {output}[/green]")
-
-        # Generate encoding config and metadata if requested
-        if encoding_config:
-            console.print()
-            config = generate_encoding_config()
-            encoding_path = output.parent / f"{output.stem}_encoding.yaml"
-            with open(encoding_path, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-            console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
-
-            metadata = generate_metadata()
-            metadata_path = output.parent / f"{output.stem}_metadata.json"
-            with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
-            console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
+                metadata = generate_metadata()
+                metadata_path = output.parent / f"{output.stem}_metadata.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
 
         console.print()
 
