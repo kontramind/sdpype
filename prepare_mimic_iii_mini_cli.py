@@ -130,13 +130,20 @@ def transform(
     output: Path = typer.Option(None, "--output", "-o", help="Output CSV path (default: <input>_transformed.csv)"),
 ):
     """
-    Transform XLSX file: drop ID and unwanted columns and export to CSV.
+    Transform XLSX file: drop unwanted columns, rename to abbreviated format, and export to CSV.
 
-    Drops the following columns if present:
-    - ID columns: SUBJECT_ID, HADM_ID, ICUSTAY_ID
-    - Unwanted columns: IS_NEWBORN, ICD9_CHAPTER, WEIGHT, HEIGHT, INSURANCE, RELIGION_GROUP, TEMP,
-                        EXPIRE_FLAG, HOSPITAL_EXPIRE_FLAG, SPO2, ICUSTAY_EXPIRE, HEMOGLOBIN, ALBUMIN,
-                        LANGUAGE_GROUP, MARITAL_GROUP, GLUCOSE_BLOOD
+    Steps:
+    1. Drop unwanted columns (19 total):
+       - ID columns: SUBJECT_ID, HADM_ID, ICUSTAY_ID
+       - Other: IS_NEWBORN, ICD9_CHAPTER, WEIGHT, HEIGHT, INSURANCE, RELIGION_GROUP, TEMP,
+                EXPIRE_FLAG, HOSPITAL_EXPIRE_FLAG, SPO2, ICUSTAY_EXPIRE, HEMOGLOBIN, ALBUMIN,
+                LANGUAGE_GROUP, MARITAL_GROUP, GLUCOSE_BLOOD
+
+    2. Rename remaining columns to abbreviated uppercase format:
+       ADMISSION_TYPE → ADMTYPE, ETHNICITY_GROUPED → ETHGRP, NTPROBNP_FIRST → NTproBNP,
+       CREATININE_FIRST → CREAT, BUN_FIRST → BUN, POTASSIUM_FIRST → POTASS,
+       TOTAL_CHOLESTEROL_FIRST → CHOL, HR_FIRST → HR, SYSBP_FIRST → SBP,
+       DIASBP_FIRST → DBP, RESPRATE_FIRST → RR, IS_READMISSION_30D → READMIT
     """
     if not xlsx_path.exists():
         console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
@@ -171,7 +178,41 @@ def transform(
         else:
             console.print(f"  [yellow]No unwanted columns found to drop[/yellow]")
 
-        console.print(f"\n[cyan]Transformed dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+        console.print(f"\n[cyan]Dataset after dropping: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+
+        # Rename columns to abbreviated uppercase versions
+        console.print("[bold cyan]Renaming columns:[/bold cyan]")
+        column_mapping = {
+            'ADMISSION_TYPE': 'ADMTYPE',
+            'AGE': 'AGE',
+            'ETHNICITY_GROUPED': 'ETHGRP',
+            'GENDER': 'GENDER',
+            'NTPROBNP_FIRST': 'NTproBNP',
+            'CREATININE_FIRST': 'CREAT',
+            'BUN_FIRST': 'BUN',
+            'POTASSIUM_FIRST': 'POTASS',
+            'TOTAL_CHOLESTEROL_FIRST': 'CHOL',
+            'HR_FIRST': 'HR',
+            'SYSBP_FIRST': 'SBP',
+            'DIASBP_FIRST': 'DBP',
+            'RESPRATE_FIRST': 'RR',
+            'IS_READMISSION_30D': 'READMIT',
+        }
+
+        # Only rename columns that exist in the dataframe
+        columns_to_rename = {old: new for old, new in column_mapping.items() if old in df.columns}
+
+        if columns_to_rename:
+            for old_name, new_name in columns_to_rename.items():
+                if old_name != new_name:
+                    console.print(f"  [green]>[/green] {old_name} → {new_name}")
+                else:
+                    console.print(f"  [dim]·[/dim] {old_name} (unchanged)")
+            df = df.rename(columns=columns_to_rename)
+        else:
+            console.print(f"  [yellow]No columns found to rename[/yellow]")
+
+        console.print(f"\n[cyan]Final dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
         # Determine output path
         if output is None:
