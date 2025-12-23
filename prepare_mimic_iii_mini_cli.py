@@ -112,5 +112,57 @@ def info(
         raise typer.Exit(1)
 
 
+@app.command()
+def transform(
+    xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
+    output: Path = typer.Option(None, "--output", "-o", help="Output CSV path (default: <input>_transformed.csv)"),
+):
+    """
+    Transform XLSX file: drop ID columns and export to CSV.
+
+    Drops the following ID columns if present:
+    - SUBJECT_ID
+    - HADM_ID
+    - ICUSTAY_ID
+    """
+    if not xlsx_path.exists():
+        console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        console.print(f"[blue]Loading XLSX file: {xlsx_path}[/blue]")
+
+        # Read XLSX file (first sheet)
+        df = pd.read_excel(xlsx_path)
+        console.print(f"[green]Successfully loaded data[/green]")
+        console.print(f"[cyan]Original dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+
+        # Drop ID columns
+        console.print("[bold cyan]Dropping ID columns:[/bold cyan]")
+        id_columns = ['SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID']
+        columns_to_drop = [col for col in id_columns if col in df.columns]
+
+        if columns_to_drop:
+            df = df.drop(columns=columns_to_drop)
+            for col in columns_to_drop:
+                console.print(f"  [green]>[/green] Dropped: {col}")
+        else:
+            console.print(f"  [yellow]No ID columns found to drop[/yellow]")
+
+        console.print(f"\n[cyan]Transformed dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
+
+        # Determine output path
+        if output is None:
+            output = xlsx_path.parent / f"{xlsx_path.stem}_transformed.csv"
+
+        # Export to CSV
+        df.to_csv(output, index=False)
+        console.print(f"[green]✓ Saved to: {output}[/green]\n")
+
+    except Exception as e:
+        console.print(f"[red]Error transforming file: {str(e)}[/red]")
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":
     app()
