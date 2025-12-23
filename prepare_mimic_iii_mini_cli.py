@@ -19,23 +19,35 @@ app = typer.Typer(
 )
 
 
+def load_data_file(file_path: Path) -> pd.DataFrame:
+    """Load data from XLSX or CSV file based on extension."""
+    suffix = file_path.suffix.lower()
+
+    if suffix == '.xlsx':
+        return pd.read_excel(file_path)
+    elif suffix == '.csv':
+        return pd.read_csv(file_path)
+    else:
+        raise ValueError(f"Unsupported file format: {suffix}. Use .xlsx or .csv")
+
+
 @app.command()
 def show(
-    xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
+    file_path: Path = typer.Argument(..., help="Path to data file (XLSX or CSV)"),
     rows: int = typer.Option(10, "--rows", "-n", help="Number of rows to display"),
 ):
     """
-    Load an XLSX file and display the first N rows in a table.
+    Load a data file (XLSX or CSV) and display the first N rows in a table.
     """
-    if not xlsx_path.exists():
-        console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
+    if not file_path.exists():
+        console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
 
     try:
-        console.print(f"[blue]Loading XLSX file: {xlsx_path}[/blue]")
+        console.print(f"[blue]Loading file: {file_path}[/blue]")
 
-        # Read XLSX file (first sheet)
-        df = pd.read_excel(xlsx_path)
+        # Read file based on extension
+        df = load_data_file(file_path)
         console.print(f"[green]Successfully loaded data[/green]")
         console.print(f"[cyan]Dataset shape: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
@@ -58,26 +70,26 @@ def show(
         console.print()
 
     except Exception as e:
-        console.print(f"[red]Error loading XLSX file: {str(e)}[/red]")
+        console.print(f"[red]Error loading file: {str(e)}[/red]")
         raise typer.Exit(1)
 
 
 @app.command()
 def info(
-    xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
+    file_path: Path = typer.Argument(..., help="Path to data file (XLSX or CSV)"),
 ):
     """
-    Display information about the XLSX file (columns, types, null counts).
+    Display information about the data file (columns, types, null counts).
     """
-    if not xlsx_path.exists():
-        console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
+    if not file_path.exists():
+        console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
 
     try:
-        console.print(f"[blue]Loading XLSX file: {xlsx_path}[/blue]")
+        console.print(f"[blue]Loading file: {file_path}[/blue]")
 
-        # Read XLSX file (first sheet)
-        df = pd.read_excel(xlsx_path)
+        # Read file based on extension
+        df = load_data_file(file_path)
         console.print(f"[green]Successfully loaded data[/green]")
         console.print(f"[cyan]Dataset shape: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
@@ -108,7 +120,7 @@ def info(
         console.print()
 
     except Exception as e:
-        console.print(f"[red]Error loading XLSX file: {str(e)}[/red]")
+        console.print(f"[red]Error loading file: {str(e)}[/red]")
         raise typer.Exit(1)
 
 
