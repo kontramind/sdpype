@@ -135,7 +135,8 @@ def transform(
     Drops the following columns if present:
     - ID columns: SUBJECT_ID, HADM_ID, ICUSTAY_ID
     - Unwanted columns: IS_NEWBORN, ICD9_CHAPTER, WEIGHT, HEIGHT, INSURANCE, RELIGION_GROUP, TEMP,
-                        EXPIRE_FLAG, HOSPITAL_EXPIRE_FLAG, SPO2, ICUSTAY_EXPIRE, HEMOGLOBIN, ALBUMIN
+                        EXPIRE_FLAG, HOSPITAL_EXPIRE_FLAG, SPO2, ICUSTAY_EXPIRE, HEMOGLOBIN, ALBUMIN,
+                        LANGUAGE_GROUP, MARITAL_GROUP, GLUCOSE_BLOOD
     """
     if not xlsx_path.exists():
         console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
@@ -158,7 +159,8 @@ def transform(
             'IS_NEWBORN', 'ICD9_CHAPTER', 'WEIGHT', 'HEIGHT',
             'INSURANCE', 'RELIGION_GROUP', 'TEMP',
             'EXPIRE_FLAG', 'HOSPITAL_EXPIRE_FLAG', 'SPO2',
-            'ICUSTAY_EXPIRE', 'HEMOGLOBIN', 'ALBUMIN'
+            'ICUSTAY_EXPIRE', 'HEMOGLOBIN', 'ALBUMIN',
+            'LANGUAGE_GROUP', 'MARITAL_GROUP', 'GLUCOSE_BLOOD'
         ]
         columns_to_drop = [col for col in unwanted_columns if col in df.columns]
 
