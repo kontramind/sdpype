@@ -98,6 +98,7 @@ def info(
         table.add_column("#", style="dim", width=4)
         table.add_column("Column Name", style="cyan")
         table.add_column("Type", style="green")
+        table.add_column("Unique", justify="right", style="blue")
         table.add_column("Non-Null Count", justify="right", style="magenta")
         table.add_column("Null Count", justify="right", style="yellow")
         table.add_column("Null %", justify="right", style="red")
@@ -106,11 +107,13 @@ def info(
             non_null = df[col].count()
             null_count = df[col].isna().sum()
             null_pct = (null_count / len(df)) * 100
+            unique_count = df[col].nunique()
 
             table.add_row(
                 str(idx),
                 str(col),
                 str(df[col].dtype),
+                f"{unique_count:,}",
                 f"{non_null:,}",
                 f"{null_count:,}",
                 f"{null_pct:.1f}%"
