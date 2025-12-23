@@ -468,7 +468,7 @@ def unique(
 @app.command()
 def transform(
     xlsx_path: Path = typer.Argument(..., help="Path to XLSX file"),
-    output: Path = typer.Option(None, "--output", "-o", help="Output CSV path (default: <input>_transformed.csv)"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output prefix for file names (with --sample) or full CSV path (without --sample)"),
     sample: Optional[int] = typer.Option(None, "--sample", "-s", help="Sample size PER SET (creates N train + N test rows, requires --seed)"),
     seed: Optional[int] = typer.Option(None, "--seed", help="Random seed for reproducible train/test split (required with --sample)"),
     encoding_config: bool = typer.Option(False, "--encoding-config", "-e", help="Generate RDT encoding config YAML and SDV metadata JSON files"),
@@ -478,6 +478,10 @@ def transform(
 
     With --sample and --seed flags, creates train/test/unsampled split at ICUSTAY_ID level to avoid data leakage.
     Example: --sample 10000 --seed 42 creates 10k train + 10k test + remaining unsampled rows.
+
+    The --output parameter works differently based on mode:
+    - With --sample: used as a prefix (e.g., "MIMIC-III-mini-core" → "MIMIC-III-mini-core_sample1000_seed42_training.csv")
+    - Without --sample: used as the full output CSV path
 
     Steps:
     1. Drop unwanted columns (19 total including ICUSTAY_ID after splitting)
@@ -565,10 +569,18 @@ def transform(
             console.print(f"\n[cyan]Unsampled dataset: {len(unsampled_df):,} rows x {unsampled_df.shape[1]} columns[/cyan]\n")
 
             # Determine output paths
-            base_name = f"{xlsx_path.stem}_transformed_sample{sample}_seed{seed}"
-            train_output = xlsx_path.parent / f"{base_name}_training.csv"
-            test_output = xlsx_path.parent / f"{base_name}_test.csv"
-            unsampled_output = xlsx_path.parent / f"{base_name}_unsampled.csv"
+            if output:
+                # Use provided output as prefix
+                base_name = f"{output}_sample{sample}_seed{seed}"
+                output_dir = Path.cwd()  # Use current directory if custom prefix
+            else:
+                # Use default naming based on input file
+                base_name = f"{xlsx_path.stem}_transformed_sample{sample}_seed{seed}"
+                output_dir = xlsx_path.parent
+
+            train_output = output_dir / f"{base_name}_training.csv"
+            test_output = output_dir / f"{base_name}_test.csv"
+            unsampled_output = output_dir / f"{base_name}_unsampled.csv"
 
             # Save all 3 files
             train_df.to_csv(train_output, index=False)
@@ -584,13 +596,13 @@ def transform(
             if encoding_config:
                 console.print()
                 config = generate_encoding_config()
-                encoding_path = xlsx_path.parent / f"{base_name}_encoding.yaml"
+                encoding_path = output_dir / f"{base_name}_encoding.yaml"
                 with open(encoding_path, 'w') as f:
                     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
                 console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
 
                 metadata = generate_metadata()
-                metadata_path = xlsx_path.parent / f"{base_name}_metadata.json"
+                metadata_path = output_dir / f"{base_name}_metadata.json"
                 with open(metadata_path, 'w') as f:
                     json.dump(metadata, f, indent=2)
                 console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
@@ -602,23 +614,25 @@ def transform(
 
             # Determine output path
             if output is None:
-                output = xlsx_path.parent / f"{xlsx_path.stem}_transformed.csv"
+                output_path = xlsx_path.parent / f"{xlsx_path.stem}_transformed.csv"
+            else:
+                output_path = Path(output)
 
             # Export to CSV
-            df.to_csv(output, index=False)
-            console.print(f"[green]✓ Saved CSV to: {output}[/green]")
+            df.to_csv(output_path, index=False)
+            console.print(f"[green]✓ Saved CSV to: {output_path}[/green]")
 
             # Generate encoding config and metadata if requested
             if encoding_config:
                 console.print()
                 config = generate_encoding_config()
-                encoding_path = output.parent / f"{output.stem}_encoding.yaml"
+                encoding_path = output_path.parent / f"{output_path.stem}_encoding.yaml"
                 with open(encoding_path, 'w') as f:
                     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
                 console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
 
                 metadata = generate_metadata()
-                metadata_path = output.parent / f"{output.stem}_metadata.json"
+                metadata_path = output_path.parent / f"{output_path.stem}_metadata.json"
                 with open(metadata_path, 'w') as f:
                     json.dump(metadata, f, indent=2)
                 console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
