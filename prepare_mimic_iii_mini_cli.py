@@ -39,7 +39,7 @@ def generate_encoding_config() -> dict:
         'SBP': 'numerical',
         'DBP': 'numerical',
         'RR': 'numerical',
-        'READMIT': 'boolean',
+        'READMIT': 'categorical',
     }
 
     transformers = {
@@ -136,7 +136,7 @@ def generate_encoding_config() -> dict:
                 'learn_rounding_scheme': True
             }
         },
-        'READMIT': {'type': 'BinaryEncoder', 'params': {}},
+        'READMIT': {'type': 'UniformEncoder', 'params': {}},
     }
 
     return {
@@ -161,7 +161,7 @@ def generate_metadata() -> dict:
         'SBP': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
         'DBP': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
         'RR': {'sdtype': 'numerical', 'computer_representation': 'Int16'},
-        'READMIT': {'sdtype': 'boolean'},
+        'READMIT': {'sdtype': 'categorical'},
     }
 
     return {
@@ -295,11 +295,11 @@ def apply_transformations(df: pd.DataFrame, verbose: bool = True) -> pd.DataFram
             if verbose:
                 console.print(f"  [green]>[/green] {col} → Float (2 decimals, allows NULL)")
 
-    # READMIT
+    # READMIT - treat as categorical (keep string representation)
     if 'READMIT' in df.columns:
-        df['READMIT'] = pd.to_numeric(df['READMIT'], errors='coerce').astype('Int8')
+        df['READMIT'] = df['READMIT'].astype(str)
         if verbose:
-            console.print(f"  [green]>[/green] READMIT → Int8 (0/1 as categorical boolean)")
+            console.print(f"  [green]>[/green] READMIT → String (categorical)")
 
     return df
 

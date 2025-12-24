@@ -302,13 +302,13 @@ def transform_expire_flag_column(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def transform_readmission_column(df: pd.DataFrame) -> pd.DataFrame:
-    """Transform READMISSION column: rename to READMITTED, convert to boolean."""
+    """Transform READMISSION column: rename to READMITTED, treat as categorical."""
     if 'READMISSION' in df.columns:
         # Rename to READMITTED
         df = df.rename(columns={'READMISSION': 'READMITTED'})
-        # Convert to boolean (0 -> False, 1 -> True)
-        df['READMITTED'] = df['READMITTED'].astype(bool)
-        console.print(f"  ✓ Transformed READMISSION: renamed to READMITTED, converted to boolean")
+        # Convert to string for categorical treatment
+        df['READMITTED'] = df['READMITTED'].astype(str)
+        console.print(f"  ✓ Transformed READMISSION: renamed to READMITTED, converted to categorical (string)")
     else:
         console.print(f"  - READMISSION column not found")
 
@@ -559,7 +559,7 @@ def transform(
     - Transforms ETHNICITY: fills NaN with 'Missing', converts to string type
     - Transforms DIAGNOSIS: fills NaN with 'Missing', converts to string type, strips whitespace
     - Transforms EXPIRE_FLAG: renames to DECEASED, converts to boolean
-    - Transforms READMISSION: renames to READMITTED, converts to boolean
+    - Transforms READMISSION: renames to READMITTED, converts to categorical (string)
     - Transforms POTASSIUM: converts to numeric, drops rows with non-numeric text (preserves NaN)
     - Transforms Creatinine: converts to numeric, drops rows with non-numeric text (preserves NaN)
     - Transforms BLOOD_UREA_NITRO: converts to numeric, drops rows with non-numeric text (preserves NaN)
