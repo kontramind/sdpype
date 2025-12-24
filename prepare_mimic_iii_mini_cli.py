@@ -27,10 +27,10 @@ def generate_encoding_config(impute: bool = False) -> dict:
     """Generate RDT encoding configuration.
 
     Args:
-        impute: If True, set missing_value_generation to 'from_column' for numeric fields.
-                If False, set to None (no imputation).
+        impute: If True, use mean imputation for missing values.
+                If False, keep missing values as-is (no imputation).
     """
-    missing_value_gen = 'from_column' if impute else None
+    missing_value_replacement = 'mean' if impute else None
     # Disable bounds enforcement when imputing to avoid validation errors on NA values
     enforce_bounds = False if impute else True
 
@@ -57,7 +57,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
@@ -68,7 +68,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int32',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
@@ -77,7 +77,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
@@ -86,7 +86,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
@@ -95,7 +95,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
@@ -104,7 +104,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
@@ -113,7 +113,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
@@ -122,7 +122,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
@@ -131,7 +131,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
@@ -140,7 +140,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': missing_value_gen,
+                'missing_value_replacement': missing_value_replacement,
                 'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
