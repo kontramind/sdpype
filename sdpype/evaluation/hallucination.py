@@ -149,8 +149,16 @@ def execute_validation_queries(
         train_binned.to_csv(train_output, index=False)
         print(f"   ✓ Saved: {train_output}")
 
-        # Export synthetic_binned (without original columns)
-        synth_query = binning_query_base + "\n\nSELECT GENDER_CAT, ETHNICITY_CAT, ADMISSION_CAT, READMISSION_CAT, AGE_BIN, HR_BIN, SYSBP_BIN, DIASBP_BIN, RESPRATE_BIN, NTPROBNP_BIN, CREATININE_BIN, BUN_BIN, POTASSIUM_BIN, TOTAL_CHOLESTEROL_BIN FROM synthetic_binned"
+        # Export synthetic_binned (only categorical aliases and binned columns)
+        # First get all columns from synthetic_binned
+        synth_query_all = binning_query_base + "\n\nSELECT * FROM synthetic_binned LIMIT 0"
+        synth_schema = con.execute(synth_query_all).fetchdf()
+
+        # Filter to only _CAT and _BIN columns (exclude original raw data columns)
+        binned_cols = [col for col in synth_schema.columns if col.endswith('_CAT') or col.endswith('_BIN')]
+        binned_cols_str = ', '.join(binned_cols)
+
+        synth_query = binning_query_base + f"\n\nSELECT {binned_cols_str} FROM synthetic_binned"
         synth_binned = con.execute(synth_query).fetchdf()
         synth_output = output_dir / f"synthetic_data_{experiment_name}_for_hallucinations.csv"
         synth_binned.to_csv(synth_output, index=False)
