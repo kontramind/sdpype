@@ -480,7 +480,7 @@ def transform(
     Example: --sample 10000 --seed 42 creates 10k train + 10k test + remaining unsampled rows.
 
     The --output parameter works differently based on mode:
-    - With --sample: used as a prefix (e.g., "MIMIC-III-mini-core" → "MIMIC-III-mini-core_sample1000_seed42_training.csv")
+    - With --sample: used as a prefix (e.g., "MIMIC-III-mini-core" → "MIMIC-III-mini-core_sample1000_dseed42_training.csv")
     - Without --sample: used as the full output CSV path
 
     Steps:
@@ -508,7 +508,7 @@ def transform(
 
         # Handle train/test split if sampling is requested
         if sample is not None:
-            console.print(f"[bold cyan]Creating train/test split (sample={sample:,}, seed={seed}):[/bold cyan]")
+            console.print(f"[bold cyan]Creating train/test split (sample={sample:,}, dseed={seed}):[/bold cyan]")
 
             # Check for ICUSTAY_ID column
             if 'ICUSTAY_ID' not in df.columns:
@@ -571,11 +571,11 @@ def transform(
             # Determine output paths
             if output:
                 # Use provided output as prefix
-                base_name = f"{output}_sample{sample}_seed{seed}"
+                base_name = f"{output}_sample{sample}_dseed{seed}"
                 output_dir = Path.cwd()  # Use current directory if custom prefix
             else:
                 # Use default naming based on input file
-                base_name = f"{xlsx_path.stem}_transformed_sample{sample}_seed{seed}"
+                base_name = f"{xlsx_path.stem}_transformed_sample{sample}_dseed{seed}"
                 output_dir = xlsx_path.parent
 
             train_output = output_dir / f"{base_name}_training.csv"
