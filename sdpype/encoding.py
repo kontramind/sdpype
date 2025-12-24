@@ -35,6 +35,7 @@ from rdt.transformers import (
     UnixTimestampEncoder,
     FloatFormatter,
 )
+from rdt.transformers.boolean import BinaryEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ TRANSFORMER_REGISTRY = {
     'FrequencyEncoder': FrequencyEncoder,
     'UnixTimestampEncoder': UnixTimestampEncoder,
     'FloatFormatter': FloatFormatter,
+    'BinaryEncoder': BinaryEncoder,
 }
 
 
