@@ -31,6 +31,8 @@ def generate_encoding_config(impute: bool = False) -> dict:
                 If False, set to None (no imputation).
     """
     missing_value_gen = 'from_column' if impute else None
+    # Disable bounds enforcement when imputing to avoid validation errors on NA values
+    enforce_bounds = False if impute else True
 
     sdtypes = {
         'ADMTYPE': 'categorical',
@@ -56,7 +58,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Int16',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
@@ -67,7 +69,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Int32',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
@@ -76,7 +78,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Float',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
@@ -85,7 +87,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Int16',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
@@ -94,7 +96,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Float',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
@@ -103,7 +105,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Int16',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
@@ -112,7 +114,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Int16',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
@@ -121,7 +123,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Int16',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
@@ -130,7 +132,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Int16',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
@@ -139,7 +141,7 @@ def generate_encoding_config(impute: bool = False) -> dict:
             'params': {
                 'computer_representation': 'Int16',
                 'missing_value_generation': missing_value_gen,
-                'enforce_min_max_values': True,
+                'enforce_min_max_values': enforce_bounds,
                 'learn_rounding_scheme': True
             }
         },
