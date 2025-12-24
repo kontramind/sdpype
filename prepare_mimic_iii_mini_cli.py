@@ -48,7 +48,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -59,7 +59,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int32',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -68,7 +68,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -77,7 +77,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -86,7 +86,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -95,7 +95,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -104,7 +104,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -113,7 +113,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -122,7 +122,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -131,7 +131,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': '',
+                'missing_value_generation': None,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
