@@ -118,11 +118,11 @@ num_ranges AS (
 -- ============================================================================
 population_binned AS (
     SELECT
-        -- [2a] Categorical columns (add/remove as-is, no binning)
-        GENDER,
-        ETHGRP,
-        ADMTYPE,
-        READMIT,
+        -- [2a] Categorical columns (cast to VARCHAR to ensure type consistency)
+        CAST(GENDER AS VARCHAR) as GENDER,
+        CAST(ETHGRP AS VARCHAR) as ETHGRP,
+        CAST(ADMTYPE AS VARCHAR) as ADMTYPE,
+        CAST(READMIT AS VARCHAR) as READMIT,
         -- [2b] Numerical columns (add/remove bin_numeric calls)
         bin_numeric(AGE, r.age_min, r.age_max, 20) as AGE_BIN,
         bin_numeric(NTproBNP, r.ntprobnp_min, r.ntprobnp_max, 20) as NTPROBNP_BIN,
@@ -142,11 +142,11 @@ population_binned AS (
 -- [UPDATE REQUIRED] Keep in sync with population_binned
 training_binned AS (
     SELECT
-        -- [3a] Categorical columns (must match population_binned)
-        GENDER,
-        ETHGRP,
-        ADMTYPE,
-        READMIT,
+        -- [3a] Categorical columns (cast to VARCHAR to match population_binned)
+        CAST(GENDER AS VARCHAR) as GENDER,
+        CAST(ETHGRP AS VARCHAR) as ETHGRP,
+        CAST(ADMTYPE AS VARCHAR) as ADMTYPE,
+        CAST(READMIT AS VARCHAR) as READMIT,
         -- [3b] Numerical columns (must match population_binned)
         bin_numeric(AGE, r.age_min, r.age_max, 20) as AGE_BIN,
         bin_numeric(NTproBNP, r.ntprobnp_min, r.ntprobnp_max, 20) as NTPROBNP_BIN,
@@ -166,11 +166,11 @@ training_binned AS (
 synthetic_binned AS (
     SELECT
         s.*,
-        -- [4a] Categorical columns (create _CAT aliases for hash)
-        s.GENDER as GENDER_CAT,
-        s.ETHGRP as ETHGRP_CAT,
-        s.ADMTYPE as ADMTYPE_CAT,
-        s.READMIT as READMIT_CAT,
+        -- [4a] Categorical columns (cast to VARCHAR and create _CAT aliases for hash)
+        CAST(s.GENDER AS VARCHAR) as GENDER_CAT,
+        CAST(s.ETHGRP AS VARCHAR) as ETHGRP_CAT,
+        CAST(s.ADMTYPE AS VARCHAR) as ADMTYPE_CAT,
+        CAST(s.READMIT AS VARCHAR) as READMIT_CAT,
         -- [4b] Numerical columns (must match population_binned)
         bin_numeric(s.AGE, r.age_min, r.age_max, 20) as AGE_BIN,
         bin_numeric(s.NTproBNP, r.ntprobnp_min, r.ntprobnp_max, 20) as NTPROBNP_BIN,
@@ -319,20 +319,21 @@ new_hallucination_unique AS (
 -- ============================================================================
 
 -- [6a] Valid categorical values from population (one CTE per categorical column)
+-- Cast to VARCHAR to ensure type consistency
 valid_genders AS (
-    SELECT DISTINCT GENDER as value FROM population
+    SELECT DISTINCT CAST(GENDER AS VARCHAR) as value FROM population
 ),
 
 valid_ethgrps AS (
-    SELECT DISTINCT ETHGRP as value FROM population
+    SELECT DISTINCT CAST(ETHGRP AS VARCHAR) as value FROM population
 ),
 
 valid_admtypes AS (
-    SELECT DISTINCT ADMTYPE as value FROM population
+    SELECT DISTINCT CAST(ADMTYPE AS VARCHAR) as value FROM population
 ),
 
 valid_readmits AS (
-    SELECT DISTINCT READMIT as value FROM population
+    SELECT DISTINCT CAST(READMIT AS VARCHAR) as value FROM population
 ),
 -- To add a categorical column: Add a CTE like:
 -- valid_column_name AS (
@@ -347,11 +348,11 @@ valid_readmits AS (
 synthetic_with_validity AS (
     SELECT
         s.*,
-        -- [7a] Check categorical rules (one CASE per categorical column)
-        CASE WHEN s.GENDER IN (SELECT value FROM valid_genders) THEN 1 ELSE 0 END as gender_valid,
-        CASE WHEN s.ETHGRP IN (SELECT value FROM valid_ethgrps) THEN 1 ELSE 0 END as ethgrp_valid,
-        CASE WHEN s.ADMTYPE IN (SELECT value FROM valid_admtypes) THEN 1 ELSE 0 END as admtype_valid,
-        CASE WHEN s.READMIT IN (SELECT value FROM valid_readmits) THEN 1 ELSE 0 END as readmit_valid,
+        -- [7a] Check categorical rules (cast to VARCHAR for type consistency)
+        CASE WHEN CAST(s.GENDER AS VARCHAR) IN (SELECT value FROM valid_genders) THEN 1 ELSE 0 END as gender_valid,
+        CASE WHEN CAST(s.ETHGRP AS VARCHAR) IN (SELECT value FROM valid_ethgrps) THEN 1 ELSE 0 END as ethgrp_valid,
+        CASE WHEN CAST(s.ADMTYPE AS VARCHAR) IN (SELECT value FROM valid_admtypes) THEN 1 ELSE 0 END as admtype_valid,
+        CASE WHEN CAST(s.READMIT AS VARCHAR) IN (SELECT value FROM valid_readmits) THEN 1 ELSE 0 END as readmit_valid,
         -- [7b] Check numerical range rules (NULL is allowed, one CASE per numeric column)
         CASE WHEN s.AGE IS NULL OR (s.AGE >= (SELECT age_min FROM num_ranges) AND s.AGE <= (SELECT age_max FROM num_ranges)) THEN 1 ELSE 0 END as age_valid,
         CASE WHEN s.NTproBNP IS NULL OR (s.NTproBNP >= (SELECT ntprobnp_min FROM num_ranges) AND s.NTproBNP <= (SELECT ntprobnp_max FROM num_ranges)) THEN 1 ELSE 0 END as ntprobnp_valid,
@@ -363,12 +364,12 @@ synthetic_with_validity AS (
         CASE WHEN s.SBP IS NULL OR (s.SBP >= (SELECT sbp_min FROM num_ranges) AND s.SBP <= (SELECT sbp_max FROM num_ranges)) THEN 1 ELSE 0 END as sbp_valid,
         CASE WHEN s.DBP IS NULL OR (s.DBP >= (SELECT dbp_min FROM num_ranges) AND s.DBP <= (SELECT dbp_max FROM num_ranges)) THEN 1 ELSE 0 END as dbp_valid,
         CASE WHEN s.RR IS NULL OR (s.RR >= (SELECT rr_min FROM num_ranges) AND s.RR <= (SELECT rr_max FROM num_ranges)) THEN 1 ELSE 0 END as rr_valid,
-        -- [7c] Check if ALL rules pass (must include all categorical + numeric checks)
+        -- [7c] Check if ALL rules pass (cast categoricals to VARCHAR for type consistency)
         CASE WHEN
-            s.GENDER IN (SELECT value FROM valid_genders)
-            AND s.ETHGRP IN (SELECT value FROM valid_ethgrps)
-            AND s.ADMTYPE IN (SELECT value FROM valid_admtypes)
-            AND s.READMIT IN (SELECT value FROM valid_readmits)
+            CAST(s.GENDER AS VARCHAR) IN (SELECT value FROM valid_genders)
+            AND CAST(s.ETHGRP AS VARCHAR) IN (SELECT value FROM valid_ethgrps)
+            AND CAST(s.ADMTYPE AS VARCHAR) IN (SELECT value FROM valid_admtypes)
+            AND CAST(s.READMIT AS VARCHAR) IN (SELECT value FROM valid_readmits)
             AND (s.AGE IS NULL OR (s.AGE >= (SELECT age_min FROM num_ranges) AND s.AGE <= (SELECT age_max FROM num_ranges)))
             AND (s.NTproBNP IS NULL OR (s.NTproBNP >= (SELECT ntprobnp_min FROM num_ranges) AND s.NTproBNP <= (SELECT ntprobnp_max FROM num_ranges)))
             AND (s.CREAT IS NULL OR (s.CREAT >= (SELECT creat_min FROM num_ranges) AND s.CREAT <= (SELECT creat_max FROM num_ranges)))
