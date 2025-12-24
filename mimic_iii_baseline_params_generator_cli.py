@@ -19,13 +19,14 @@ def generate_filename(
     generator: str,
     data_seed: int,
     experiment_seed: int,
+    prefix: str = "mimic_iii_baseline",
 ) -> str:
     """
     Generate filename according to:
-    mimic_iii_baseline_dseedDATASEED_LIBRARY_GENERATOR_mseedEXPERIMENTSEED.yaml
+    PREFIX_dseedDATASEED_LIBRARY_GENERATOR_mseedEXPERIMENTSEED.yaml
     """
     return (
-        f"mimic_iii_baseline_dseed{data_seed}_"
+        f"{prefix}_dseed{data_seed}_"
         f"{library}_{generator}_mseed{experiment_seed}.yaml"
     )
 
@@ -70,6 +71,12 @@ def generate_configs(
         "--output-dir",
         "-o",
         help="Directory where generated YAML files will be written.",
+    ),
+    prefix: str = typer.Option(
+        "mimic_iii_baseline",
+        "--prefix",
+        "-p",
+        help="Prefix for generated filenames (default: mimic_iii_baseline).",
     ),
     library: List[str] = typer.Option(
         ...,
@@ -137,7 +144,7 @@ def generate_configs(
         description="Generating YAML configs...",
         console=console,
     ):
-        filename = generate_filename(lib, gen, dseed, eseed)
+        filename = generate_filename(lib, gen, dseed, eseed, prefix)
         full_path = output_dir / filename
 
         yaml_content = instantiate_template(
