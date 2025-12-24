@@ -2,9 +2,9 @@
 -- Unified Validation Queries for DDR and Plausibility Metrics
 -- ============================================================================
 --
--- DATASET: MIMIC-III-mini-cire Dataset
+-- DATASET: MIMIC-III-mini-core Dataset
 -- This validation file is DATASET-SPECIFIC and contains hardcoded column names
--- and validation rules for the MIMIC-III-mini-cire dataset.
+-- and validation rules for the MIMIC-III-mini-core dataset.
 --
 -- This SQL file contains queries to compute:
 -- 1. DDR (Desirable Diverse Records) metrics - records that exist in population
