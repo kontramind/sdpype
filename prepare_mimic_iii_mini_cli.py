@@ -23,8 +23,15 @@ app = typer.Typer(
 )
 
 
-def generate_encoding_config() -> dict:
-    """Generate RDT encoding configuration."""
+def generate_encoding_config(impute: bool = False) -> dict:
+    """Generate RDT encoding configuration.
+
+    Args:
+        impute: If True, set missing_value_generation to 'from_column' for numeric fields.
+                If False, set to None (no imputation).
+    """
+    missing_value_gen = 'from_column' if impute else None
+
     sdtypes = {
         'ADMTYPE': 'categorical',
         'AGE': 'numerical',
@@ -48,7 +55,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -59,7 +66,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int32',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -68,7 +75,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -77,7 +84,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -86,7 +93,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Float',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -95,7 +102,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -104,7 +111,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -113,7 +120,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -122,7 +129,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -131,7 +138,7 @@ def generate_encoding_config() -> dict:
             'type': 'FloatFormatter',
             'params': {
                 'computer_representation': 'Int16',
-                'missing_value_generation': None,
+                'missing_value_generation': missing_value_gen,
                 'enforce_min_max_values': True,
                 'learn_rounding_scheme': True
             }
@@ -472,6 +479,7 @@ def transform(
     sample: Optional[int] = typer.Option(None, "--sample", "-s", help="Sample size PER SET (creates N train + N test rows, requires --seed)"),
     seed: Optional[int] = typer.Option(None, "--seed", help="Random seed for reproducible train/test split (required with --sample)"),
     encoding_config: bool = typer.Option(False, "--encoding-config", "-e", help="Generate RDT encoding config YAML and SDV metadata JSON files"),
+    impute: bool = typer.Option(False, "--impute", "-i", help="Enable missing value imputation (sets missing_value_generation='from_column' in encoding config)"),
 ):
     """
     Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
@@ -595,7 +603,7 @@ def transform(
             # Generate encoding config and metadata if requested (once, shared for all files)
             if encoding_config:
                 console.print()
-                config = generate_encoding_config()
+                config = generate_encoding_config(impute=impute)
                 encoding_path = output_dir / f"{base_name}_encoding.yaml"
                 with open(encoding_path, 'w') as f:
                     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
@@ -625,7 +633,7 @@ def transform(
             # Generate encoding config and metadata if requested
             if encoding_config:
                 console.print()
-                config = generate_encoding_config()
+                config = generate_encoding_config(impute=impute)
                 encoding_path = output_path.parent / f"{output_path.stem}_encoding.yaml"
                 with open(encoding_path, 'w') as f:
                     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
