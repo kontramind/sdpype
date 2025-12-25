@@ -55,6 +55,7 @@ outputs/                      # Experiment outputs (manual transfer)
 mimic_iii_baseline*/
 workspace/
 scratchpad.md
+MIMIC-III-mini-core_*/
 
 # Testing
 .pytest_cache/
