@@ -479,8 +479,8 @@ def transform(
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output prefix for file names (with --sample) or full CSV path (without --sample)"),
     sample: Optional[int] = typer.Option(None, "--sample", "-s", help="Sample size PER SET (creates N train + N test rows, requires --seed)"),
     seed: Optional[int] = typer.Option(None, "--seed", help="Random seed for reproducible train/test split (required with --sample)"),
-    encoding_config: bool = typer.Option(False, "--encoding-config", "-e", help="Generate RDT encoding config YAML and SDV metadata JSON files"),
-    impute: bool = typer.Option(False, "--impute", "-i", help="Enable missing value imputation (sets missing_value_generation='from_column' in encoding config)"),
+    subfolder: Optional[str] = typer.Option(None, "--subfolder", help="Subfolder name to save files in (defaults to dseed{seed} when using --sample)"),
+    impute: bool = typer.Option(False, "--impute", "-i", help="Enable missing value imputation (sets missing_value_replacement='mean' in encoding config)"),
 ):
     """
     Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
@@ -492,13 +492,23 @@ def transform(
     - With --sample: used as a prefix (e.g., "MIMIC-III-mini-core" → "MIMIC-III-mini-core_sample1000_dseed42_training.csv")
     - Without --sample: used as the full output CSV path
 
+    Subfolder behavior (with --sample):
+    - By default, creates a subfolder named dseed{seed} (e.g., dseed2025)
+    - Use --subfolder to specify a custom subfolder name
+    - Fails if the subfolder already exists to prevent accidental overwrites
+
+    Output files:
+    - CSV data files (training/test/unsampled when sampling, or single file otherwise)
+    - RDT encoding config YAML (for SDV/DVC pipeline)
+    - SDV metadata JSON (for SDV/DVC pipeline)
+
     Steps:
     1. Drop unwanted columns (19 total including ICUSTAY_ID after splitting)
     2. Rename remaining columns to abbreviated uppercase format
     3. Transform column types (Int16, Int32, Float, Int8)
-    4. With --encoding-config flag, also generates YAML and JSON metadata files
+    4. Generate encoding config and metadata files
 
-    All numeric types allow NULL values.
+    All numeric types allow NULL values. Use --impute to enable mean imputation for missing values.
     """
     if not xlsx_path.exists():
         console.print(f"[red]Error: XLSX file not found: {xlsx_path}[/red]")
@@ -507,6 +517,11 @@ def transform(
     # Validate sample/seed must be used together
     if (sample is not None) != (seed is not None):
         console.print(f"[red]Error: --sample and --seed must be used together[/red]")
+        raise typer.Exit(1)
+
+    # Validate subfolder can only be used with sample
+    if subfolder is not None and sample is None:
+        console.print(f"[red]Error: --subfolder can only be used with --sample[/red]")
         raise typer.Exit(1)
 
     try:
@@ -579,13 +594,35 @@ def transform(
 
             # Determine output paths
             if output:
-                # Use provided output as prefix
-                base_name = f"{output}_sample{sample}_dseed{seed}"
-                output_dir = Path.cwd()  # Use current directory if custom prefix
+                # Parse output path to separate directory and base name
+                output_path = Path(output)
+                if output_path.parent.exists() or str(output_path.parent) in ['.', '']:
+                    # Output has a directory component
+                    output_base_dir = output_path.parent if output_path.parent != Path('.') else Path.cwd()
+                    prefix = output_path.name
+                else:
+                    # Treat as prefix in current directory
+                    output_base_dir = Path.cwd()
+                    prefix = output
+                base_name = f"{prefix}_sample{sample}_dseed{seed}"
             else:
                 # Use default naming based on input file
                 base_name = f"{xlsx_path.stem}_transformed_sample{sample}_dseed{seed}"
-                output_dir = xlsx_path.parent
+                output_base_dir = xlsx_path.parent
+
+            # Determine subfolder name (default to dseed{seed} when using --sample)
+            subfolder_name = subfolder if subfolder else f"dseed{seed}"
+            output_dir = output_base_dir / subfolder_name
+
+            # Check if subfolder already exists - fail to prevent overwrites
+            if output_dir.exists():
+                console.print(f"[red]Error: Subfolder already exists: {output_dir}[/red]")
+                console.print(f"[yellow]Please remove the existing folder or use a different --subfolder name[/yellow]")
+                raise typer.Exit(1)
+
+            # Create the subfolder
+            output_dir.mkdir(parents=True, exist_ok=False)
+            console.print(f"[green]✓ Created output subfolder: {output_dir}[/green]\n")
 
             train_output = output_dir / f"{base_name}_training.csv"
             test_output = output_dir / f"{base_name}_test.csv"
@@ -601,20 +638,19 @@ def transform(
             unsampled_df.to_csv(unsampled_output, index=False)
             console.print(f"[green]✓ Saved unsampled data to: {unsampled_output}[/green]")
 
-            # Generate encoding config and metadata if requested (once, shared for all files)
-            if encoding_config:
-                console.print()
-                config = generate_encoding_config(impute=impute)
-                encoding_path = output_dir / f"{base_name}_encoding.yaml"
-                with open(encoding_path, 'w') as f:
-                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-                console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
+            # Generate encoding config and metadata (shared for all files)
+            console.print()
+            config = generate_encoding_config(impute=impute)
+            encoding_path = output_dir / f"{base_name}_encoding.yaml"
+            with open(encoding_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
 
-                metadata = generate_metadata()
-                metadata_path = output_dir / f"{base_name}_metadata.json"
-                with open(metadata_path, 'w') as f:
-                    json.dump(metadata, f, indent=2)
-                console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
+            metadata = generate_metadata()
+            metadata_path = output_dir / f"{base_name}_metadata.json"
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
 
         else:
             # Standard transformation without splitting
@@ -631,20 +667,19 @@ def transform(
             df.to_csv(output_path, index=False)
             console.print(f"[green]✓ Saved CSV to: {output_path}[/green]")
 
-            # Generate encoding config and metadata if requested
-            if encoding_config:
-                console.print()
-                config = generate_encoding_config(impute=impute)
-                encoding_path = output_path.parent / f"{output_path.stem}_encoding.yaml"
-                with open(encoding_path, 'w') as f:
-                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-                console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
+            # Generate encoding config and metadata
+            console.print()
+            config = generate_encoding_config(impute=impute)
+            encoding_path = output_path.parent / f"{output_path.stem}_encoding.yaml"
+            with open(encoding_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
 
-                metadata = generate_metadata()
-                metadata_path = output_path.parent / f"{output_path.stem}_metadata.json"
-                with open(metadata_path, 'w') as f:
-                    json.dump(metadata, f, indent=2)
-                console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
+            metadata = generate_metadata()
+            metadata_path = output_path.parent / f"{output_path.stem}_metadata.json"
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
 
         console.print()
 
