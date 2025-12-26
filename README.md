@@ -36,7 +36,7 @@ uv run sdpype models
 
 The `transform` command in `prepare_mimic_iii_mini_cli.py` implements a **two-stage sampling** strategy designed to:
 1. Prevent data leakage at the episode level
-2. Create realistic train/test splits with natural class distributions (or balanced splits with `--stratify`)
+2. Create realistic train/test splits with natural class distributions
 3. Preserve a representative unsampled population for deployment testing
 
 ### Sampling Strategy
@@ -54,20 +54,20 @@ Random sample 20,000 episodes
 
 **Why random?** This mimics realistic research practice where you collect a representative sample for your study.
 
-#### Stage 2: Stratified Train/Test Split
+#### Stage 2: Random Train/Test Split
 
-The 20,000-episode cohort is then split 50/50 into training and test sets, **stratified by the target variable (READMIT)** to ensure identical class distributions:
+The 20,000-episode cohort is then split 50/50 into training and test sets using **random sampling** to preserve natural class distributions:
 
 ```
 Study Cohort (20,000)
     ↓
-Stratified split on READMIT
+Random 50/50 split
     ↓
-├─ Train: 10,000 episodes (balanced READMIT)
-└─ Test:  10,000 episodes (balanced READMIT)
+├─ Train: 10,000 episodes (natural READMIT distribution)
+└─ Test:  10,000 episodes (natural READMIT distribution)
 ```
 
-**Why stratified?** This ensures train and test have identical outcome distributions, eliminating sampling artifacts in model evaluation.
+**Why random?** Natural class distributions are essential for training synthetic data generators and evaluating hallucination detection models. Balanced splits would create unrealistic training conditions.
 
 #### Stage 3: Unsampled Population
 
@@ -85,8 +85,8 @@ Unsampled (Population)
 
 | Dataset | Size | READMIT Rate | Purpose |
 |---------|------|--------------|---------|
-| **Training** | 10,000 | ~10.5% (stratified) | Model training with balanced outcomes |
-| **Test** | 10,000 | ~10.5% (stratified) | Fair model evaluation |
+| **Training** | 10,000 | ~10.3% (natural) | Synthetic data generator training |
+| **Test** | 10,000 | ~10.3% (natural) | Model evaluation with realistic distributions |
 | **Unsampled** | ~41,000 | ~10.3% (natural) | Deployment/population testing |
 
 ### Leakage Prevention
@@ -135,19 +135,6 @@ The `--keep-ids` flag:
 - Displays leakage detection report
 - Useful for debugging and quality assurance
 
-#### With Stratification (Balanced Split)
-
-```bash
-uv run prepare_mimic_iii_mini_cli.py transform \
-    MIMIC-III-mini-population.xlsx \
-    --output MIMIC-III-mini-core \
-    --sample 10000 \
-    --seed 42 \
-    --stratify
-```
-
-Use `--stratify` when you need balanced train/test distributions for controlled ML experiments and model evaluation.
-
 ### Validation Output
 
 When using `--keep-ids`, the command displays a validation report:
@@ -175,11 +162,11 @@ Data Split Validation
 3. Target Distribution (READMIT):
 
   Training:  0.1050 (1,050 / 10,000)
-  Test:      0.1050 (1,050 / 10,000)
+  Test:      0.1042 (1,042 / 10,000)
   Unsampled: 0.1036 (4,301 / 41,532)
 
-  ✓ Train/Test distributions identical (diff: 0.0000)
-    Stratified sampling is working correctly.
+  ✓ Train/Test distributions similar (diff: 0.0008)
+    Natural distribution sampling preserves realistic class imbalances.
 
 ════════════════════════════════════════════════════════════
 ```
@@ -190,23 +177,24 @@ This two-stage approach provides:
 
 1. **Realistic Research Scenario**
    - Stage 1 (random cohort) = "We collected 20k patients for our study"
-   - Stage 2 (stratified split) = "We split them ensuring balanced outcomes"
+   - Stage 2 (random split) = "We split them randomly preserving natural distributions"
    - Stage 3 (population) = "We test on broader population"
 
-2. **Fair Evaluation**
-   - Train/test have identical distributions → no sampling artifacts
-   - Unsampled has natural distribution → realistic deployment testing
+2. **Realistic Data**
+   - All splits preserve natural class distributions
+   - Essential for synthetic data generation and hallucination detection
+   - Reflects real-world deployment scenarios
 
-3. **Flexibility**
-   - Natural distribution by default (preserves realistic class imbalances for synthetic data generation)
-   - `--stratify`: For controlled experiments with balanced train/test distributions
-   - `--keep-ids`: For validation and debugging
+3. **Validation & Debugging**
+   - `--keep-ids`: Preserves ID columns for validation
+   - Comprehensive leakage detection
+   - Patient-level overlap tracking
 
 ### References
 
 This methodology follows best practices for:
 - Clinical machine learning (episode-level prediction)
-- Stratified sampling (scikit-learn's `train_test_split`)
+- Random sampling with natural distributions
 - Data leakage prevention (ICUSTAY_ID-level splitting)
 
 ## Installation

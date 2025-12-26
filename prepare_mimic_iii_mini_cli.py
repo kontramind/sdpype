@@ -595,7 +595,6 @@ def transform(
     subfolder: Optional[str] = typer.Option(None, "--subfolder", help="Subfolder name to save files in (defaults to dseed{seed} when using --sample)"),
     impute: bool = typer.Option(False, "--impute", "-i", help="Enable missing value imputation (sets missing_value_replacement='mean' in encoding config)"),
     keep_ids: bool = typer.Option(False, "--keep-ids", help="Keep ID columns (ICUSTAY_ID, SUBJECT_ID, HADM_ID) for validation and debugging"),
-    stratify: bool = typer.Option(False, "--stratify/--no-stratify", help="Use stratified sampling for train/test split. Default is natural distribution (no stratify) which preserves realistic class imbalances"),
 ):
     """
     Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
@@ -684,47 +683,25 @@ def transform(
             console.print(f"  [green]>[/green] Study cohort: {len(study_cohort_df):,} episodes")
             console.print(f"  [green]>[/green] READMIT rate: {readmit_rate:.4f}\n")
 
-            # Step 2: Stratified split of study cohort into train/test
+            # Step 2: Random split of study cohort into train/test
             console.print(f"[bold cyan]Step 2: Splitting cohort into train/test:[/bold cyan]")
 
-            if stratify and readmit_col:
-                try:
-                    from sklearn.model_selection import train_test_split
+            # Random 50/50 split with natural class distribution
+            shuffled_cohort = study_cohort_df.sample(frac=1, random_state=seed)
+            mid_point = len(shuffled_cohort) // 2
+            train_df = shuffled_cohort.iloc[:mid_point].copy()
+            test_df = shuffled_cohort.iloc[mid_point:].copy()
 
-                    train_df, test_df = train_test_split(
-                        study_cohort_df,
-                        test_size=0.5,  # 50/50 split
-                        stratify=study_cohort_df[readmit_col],
-                        random_state=seed
-                    )
-
-                    train_rate = train_df[readmit_col].mean()
-                    test_rate = test_df[readmit_col].mean()
-
-                    console.print(f"  [green]>[/green] Using stratified sampling (balanced READMIT distribution)")
-                    console.print(f"  [green]>[/green] Train: {len(train_df):,} episodes (READMIT: {train_rate:.4f})")
-                    console.print(f"  [green]>[/green] Test:  {len(test_df):,} episodes (READMIT: {test_rate:.4f})\n")
-                except ImportError:
-                    console.print(f"[yellow]⚠ scikit-learn not available, falling back to random split[/yellow]")
-                    stratify = False
-
-            if not stratify or not readmit_col:
-                # Fallback to random split
-                shuffled_cohort = study_cohort_df.sample(frac=1, random_state=seed)
-                mid_point = len(shuffled_cohort) // 2
-                train_df = shuffled_cohort.iloc[:mid_point].copy()
-                test_df = shuffled_cohort.iloc[mid_point:].copy()
-
-                if readmit_col:
-                    train_rate = train_df[readmit_col].mean()
-                    test_rate = test_df[readmit_col].mean()
-                    console.print(f"  [yellow]>[/yellow] Using random sampling (--no-stratify flag set)")
-                    console.print(f"  [yellow]>[/yellow] Train: {len(train_df):,} episodes (READMIT: {train_rate:.4f})")
-                    console.print(f"  [yellow]>[/yellow] Test:  {len(test_df):,} episodes (READMIT: {test_rate:.4f})\n")
-                else:
-                    console.print(f"  [yellow]>[/yellow] Using random sampling")
-                    console.print(f"  [yellow]>[/yellow] Train: {len(train_df):,} episodes")
-                    console.print(f"  [yellow]>[/yellow] Test:  {len(test_df):,} episodes\n")
+            if readmit_col:
+                train_rate = train_df[readmit_col].mean()
+                test_rate = test_df[readmit_col].mean()
+                console.print(f"  [green]>[/green] Using natural distribution sampling")
+                console.print(f"  [green]>[/green] Train: {len(train_df):,} episodes (READMIT: {train_rate:.4f})")
+                console.print(f"  [green]>[/green] Test:  {len(test_df):,} episodes (READMIT: {test_rate:.4f})\n")
+            else:
+                console.print(f"  [green]>[/green] Using natural distribution sampling")
+                console.print(f"  [green]>[/green] Train: {len(train_df):,} episodes")
+                console.print(f"  [green]>[/green] Test:  {len(test_df):,} episodes\n")
 
             # Step 3: Unsampled = all episodes NOT in study cohort
             console.print(f"[bold cyan]Step 3: Creating unsampled population dataset:[/bold cyan]")
