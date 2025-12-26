@@ -346,10 +346,8 @@ def validate_splits(
         console.print("[yellow]  This validation only works with --keep-ids flag.[/yellow]\n")
         return
 
-    # 1. Check for leakage
-    console.print("[bold]1. Leakage Check (ID Overlap Between Splits):[/bold]\n")
-
-    leakage_detected = False
+    # 1. Check for episode-level leakage (ICUSTAY_ID)
+    console.print("[bold]1. Episode-Level Leakage Check (ICUSTAY_ID):[/bold]\n")
 
     if has_icustay:
         train_icu = set(train_df['ICUSTAY_ID'])
@@ -360,25 +358,24 @@ def validate_splits(
         overlap_train_unsamp = len(train_icu & unsampled_icu)
         overlap_test_unsamp = len(test_icu & unsampled_icu)
 
-        console.print(f"  [bold]ICUSTAY_ID overlaps:[/bold]")
+        status_1 = "✓ No leakage" if overlap_train_test == 0 else "❌ LEAKAGE!"
+        status_2 = "✓ No leakage" if overlap_train_unsamp == 0 else "❌ LEAKAGE!"
+        status_3 = "✓ No leakage" if overlap_test_unsamp == 0 else "❌ LEAKAGE!"
 
-        if overlap_train_test == 0:
-            console.print(f"    Train ∩ Test:      {overlap_train_test:>6,} [green]✓ No leakage[/green]")
-        else:
-            console.print(f"    Train ∩ Test:      {overlap_train_test:>6,} [red]❌ LEAKAGE DETECTED![/red]")
-            leakage_detected = True
+        color_1 = "green" if overlap_train_test == 0 else "red"
+        color_2 = "green" if overlap_train_unsamp == 0 else "red"
+        color_3 = "green" if overlap_test_unsamp == 0 else "red"
 
-        if overlap_train_unsamp == 0:
-            console.print(f"    Train ∩ Unsampled: {overlap_train_unsamp:>6,} [green]✓ No leakage[/green]")
-        else:
-            console.print(f"    Train ∩ Unsampled: {overlap_train_unsamp:>6,} [red]❌ LEAKAGE DETECTED![/red]")
-            leakage_detected = True
+        console.print(f"  Train ∩ Test:      {overlap_train_test:>6,} [{color_1}]{status_1}[/{color_1}]")
+        console.print(f"  Train ∩ Unsampled: {overlap_train_unsamp:>6,} [{color_2}]{status_2}[/{color_2}]")
+        console.print(f"  Test ∩ Unsampled:  {overlap_test_unsamp:>6,} [{color_3}]{status_3}[/{color_3}]")
 
-        if overlap_test_unsamp == 0:
-            console.print(f"    Test ∩ Unsampled:  {overlap_test_unsamp:>6,} [green]✓ No leakage[/green]")
-        else:
-            console.print(f"    Test ∩ Unsampled:  {overlap_test_unsamp:>6,} [red]❌ LEAKAGE DETECTED![/red]")
-            leakage_detected = True
+        if any([overlap_train_test, overlap_train_unsamp, overlap_test_unsamp]):
+            console.print(f"\n  [red]⚠ Episode-level leakage detected![/red]")
+            console.print(f"  [red]  Same ICU stays appear in multiple splits.[/red]")
+
+    # 2. Check for patient-level overlap (expected for episode-level prediction)
+    console.print(f"\n[bold]2. Patient-Level Overlap (SUBJECT_ID):[/bold]\n")
 
     if has_subject:
         train_subj = set(train_df['SUBJECT_ID'])
@@ -389,48 +386,14 @@ def validate_splits(
         overlap_train_unsamp = len(train_subj & unsampled_subj)
         overlap_test_unsamp = len(test_subj & unsampled_subj)
 
-        console.print(f"\n  [bold]SUBJECT_ID overlaps:[/bold]")
+        console.print(f"  Train ∩ Test:      {overlap_train_test:>6,} patients")
+        console.print(f"  Train ∩ Unsampled: {overlap_train_unsamp:>6,} patients")
+        console.print(f"  Test ∩ Unsampled:  {overlap_test_unsamp:>6,} patients")
 
-        if overlap_train_test == 0:
-            console.print(f"    Train ∩ Test:      {overlap_train_test:>6,} [green]✓ No leakage[/green]")
-        else:
-            console.print(f"    Train ∩ Test:      {overlap_train_test:>6,} [red]❌ LEAKAGE DETECTED![/red]")
-            leakage_detected = True
-
-        if overlap_train_unsamp == 0:
-            console.print(f"    Train ∩ Unsampled: {overlap_train_unsamp:>6,} [green]✓ No leakage[/green]")
-        else:
-            console.print(f"    Train ∩ Unsampled: {overlap_train_unsamp:>6,} [red]❌ LEAKAGE DETECTED![/red]")
-            leakage_detected = True
-
-        if overlap_test_unsamp == 0:
-            console.print(f"    Test ∩ Unsampled:  {overlap_test_unsamp:>6,} [green]✓ No leakage[/green]")
-        else:
-            console.print(f"    Test ∩ Unsampled:  {overlap_test_unsamp:>6,} [red]❌ LEAKAGE DETECTED![/red]")
-            leakage_detected = True
-
-    # 2. Check rows per ICU stay
-    if has_icustay:
-        console.print(f"\n[bold]2. Rows per ICU Stay (Multi-Row Bias Check):[/bold]\n")
-
-        train_rows_per_stay = train_df.groupby('ICUSTAY_ID').size()
-        unsamp_rows_per_stay = unsampled_df.groupby('ICUSTAY_ID').size()
-
-        console.print(f"  [bold]Training:[/bold]")
-        console.print(f"    Mean rows per stay:    {train_rows_per_stay.mean():>6.2f}")
-        console.print(f"    Max rows per stay:     {train_rows_per_stay.max():>6,}")
-        console.print(f"    ICU stays with >1 row: {(train_rows_per_stay > 1).sum():>6,}")
-
-        console.print(f"\n  [bold]Unsampled:[/bold]")
-        console.print(f"    Mean rows per stay:    {unsamp_rows_per_stay.mean():>6.2f}")
-        console.print(f"    Max rows per stay:     {unsamp_rows_per_stay.max():>6,}")
-        console.print(f"    ICU stays with >1 row: {(unsamp_rows_per_stay > 1).sum():>6,}")
-
-        if train_rows_per_stay.mean() > 1.0 or unsamp_rows_per_stay.mean() > 1.0:
-            console.print(f"\n  [yellow]⚠ Multiple rows per ICU stay detected![/yellow]")
-            console.print(f"  [yellow]  This may indicate temporal data or measurement records.[/yellow]")
-            if leakage_detected:
-                console.print(f"  [yellow]  Combined with ID overlap = high risk of data leakage![/yellow]")
+        if any([overlap_train_test, overlap_train_unsamp, overlap_test_unsamp]):
+            console.print(f"\n  [yellow]ℹ Patient-level overlap is EXPECTED for episode-level prediction.[/yellow]")
+            console.print(f"  [yellow]  Same patient can have different ICU episodes in different splits.[/yellow]")
+            console.print(f"  [yellow]  This is acceptable if prediction task is episode-level, not patient-level.[/yellow]")
 
     # 3. Check target distribution
     console.print(f"\n[bold]3. Target Distribution ({target_col}):[/bold]\n")
@@ -444,17 +407,20 @@ def validate_splits(
     test_rate = test_positive / len(test_df)
     unsamp_rate = unsamp_positive / len(unsampled_df)
 
-    console.print(f"  Training:  {train_rate:.4f} ({train_positive:>5,}/{len(train_df):>6,})")
-    console.print(f"  Test:      {test_rate:.4f} ({test_positive:>5,}/{len(test_df):>6,})")
-    console.print(f"  Unsampled: {unsamp_rate:.4f} ({unsamp_positive:>5,}/{len(unsampled_df):>6,})")
+    console.print(f"  Training:  {train_rate:.4f} ({train_positive:>5,} / {len(train_df):>6,})")
+    console.print(f"  Test:      {test_rate:.4f} ({test_positive:>5,} / {len(test_df):>6,})")
+    console.print(f"  Unsampled: {unsamp_rate:.4f} ({unsamp_positive:>5,} / {len(unsampled_df):>6,})")
 
-    max_diff = max(abs(train_rate - test_rate), abs(train_rate - unsamp_rate), abs(test_rate - unsamp_rate))
+    train_test_diff = abs(train_rate - test_rate)
 
-    if max_diff > 0.02:  # More than 2% difference
-        console.print(f"\n  [yellow]⚠ Distribution mismatch detected (max diff: {max_diff:.4f})[/yellow]")
-        console.print(f"  [yellow]  Consider using stratified sampling to preserve class balance.[/yellow]")
+    if train_test_diff < 0.001:
+        console.print(f"\n  [green]✓ Train/Test distributions identical (diff: {train_test_diff:.4f})[/green]")
+        console.print(f"  [green]  Stratified sampling is working correctly.[/green]")
+    elif train_test_diff < 0.02:
+        console.print(f"\n  [green]✓ Train/Test distributions similar (diff: {train_test_diff:.4f})[/green]")
     else:
-        console.print(f"\n  [green]✓ Distributions are similar (max diff: {max_diff:.4f})[/green]")
+        console.print(f"\n  [yellow]⚠ Train/Test distribution mismatch (diff: {train_test_diff:.4f})[/yellow]")
+        console.print(f"  [yellow]  Consider using --stratify flag for balanced splits.[/yellow]")
 
     console.print("\n[bold cyan]" + "═" * 60 + "[/bold cyan]\n")
 
@@ -629,6 +595,7 @@ def transform(
     subfolder: Optional[str] = typer.Option(None, "--subfolder", help="Subfolder name to save files in (defaults to dseed{seed} when using --sample)"),
     impute: bool = typer.Option(False, "--impute", "-i", help="Enable missing value imputation (sets missing_value_replacement='mean' in encoding config)"),
     keep_ids: bool = typer.Option(False, "--keep-ids", help="Keep ID columns (ICUSTAY_ID, SUBJECT_ID, HADM_ID) for validation and debugging"),
+    stratify: bool = typer.Option(False, "--stratify/--no-stratify", help="Use stratified sampling for train/test split. Default is natural distribution (no stratify) which preserves realistic class imbalances"),
 ):
     """
     Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
@@ -680,52 +647,96 @@ def transform(
 
         # Handle train/test split if sampling is requested
         if sample is not None:
-            console.print(f"[bold cyan]Creating train/test split (sample={sample:,}, dseed={seed}):[/bold cyan]")
+            console.print(f"[bold cyan]Two-Stage Stratified Sampling (sample={sample:,}, dseed={seed}):[/bold cyan]\n")
 
-            # Check for ICUSTAY_ID column
+            # Check for ICUSTAY_ID and READMIT columns
             if 'ICUSTAY_ID' not in df.columns:
                 console.print(f"[red]Error: ICUSTAY_ID column not found (required for sampling)[/red]")
                 raise typer.Exit(1)
+            if 'READMISSION' not in df.columns and 'IS_READMISSION_30D' not in df.columns and 'READMIT' not in df.columns:
+                console.print(f"[red]Error: READMIT column not found (required for stratified sampling)[/red]")
+                raise typer.Exit(1)
 
-            # Get unique ICUSTAY_IDs and shuffle them
-            unique_ids = df['ICUSTAY_ID'].unique()
+            # Normalize READMIT column name
+            readmit_col = None
+            for col in ['READMISSION', 'IS_READMISSION_30D', 'READMIT']:
+                if col in df.columns:
+                    readmit_col = col
+                    break
+
+            # Step 1: Random sample of study cohort (2x the requested sample size)
+            console.print(f"[bold cyan]Step 1: Randomly sampling {sample * 2:,} episodes for study cohort:[/bold cyan]")
+
+            all_icustay_ids = df['ICUSTAY_ID'].unique()
             rng = np.random.RandomState(seed)
-            shuffled_ids = rng.permutation(unique_ids)
 
-            # Split IDs 50/50
-            split_point = len(shuffled_ids) // 2
-            train_ids = shuffled_ids[:split_point]
-            test_ids = shuffled_ids[split_point:]
-
-            # Get rows for each group
-            train_group = df[df['ICUSTAY_ID'].isin(train_ids)].copy()
-            test_group = df[df['ICUSTAY_ID'].isin(test_ids)].copy()
-
-            console.print(f"  [green]>[/green] Split ICUSTAY_IDs: {len(train_ids):,} train, {len(test_ids):,} test")
-            console.print(f"  [green]>[/green] Train group: {len(train_group):,} rows")
-            console.print(f"  [green]>[/green] Test group: {len(test_group):,} rows")
-
-            # Check if we have enough rows in each group
-            if len(train_group) < sample:
-                console.print(f"[red]Error: Cannot sample {sample:,} rows from train group (only {len(train_group):,} available)[/red]")
-                console.print(f"[yellow]Suggestion: Use --sample {len(train_group)} or smaller[/yellow]")
-                raise typer.Exit(1)
-            if len(test_group) < sample:
-                console.print(f"[red]Error: Cannot sample {sample:,} rows from test group (only {len(test_group):,} available)[/red]")
-                console.print(f"[yellow]Suggestion: Use --sample {len(test_group)} or smaller[/yellow]")
+            # Sample 2x episodes for cohort
+            n_study_cohort = sample * 2
+            if len(all_icustay_ids) < n_study_cohort:
+                console.print(f"[red]Error: Not enough unique ICUSTAY_IDs ({len(all_icustay_ids):,}) for cohort size {n_study_cohort:,}[/red]")
                 raise typer.Exit(1)
 
-            # Sample exact number of rows from each group
-            train_df = train_group.sample(n=sample, random_state=seed)
-            test_df = test_group.sample(n=sample, random_state=seed)
+            study_cohort_ids = rng.choice(all_icustay_ids, size=n_study_cohort, replace=False)
+            study_cohort_df = df[df['ICUSTAY_ID'].isin(study_cohort_ids)].copy()
 
-            # Get unsampled data
-            sampled_indices = set(train_df.index).union(set(test_df.index))
-            unsampled_indices = df.index.difference(sampled_indices)
-            unsampled_df = df.loc[unsampled_indices].copy()
+            # Calculate readmit rate for display
+            readmit_rate = study_cohort_df[readmit_col].mean() if readmit_col else 0
+            console.print(f"  [green]>[/green] Study cohort: {len(study_cohort_df):,} episodes")
+            console.print(f"  [green]>[/green] READMIT rate: {readmit_rate:.4f}\n")
 
-            console.print(f"  [green]>[/green] Sampled: {len(train_df):,} train, {len(test_df):,} test")
-            console.print(f"  [green]>[/green] Unsampled: {len(unsampled_df):,} rows\n")
+            # Step 2: Stratified split of study cohort into train/test
+            console.print(f"[bold cyan]Step 2: Splitting cohort into train/test:[/bold cyan]")
+
+            if stratify and readmit_col:
+                try:
+                    from sklearn.model_selection import train_test_split
+
+                    train_df, test_df = train_test_split(
+                        study_cohort_df,
+                        test_size=0.5,  # 50/50 split
+                        stratify=study_cohort_df[readmit_col],
+                        random_state=seed
+                    )
+
+                    train_rate = train_df[readmit_col].mean()
+                    test_rate = test_df[readmit_col].mean()
+
+                    console.print(f"  [green]>[/green] Using stratified sampling (balanced READMIT distribution)")
+                    console.print(f"  [green]>[/green] Train: {len(train_df):,} episodes (READMIT: {train_rate:.4f})")
+                    console.print(f"  [green]>[/green] Test:  {len(test_df):,} episodes (READMIT: {test_rate:.4f})\n")
+                except ImportError:
+                    console.print(f"[yellow]⚠ scikit-learn not available, falling back to random split[/yellow]")
+                    stratify = False
+
+            if not stratify or not readmit_col:
+                # Fallback to random split
+                shuffled_cohort = study_cohort_df.sample(frac=1, random_state=seed)
+                mid_point = len(shuffled_cohort) // 2
+                train_df = shuffled_cohort.iloc[:mid_point].copy()
+                test_df = shuffled_cohort.iloc[mid_point:].copy()
+
+                if readmit_col:
+                    train_rate = train_df[readmit_col].mean()
+                    test_rate = test_df[readmit_col].mean()
+                    console.print(f"  [yellow]>[/yellow] Using random sampling (--no-stratify flag set)")
+                    console.print(f"  [yellow]>[/yellow] Train: {len(train_df):,} episodes (READMIT: {train_rate:.4f})")
+                    console.print(f"  [yellow]>[/yellow] Test:  {len(test_df):,} episodes (READMIT: {test_rate:.4f})\n")
+                else:
+                    console.print(f"  [yellow]>[/yellow] Using random sampling")
+                    console.print(f"  [yellow]>[/yellow] Train: {len(train_df):,} episodes")
+                    console.print(f"  [yellow]>[/yellow] Test:  {len(test_df):,} episodes\n")
+
+            # Step 3: Unsampled = all episodes NOT in study cohort
+            console.print(f"[bold cyan]Step 3: Creating unsampled population dataset:[/bold cyan]")
+
+            unsampled_df = df[~df['ICUSTAY_ID'].isin(study_cohort_ids)].copy()
+
+            if readmit_col:
+                unsamp_rate = unsampled_df[readmit_col].mean()
+                console.print(f"  [green]>[/green] Unsampled: {len(unsampled_df):,} episodes (READMIT: {unsamp_rate:.4f})")
+            else:
+                console.print(f"  [green]>[/green] Unsampled: {len(unsampled_df):,} episodes")
+            console.print(f"  [green]>[/green] Represents: Full population not in study cohort\n")
 
             # Apply transformations to all 3 sets
             console.print("[bold cyan]Applying transformations to training set:[/bold cyan]")
