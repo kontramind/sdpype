@@ -435,13 +435,18 @@ def validate_splits(
     # 3. Check target distribution
     console.print(f"\n[bold]3. Target Distribution ({target_col}):[/bold]\n")
 
-    train_rate = train_df[target_col].mean()
-    test_rate = test_df[target_col].mean()
-    unsamp_rate = unsampled_df[target_col].mean()
+    # Convert string 'True'/'False' to numeric for calculation
+    train_positive = (train_df[target_col].astype(str) == 'True').sum()
+    test_positive = (test_df[target_col].astype(str) == 'True').sum()
+    unsamp_positive = (unsampled_df[target_col].astype(str) == 'True').sum()
 
-    console.print(f"  Training:  {train_rate:.4f} ({train_df[target_col].sum():>5,}/{len(train_df):>6,})")
-    console.print(f"  Test:      {test_rate:.4f} ({test_df[target_col].sum():>5,}/{len(test_df):>6,})")
-    console.print(f"  Unsampled: {unsamp_rate:.4f} ({unsampled_df[target_col].sum():>5,}/{len(unsampled_df):>6,})")
+    train_rate = train_positive / len(train_df)
+    test_rate = test_positive / len(test_df)
+    unsamp_rate = unsamp_positive / len(unsampled_df)
+
+    console.print(f"  Training:  {train_rate:.4f} ({train_positive:>5,}/{len(train_df):>6,})")
+    console.print(f"  Test:      {test_rate:.4f} ({test_positive:>5,}/{len(test_df):>6,})")
+    console.print(f"  Unsampled: {unsamp_rate:.4f} ({unsamp_positive:>5,}/{len(unsampled_df):>6,})")
 
     max_diff = max(abs(train_rate - test_rate), abs(train_rate - unsamp_rate), abs(test_rate - unsamp_rate))
 
@@ -791,18 +796,24 @@ def transform(
             console.print(f"[green]✓ Saved unsampled data to: {unsampled_output}[/green]")
 
             # Generate encoding config and metadata (shared for all files)
+            # Skip if --keep-ids is used since ID columns aren't in the schema
             console.print()
-            config = generate_encoding_config(impute=impute)
-            encoding_path = output_dir / f"{base_name}_encoding.yaml"
-            with open(encoding_path, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-            console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
+            if keep_ids:
+                console.print(f"[yellow]⚠ Skipping encoding config and metadata generation with --keep-ids[/yellow]")
+                console.print(f"[yellow]  ID columns in CSV won't match the standard schema.[/yellow]")
+                console.print(f"[yellow]  Remove --keep-ids flag to generate configs for SDV/RDT use.[/yellow]")
+            else:
+                config = generate_encoding_config(impute=impute)
+                encoding_path = output_dir / f"{base_name}_encoding.yaml"
+                with open(encoding_path, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
 
-            metadata = generate_metadata()
-            metadata_path = output_dir / f"{base_name}_metadata.json"
-            with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
-            console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
+                metadata = generate_metadata()
+                metadata_path = output_dir / f"{base_name}_metadata.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
 
         else:
             # Standard transformation without splitting
@@ -820,18 +831,24 @@ def transform(
             console.print(f"[green]✓ Saved CSV to: {output_path}[/green]")
 
             # Generate encoding config and metadata
+            # Skip if --keep-ids is used since ID columns aren't in the schema
             console.print()
-            config = generate_encoding_config(impute=impute)
-            encoding_path = output_path.parent / f"{output_path.stem}_encoding.yaml"
-            with open(encoding_path, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-            console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
+            if keep_ids:
+                console.print(f"[yellow]⚠ Skipping encoding config and metadata generation with --keep-ids[/yellow]")
+                console.print(f"[yellow]  ID columns in CSV won't match the standard schema.[/yellow]")
+                console.print(f"[yellow]  Remove --keep-ids flag to generate configs for SDV/RDT use.[/yellow]")
+            else:
+                config = generate_encoding_config(impute=impute)
+                encoding_path = output_path.parent / f"{output_path.stem}_encoding.yaml"
+                with open(encoding_path, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                console.print(f"[green]✓ Saved encoding config to: {encoding_path}[/green]")
 
-            metadata = generate_metadata()
-            metadata_path = output_path.parent / f"{output_path.stem}_metadata.json"
-            with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
-            console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
+                metadata = generate_metadata()
+                metadata_path = output_path.parent / f"{output_path.stem}_metadata.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                console.print(f"[green]✓ Saved metadata to: {metadata_path}[/green]")
 
         console.print()
 
