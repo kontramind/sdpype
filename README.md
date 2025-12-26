@@ -30,6 +30,185 @@ uv run sdpype pipeline
 uv run sdpype models
 ```
 
+## Sampling Methodology
+
+### Overview
+
+The `transform` command in `prepare_mimic_iii_mini_cli.py` implements a **two-stage stratified sampling** strategy designed to:
+1. Prevent data leakage at the episode level
+2. Create balanced train/test splits for fair evaluation
+3. Preserve a representative unsampled population for deployment testing
+
+### Sampling Strategy
+
+#### Stage 1: Random Study Cohort Selection
+
+First, we randomly sample 20,000 ICU stay episodes (ICUSTAY_ID) from the full population to create a "study cohort":
+
+```
+All 61,532 episodes
+    ↓
+Random sample 20,000 episodes
+    (Study Cohort)
+```
+
+**Why random?** This mimics realistic research practice where you collect a representative sample for your study.
+
+#### Stage 2: Stratified Train/Test Split
+
+The 20,000-episode cohort is then split 50/50 into training and test sets, **stratified by the target variable (READMIT)** to ensure identical class distributions:
+
+```
+Study Cohort (20,000)
+    ↓
+Stratified split on READMIT
+    ↓
+├─ Train: 10,000 episodes (balanced READMIT)
+└─ Test:  10,000 episodes (balanced READMIT)
+```
+
+**Why stratified?** This ensures train and test have identical outcome distributions, eliminating sampling artifacts in model evaluation.
+
+#### Stage 3: Unsampled Population
+
+All remaining episodes (not in the study cohort) become the "unsampled" dataset:
+
+```
+Remaining ~41,000 episodes
+    ↓
+Unsampled (Population)
+```
+
+**Why keep all?** The unsampled dataset represents the full diverse population with natural class distribution, useful for testing deployment scenarios.
+
+### Final Dataset Characteristics
+
+| Dataset | Size | READMIT Rate | Purpose |
+|---------|------|--------------|---------|
+| **Training** | 10,000 | ~10.5% (stratified) | Model training with balanced outcomes |
+| **Test** | 10,000 | ~10.5% (stratified) | Fair model evaluation |
+| **Unsampled** | ~41,000 | ~10.3% (natural) | Deployment/population testing |
+
+### Leakage Prevention
+
+The sampling ensures **no episode-level leakage**:
+- Each `ICUSTAY_ID` appears in exactly ONE split
+- No ICU stay is shared between train/test/unsampled
+
+**Note on patient-level overlap:** The same patient (`SUBJECT_ID`) may have different ICU episodes in different splits. This is:
+- ✓ **Acceptable** for episode-level prediction (predicting readmission for a specific ICU stay)
+- ❌ **Not acceptable** for patient-level prediction (predicting patient readmission risk)
+
+Our use case is **episode-level prediction**, so patient overlap is expected and not considered leakage.
+
+### Usage Examples
+
+#### Basic Usage (with stratification)
+
+```bash
+uv run prepare_mimic_iii_mini_cli.py transform \
+    MIMIC-III-mini-population.xlsx \
+    --output MIMIC-III-mini-core \
+    --sample 10000 \
+    --seed 42
+```
+
+This creates:
+- `dseed42/MIMIC-III-mini-core_sample10000_dseed42_training.csv` (10k, stratified)
+- `dseed42/MIMIC-III-mini-core_sample10000_dseed42_test.csv` (10k, stratified)
+- `dseed42/MIMIC-III-mini-core_sample10000_dseed42_unsampled.csv` (~41k, natural)
+
+#### With Validation (Keep IDs)
+
+```bash
+uv run prepare_mimic_iii_mini_cli.py transform \
+    MIMIC-III-mini-population.xlsx \
+    --output MIMIC-III-mini-core \
+    --sample 10000 \
+    --seed 42 \
+    --keep-ids
+```
+
+The `--keep-ids` flag:
+- Preserves ICUSTAY_ID, SUBJECT_ID, HADM_ID in output files
+- Runs comprehensive validation checks
+- Displays leakage detection report
+- Useful for debugging and quality assurance
+
+#### Without Stratification (Random Split)
+
+```bash
+uv run prepare_mimic_iii_mini_cli.py transform \
+    MIMIC-III-mini-population.xlsx \
+    --output MIMIC-III-mini-core \
+    --sample 10000 \
+    --seed 42 \
+    --no-stratify
+```
+
+Use `--no-stratify` if you want pure random sampling without balancing.
+
+### Validation Output
+
+When using `--keep-ids`, the command displays a validation report:
+
+```
+════════════════════════════════════════════════════════════
+Data Split Validation
+════════════════════════════════════════════════════════════
+
+1. Episode-Level Leakage Check (ICUSTAY_ID):
+
+  Train ∩ Test:           0 ✓ No leakage
+  Train ∩ Unsampled:      0 ✓ No leakage
+  Test ∩ Unsampled:       0 ✓ No leakage
+
+2. Patient-Level Overlap (SUBJECT_ID):
+
+  Train ∩ Test:         959 patients
+  Train ∩ Unsampled:  2,639 patients
+  Test ∩ Unsampled:   2,663 patients
+
+  ℹ Patient-level overlap is EXPECTED for episode-level prediction.
+    Same patient can have different ICU episodes in different splits.
+
+3. Target Distribution (READMIT):
+
+  Training:  0.1050 (1,050 / 10,000)
+  Test:      0.1050 (1,050 / 10,000)
+  Unsampled: 0.1036 (4,301 / 41,532)
+
+  ✓ Train/Test distributions identical (diff: 0.0000)
+    Stratified sampling is working correctly.
+
+════════════════════════════════════════════════════════════
+```
+
+### Rationale
+
+This two-stage approach provides:
+
+1. **Realistic Research Scenario**
+   - Stage 1 (random cohort) = "We collected 20k patients for our study"
+   - Stage 2 (stratified split) = "We split them ensuring balanced outcomes"
+   - Stage 3 (population) = "We test on broader population"
+
+2. **Fair Evaluation**
+   - Train/test have identical distributions → no sampling artifacts
+   - Unsampled has natural distribution → realistic deployment testing
+
+3. **Flexibility**
+   - `--stratify`: For controlled experiments (default)
+   - `--no-stratify`: For natural sampling variation
+   - `--keep-ids`: For validation and debugging
+
+### References
+
+This methodology follows best practices for:
+- Clinical machine learning (episode-level prediction)
+- Stratified sampling (scikit-learn's `train_test_split`)
+- Data leakage prevention (ICUSTAY_ID-level splitting)
+
 ## Installation
 
 ```bash
