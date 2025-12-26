@@ -190,7 +190,7 @@ def load_data_file(file_path: Path) -> pd.DataFrame:
         raise ValueError(f"Unsupported file format: {suffix}. Use .xlsx or .csv")
 
 
-def apply_transformations(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
+def apply_transformations(df: pd.DataFrame, verbose: bool = True, keep_ids: bool = False) -> pd.DataFrame:
     """Apply all transformations to a dataframe."""
 
     # Drop unwanted columns (but NOT ICUSTAY_ID yet - it may have been dropped already for sampling)
@@ -207,6 +207,11 @@ def apply_transformations(df: pd.DataFrame, verbose: bool = True) -> pd.DataFram
         'LANGUAGE_GROUP', 'MARITAL_GROUP', 'GLUCOSE_BLOOD'
     ]
     columns_to_drop = [col for col in unwanted_columns if col in df.columns]
+
+    # Keep ID columns if requested
+    if keep_ids:
+        id_columns = ['ICUSTAY_ID', 'SUBJECT_ID', 'HADM_ID']
+        columns_to_drop = [col for col in columns_to_drop if col not in id_columns]
 
     if columns_to_drop:
         df = df.drop(columns=columns_to_drop)
@@ -310,6 +315,143 @@ def apply_transformations(df: pd.DataFrame, verbose: bool = True) -> pd.DataFram
             console.print(f"  [green]>[/green] READMIT → String (categorical)")
 
     return df
+
+
+def validate_splits(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    unsampled_df: pd.DataFrame,
+    target_col: str = 'READMIT'
+) -> None:
+    """Validate data splits for leakage and distribution issues.
+
+    Args:
+        train_df: Training dataframe
+        test_df: Test dataframe
+        unsampled_df: Unsampled dataframe
+        target_col: Name of target column to check distribution
+    """
+
+    console.print("\n[bold cyan]" + "═" * 60 + "[/bold cyan]")
+    console.print("[bold cyan]Data Split Validation[/bold cyan]")
+    console.print("[bold cyan]" + "═" * 60 + "[/bold cyan]\n")
+
+    # Check for ID columns
+    has_icustay = 'ICUSTAY_ID' in train_df.columns
+    has_subject = 'SUBJECT_ID' in train_df.columns
+
+    if not (has_icustay or has_subject):
+        console.print("[yellow]⚠ No ID columns found. Cannot validate for leakage.[/yellow]")
+        console.print("[yellow]  Tip: ID columns were dropped during transformation.[/yellow]")
+        console.print("[yellow]  This validation only works with --keep-ids flag.[/yellow]\n")
+        return
+
+    # 1. Check for leakage
+    console.print("[bold]1. Leakage Check (ID Overlap Between Splits):[/bold]\n")
+
+    leakage_detected = False
+
+    if has_icustay:
+        train_icu = set(train_df['ICUSTAY_ID'])
+        test_icu = set(test_df['ICUSTAY_ID'])
+        unsampled_icu = set(unsampled_df['ICUSTAY_ID'])
+
+        overlap_train_test = len(train_icu & test_icu)
+        overlap_train_unsamp = len(train_icu & unsampled_icu)
+        overlap_test_unsamp = len(test_icu & unsampled_icu)
+
+        console.print(f"  [bold]ICUSTAY_ID overlaps:[/bold]")
+
+        if overlap_train_test == 0:
+            console.print(f"    Train ∩ Test:      {overlap_train_test:>6,} [green]✓ No leakage[/green]")
+        else:
+            console.print(f"    Train ∩ Test:      {overlap_train_test:>6,} [red]❌ LEAKAGE DETECTED![/red]")
+            leakage_detected = True
+
+        if overlap_train_unsamp == 0:
+            console.print(f"    Train ∩ Unsampled: {overlap_train_unsamp:>6,} [green]✓ No leakage[/green]")
+        else:
+            console.print(f"    Train ∩ Unsampled: {overlap_train_unsamp:>6,} [red]❌ LEAKAGE DETECTED![/red]")
+            leakage_detected = True
+
+        if overlap_test_unsamp == 0:
+            console.print(f"    Test ∩ Unsampled:  {overlap_test_unsamp:>6,} [green]✓ No leakage[/green]")
+        else:
+            console.print(f"    Test ∩ Unsampled:  {overlap_test_unsamp:>6,} [red]❌ LEAKAGE DETECTED![/red]")
+            leakage_detected = True
+
+    if has_subject:
+        train_subj = set(train_df['SUBJECT_ID'])
+        test_subj = set(test_df['SUBJECT_ID'])
+        unsampled_subj = set(unsampled_df['SUBJECT_ID'])
+
+        overlap_train_test = len(train_subj & test_subj)
+        overlap_train_unsamp = len(train_subj & unsampled_subj)
+        overlap_test_unsamp = len(test_subj & unsampled_subj)
+
+        console.print(f"\n  [bold]SUBJECT_ID overlaps:[/bold]")
+
+        if overlap_train_test == 0:
+            console.print(f"    Train ∩ Test:      {overlap_train_test:>6,} [green]✓ No leakage[/green]")
+        else:
+            console.print(f"    Train ∩ Test:      {overlap_train_test:>6,} [red]❌ LEAKAGE DETECTED![/red]")
+            leakage_detected = True
+
+        if overlap_train_unsamp == 0:
+            console.print(f"    Train ∩ Unsampled: {overlap_train_unsamp:>6,} [green]✓ No leakage[/green]")
+        else:
+            console.print(f"    Train ∩ Unsampled: {overlap_train_unsamp:>6,} [red]❌ LEAKAGE DETECTED![/red]")
+            leakage_detected = True
+
+        if overlap_test_unsamp == 0:
+            console.print(f"    Test ∩ Unsampled:  {overlap_test_unsamp:>6,} [green]✓ No leakage[/green]")
+        else:
+            console.print(f"    Test ∩ Unsampled:  {overlap_test_unsamp:>6,} [red]❌ LEAKAGE DETECTED![/red]")
+            leakage_detected = True
+
+    # 2. Check rows per ICU stay
+    if has_icustay:
+        console.print(f"\n[bold]2. Rows per ICU Stay (Multi-Row Bias Check):[/bold]\n")
+
+        train_rows_per_stay = train_df.groupby('ICUSTAY_ID').size()
+        unsamp_rows_per_stay = unsampled_df.groupby('ICUSTAY_ID').size()
+
+        console.print(f"  [bold]Training:[/bold]")
+        console.print(f"    Mean rows per stay:    {train_rows_per_stay.mean():>6.2f}")
+        console.print(f"    Max rows per stay:     {train_rows_per_stay.max():>6,}")
+        console.print(f"    ICU stays with >1 row: {(train_rows_per_stay > 1).sum():>6,}")
+
+        console.print(f"\n  [bold]Unsampled:[/bold]")
+        console.print(f"    Mean rows per stay:    {unsamp_rows_per_stay.mean():>6.2f}")
+        console.print(f"    Max rows per stay:     {unsamp_rows_per_stay.max():>6,}")
+        console.print(f"    ICU stays with >1 row: {(unsamp_rows_per_stay > 1).sum():>6,}")
+
+        if train_rows_per_stay.mean() > 1.0 or unsamp_rows_per_stay.mean() > 1.0:
+            console.print(f"\n  [yellow]⚠ Multiple rows per ICU stay detected![/yellow]")
+            console.print(f"  [yellow]  This may indicate temporal data or measurement records.[/yellow]")
+            if leakage_detected:
+                console.print(f"  [yellow]  Combined with ID overlap = high risk of data leakage![/yellow]")
+
+    # 3. Check target distribution
+    console.print(f"\n[bold]3. Target Distribution ({target_col}):[/bold]\n")
+
+    train_rate = train_df[target_col].mean()
+    test_rate = test_df[target_col].mean()
+    unsamp_rate = unsampled_df[target_col].mean()
+
+    console.print(f"  Training:  {train_rate:.4f} ({train_df[target_col].sum():>5,}/{len(train_df):>6,})")
+    console.print(f"  Test:      {test_rate:.4f} ({test_df[target_col].sum():>5,}/{len(test_df):>6,})")
+    console.print(f"  Unsampled: {unsamp_rate:.4f} ({unsampled_df[target_col].sum():>5,}/{len(unsampled_df):>6,})")
+
+    max_diff = max(abs(train_rate - test_rate), abs(train_rate - unsamp_rate), abs(test_rate - unsamp_rate))
+
+    if max_diff > 0.02:  # More than 2% difference
+        console.print(f"\n  [yellow]⚠ Distribution mismatch detected (max diff: {max_diff:.4f})[/yellow]")
+        console.print(f"  [yellow]  Consider using stratified sampling to preserve class balance.[/yellow]")
+    else:
+        console.print(f"\n  [green]✓ Distributions are similar (max diff: {max_diff:.4f})[/green]")
+
+    console.print("\n[bold cyan]" + "═" * 60 + "[/bold cyan]\n")
 
 
 @app.command()
@@ -481,6 +623,7 @@ def transform(
     seed: Optional[int] = typer.Option(None, "--seed", help="Random seed for reproducible train/test split (required with --sample)"),
     subfolder: Optional[str] = typer.Option(None, "--subfolder", help="Subfolder name to save files in (defaults to dseed{seed} when using --sample)"),
     impute: bool = typer.Option(False, "--impute", "-i", help="Enable missing value imputation (sets missing_value_replacement='mean' in encoding config)"),
+    keep_ids: bool = typer.Option(False, "--keep-ids", help="Keep ID columns (ICUSTAY_ID, SUBJECT_ID, HADM_ID) for validation and debugging"),
 ):
     """
     Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
@@ -581,16 +724,25 @@ def transform(
 
             # Apply transformations to all 3 sets
             console.print("[bold cyan]Applying transformations to training set:[/bold cyan]")
-            train_df = apply_transformations(train_df, verbose=True)
+            train_df = apply_transformations(train_df, verbose=True, keep_ids=keep_ids)
             console.print(f"\n[cyan]Training dataset: {len(train_df):,} rows x {train_df.shape[1]} columns[/cyan]\n")
 
             console.print("[bold cyan]Applying transformations to test set:[/bold cyan]")
-            test_df = apply_transformations(test_df, verbose=True)
+            test_df = apply_transformations(test_df, verbose=True, keep_ids=keep_ids)
             console.print(f"\n[cyan]Test dataset: {len(test_df):,} rows x {test_df.shape[1]} columns[/cyan]\n")
 
             console.print("[bold cyan]Applying transformations to unsampled set:[/bold cyan]")
-            unsampled_df = apply_transformations(unsampled_df, verbose=True)
+            unsampled_df = apply_transformations(unsampled_df, verbose=True, keep_ids=keep_ids)
             console.print(f"\n[cyan]Unsampled dataset: {len(unsampled_df):,} rows x {unsampled_df.shape[1]} columns[/cyan]\n")
+
+            # Run validation if IDs are kept
+            if keep_ids:
+                validate_splits(
+                    train_df=train_df,
+                    test_df=test_df,
+                    unsampled_df=unsampled_df,
+                    target_col='READMIT'
+                )
 
             # Determine output paths
             if output:
@@ -654,7 +806,7 @@ def transform(
 
         else:
             # Standard transformation without splitting
-            df = apply_transformations(df, verbose=True)
+            df = apply_transformations(df, verbose=True, keep_ids=keep_ids)
             console.print(f"\n[cyan]Final dataset: {df.shape[0]:,} rows x {df.shape[1]} columns[/cyan]\n")
 
             # Determine output path
