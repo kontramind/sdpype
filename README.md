@@ -34,9 +34,9 @@ uv run sdpype models
 
 ### Overview
 
-The `transform` command in `prepare_mimic_iii_mini_cli.py` implements a **two-stage stratified sampling** strategy designed to:
+The `transform` command in `prepare_mimic_iii_mini_cli.py` implements a **two-stage sampling** strategy designed to:
 1. Prevent data leakage at the episode level
-2. Create balanced train/test splits for fair evaluation
+2. Create realistic train/test splits with natural class distributions (or balanced splits with `--stratify`)
 3. Preserve a representative unsampled population for deployment testing
 
 ### Sampling Strategy
@@ -103,7 +103,7 @@ Our use case is **episode-level prediction**, so patient overlap is expected and
 
 ### Usage Examples
 
-#### Basic Usage (with stratification)
+#### Basic Usage (natural distribution)
 
 ```bash
 uv run prepare_mimic_iii_mini_cli.py transform \
@@ -114,9 +114,9 @@ uv run prepare_mimic_iii_mini_cli.py transform \
 ```
 
 This creates:
-- `dseed42/MIMIC-III-mini-core_sample10000_dseed42_training.csv` (10k, stratified)
-- `dseed42/MIMIC-III-mini-core_sample10000_dseed42_test.csv` (10k, stratified)
-- `dseed42/MIMIC-III-mini-core_sample10000_dseed42_unsampled.csv` (~41k, natural)
+- `dseed42/MIMIC-III-mini-core_sample10000_dseed42_training.csv` (10k, natural distribution)
+- `dseed42/MIMIC-III-mini-core_sample10000_dseed42_test.csv` (10k, natural distribution)
+- `dseed42/MIMIC-III-mini-core_sample10000_dseed42_unsampled.csv` (~41k, natural distribution)
 
 #### With Validation (Keep IDs)
 
@@ -135,7 +135,7 @@ The `--keep-ids` flag:
 - Displays leakage detection report
 - Useful for debugging and quality assurance
 
-#### Without Stratification (Random Split)
+#### With Stratification (Balanced Split)
 
 ```bash
 uv run prepare_mimic_iii_mini_cli.py transform \
@@ -143,10 +143,10 @@ uv run prepare_mimic_iii_mini_cli.py transform \
     --output MIMIC-III-mini-core \
     --sample 10000 \
     --seed 42 \
-    --no-stratify
+    --stratify
 ```
 
-Use `--no-stratify` if you want pure random sampling without balancing.
+Use `--stratify` when you need balanced train/test distributions for controlled ML experiments and model evaluation.
 
 ### Validation Output
 
@@ -198,8 +198,8 @@ This two-stage approach provides:
    - Unsampled has natural distribution → realistic deployment testing
 
 3. **Flexibility**
-   - `--stratify`: For controlled experiments (default)
-   - `--no-stratify`: For natural sampling variation
+   - Natural distribution by default (preserves realistic class imbalances for synthetic data generation)
+   - `--stratify`: For controlled experiments with balanced train/test distributions
    - `--keep-ids`: For validation and debugging
 
 ### References

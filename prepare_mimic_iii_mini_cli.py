@@ -595,7 +595,7 @@ def transform(
     subfolder: Optional[str] = typer.Option(None, "--subfolder", help="Subfolder name to save files in (defaults to dseed{seed} when using --sample)"),
     impute: bool = typer.Option(False, "--impute", "-i", help="Enable missing value imputation (sets missing_value_replacement='mean' in encoding config)"),
     keep_ids: bool = typer.Option(False, "--keep-ids", help="Keep ID columns (ICUSTAY_ID, SUBJECT_ID, HADM_ID) for validation and debugging"),
-    stratify: bool = typer.Option(True, "--stratify/--no-stratify", help="Use stratified sampling for train/test split (default: True)"),
+    stratify: bool = typer.Option(False, "--stratify/--no-stratify", help="Use stratified sampling for train/test split. Default is natural distribution (no stratify) which preserves realistic class imbalances"),
 ):
     """
     Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
