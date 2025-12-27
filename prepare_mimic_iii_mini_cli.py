@@ -14,6 +14,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from typing import Optional
+from sklearn.model_selection import train_test_split
 
 console = Console()
 app = typer.Typer(
@@ -599,7 +600,8 @@ def transform(
     """
     Transform XLSX file: drop unwanted columns, rename to abbreviated format, apply type transformations, and export to CSV.
 
-    With --sample and --seed flags, creates train/test/unsampled split at ICUSTAY_ID level to avoid data leakage.
+    With --sample and --seed flags, creates stratified train/test/unsampled split at ICUSTAY_ID level to avoid data leakage.
+    Uses two-stage sampling: (1) random cohort selection preserving natural distribution, (2) stratified train/test split for fair ML evaluation.
     Example: --sample 10000 --seed 42 creates 10k train + 10k test + remaining unsampled rows.
 
     The --output parameter works differently based on mode:
@@ -646,7 +648,7 @@ def transform(
 
         # Handle train/test split if sampling is requested
         if sample is not None:
-            console.print(f"[bold cyan]Two-Stage Stratified Sampling (sample={sample:,}, dseed={seed}):[/bold cyan]\n")
+            console.print(f"[bold cyan]Two-Stage Sampling with Stratified Split (sample={sample:,}, dseed={seed}):[/bold cyan]\n")
 
             # Check for ICUSTAY_ID and READMIT columns
             if 'ICUSTAY_ID' not in df.columns:
@@ -683,23 +685,28 @@ def transform(
             console.print(f"  [green]>[/green] Study cohort: {len(study_cohort_df):,} episodes")
             console.print(f"  [green]>[/green] READMIT rate: {readmit_rate:.4f}\n")
 
-            # Step 2: Random split of study cohort into train/test
-            console.print(f"[bold cyan]Step 2: Splitting cohort into train/test:[/bold cyan]")
+            # Step 2: Stratified split of study cohort into train/test
+            console.print(f"[bold cyan]Step 2: Stratified split of cohort into train/test:[/bold cyan]")
 
-            # Random 50/50 split with natural class distribution
-            shuffled_cohort = study_cohort_df.sample(frac=1, random_state=seed)
-            mid_point = len(shuffled_cohort) // 2
-            train_df = shuffled_cohort.iloc[:mid_point].copy()
-            test_df = shuffled_cohort.iloc[mid_point:].copy()
+            # Stratified 50/50 split to ensure identical READMIT distributions
+            # This preserves the natural rate from Stage 1, but ensures fair ML evaluation
+            train_df, test_df = train_test_split(
+                study_cohort_df,
+                test_size=0.5,
+                stratify=study_cohort_df[readmit_col] if readmit_col else None,
+                random_state=seed
+            )
 
             if readmit_col:
                 train_rate = train_df[readmit_col].mean()
                 test_rate = test_df[readmit_col].mean()
-                console.print(f"  [green]>[/green] Using natural distribution sampling")
+                dist_diff = abs(train_rate - test_rate)
+                console.print(f"  [green]>[/green] Using stratified split for fair binary classification evaluation")
                 console.print(f"  [green]>[/green] Train: {len(train_df):,} episodes (READMIT: {train_rate:.4f})")
-                console.print(f"  [green]>[/green] Test:  {len(test_df):,} episodes (READMIT: {test_rate:.4f})\n")
+                console.print(f"  [green]>[/green] Test:  {len(test_df):,} episodes (READMIT: {test_rate:.4f})")
+                console.print(f"  [green]>[/green] Distribution difference: {dist_diff:.6f}\n")
             else:
-                console.print(f"  [green]>[/green] Using natural distribution sampling")
+                console.print(f"  [green]>[/green] Random 50/50 split (no stratification without READMIT column)")
                 console.print(f"  [green]>[/green] Train: {len(train_df):,} episodes")
                 console.print(f"  [green]>[/green] Test:  {len(test_df):,} episodes\n")
 
