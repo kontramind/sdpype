@@ -262,23 +262,34 @@ def backup_params(params_file: Path, generation: int, checkpoint_dir: Path, mode
 
 def update_params_for_next_generation(params_file: Path, synthetic_data_path: Path, next_gen: int):
     """Update params.yaml with new training file and generation number"""
+    import re
+
     yaml = YAML()
     yaml.preserve_quotes = True
     yaml.indent(mapping=2, sequence=2, offset=0)
-    
+
     with params_file.open() as f:
         params = yaml.load(f)
-    
+
     # Update training file to synthetic data from current generation
     if 'data' not in params:
         params['data'] = {}
     params['data']['training_file'] = str(synthetic_data_path)
-    
+
     # Increment generation
     if 'experiment' not in params:
         params['experiment'] = {}
     params['experiment']['generation'] = next_gen
-    
+
+    # Reset experiment name to template so it gets re-resolved with new generation number
+    # Replace _gen_N_ pattern with _gen_{experiment.generation}_ to make it a template again
+    if 'name' in params.get('experiment', {}):
+        current_name = params['experiment']['name']
+        if isinstance(current_name, str) and '_gen_' in current_name:
+            # Replace _gen_<number>_ with _gen_{experiment.generation}_
+            template_name = re.sub(r'_gen_\d+_', '_gen_{experiment.generation}_', current_name)
+            params['experiment']['name'] = template_name
+
     # Write back
     with params_file.open('w') as f:
         yaml.dump(params, f)
