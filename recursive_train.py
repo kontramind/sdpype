@@ -60,6 +60,8 @@ def run_pipeline(force: bool = False) -> tuple[bool, float]:
         cmd = ["uv", "run", "sdpype", "pipeline"]
         if force:
             cmd.append("--force")
+
+        console.print(f"[dim]Running: {' '.join(cmd)}[/dim]")
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -67,12 +69,26 @@ def run_pipeline(force: bool = False) -> tuple[bool, float]:
             check=True
         )
         elapsed = time.time() - start
+
+        # Show pipeline output for debugging
+        if result.stdout:
+            console.print(f"[dim]Pipeline stdout:[/dim]")
+            console.print(result.stdout)
+        if result.stderr:
+            console.print(f"[dim]Pipeline stderr:[/dim]")
+            console.print(result.stderr)
+
         return True, elapsed
     except subprocess.CalledProcessError as e:
         elapsed = time.time() - start
         console.print(f"[red]Pipeline failed with exit code {e.returncode}[/red]")
+        console.print(f"[red]Command: {' '.join(cmd)}[/red]")
+        if e.stdout:
+            console.print(f"[yellow]stdout:[/yellow]")
+            console.print(e.stdout)
         if e.stderr:
-            console.print(f"[dim]{e.stderr}[/dim]")
+            console.print(f"[yellow]stderr:[/yellow]")
+            console.print(e.stderr)
         return False, elapsed
 
 
@@ -661,11 +677,30 @@ def run(
         # Run pipeline with spinner
         with console.status(f"[bold green]Gen {gen}/{generations-1}...", spinner="dots"):
             success, elapsed = run_pipeline(force)
-        
+
         if not success:
             console.print(f"[red]Generation {gen} failed[/red]")
             raise typer.Exit(1)
-        
+
+        # Check if training metrics file was created (indicates training stage completed)
+        metrics_dir = Path("experiments/metrics")
+        training_pattern = f"training_*_gen_{gen}_*.json"
+        training_files = list(metrics_dir.glob(training_pattern))
+
+        if not training_files:
+            console.print(f"[red]Pipeline succeeded but training metrics not found![/red]")
+            console.print(f"[red]Expected pattern: {training_pattern}[/red]")
+            console.print(f"[yellow]This suggests the training stage failed silently.[/yellow]")
+
+            # List what files DO exist for this generation
+            all_gen_files = list(metrics_dir.glob(f"*_gen_{gen}_*.json"))
+            if all_gen_files:
+                console.print(f"[yellow]Files that DO exist for gen {gen}:[/yellow]")
+                for f in all_gen_files:
+                    console.print(f"  - {f.name}")
+
+            raise typer.Exit(1)
+
         # Get model ID
         model_id = get_latest_model_id(gen)
         synthetic_path = get_synthetic_data_path(model_id)
