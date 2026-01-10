@@ -103,6 +103,11 @@ def main():
         metavar="GENERATIONS",
         help="Resume existing runs to reach GENERATIONS total (pattern matches output directories, not config files)"
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging (show pipeline output and debug info)"
+    )
 
     args = parser.parse_args()
 
@@ -130,6 +135,7 @@ def main():
         print(f"Pattern: {args.pattern}")
         print(f"Generations: {args.generations}")
         print(f"Force: {args.force}")
+        print(f"Verbose: {args.verbose}")
         if args.resume:
             print(f"Resume to: {args.resume} total generations")
 
@@ -147,11 +153,12 @@ def main():
                 print(f"     Checkpoint: {'✓' if has_checkpoint else '✗'} ({structure})")
 
             force_flag = " --force" if args.force else ""
+            verbose_flag = " --verbose" if args.verbose else ""
             print(f"\nWorkflow for each directory:")
             print(f"  1. Backup params.yaml -> params.backup.yaml")
             print(f"  2. Temporarily restore {{dir}}/experiments/ -> experiments/")
             print(f"  3. Restore params from checkpoint backup")
-            print(f"  4. Run: uv run recursive_train.py --resume --generations {args.resume}{force_flag}")
+            print(f"  4. Run: uv run recursive_train.py --resume --generations {args.resume}{force_flag}{verbose_flag}")
             print(f"  5. Move experiments/ -> {{dir}}/experiments/")
             print(f"  6. Restore params.backup.yaml -> params.yaml")
             print(f"  7. Continue to next directory")
@@ -163,10 +170,11 @@ def main():
                 print(f"     -> Output folder: {basename}/")
 
             force_flag = " --force" if args.force else ""
+            verbose_flag = " --verbose" if args.verbose else ""
             print(f"\nWorkflow for each file:")
             print(f"  1. Backup params.yaml -> params.backup.yaml")
             print(f"  2. Copy config file -> params.yaml")
-            print(f"  3. Run: uv run recursive_train.py --generations {args.generations}{force_flag}")
+            print(f"  3. Run: uv run recursive_train.py --generations {args.generations}{force_flag}{verbose_flag}")
             print(f"  4. Move experiments/ -> {{config_basename}}/")
             print(f"  5. Delete source config file")
             print(f"  6. Restore params.backup.yaml -> params.yaml")
@@ -245,6 +253,8 @@ def main():
                 cmd = ["uv", "run", "recursive_train.py", "--resume-from", best_model_id, "--generations", str(args.resume)]
                 if args.force:
                     cmd.append("--force")
+                if args.verbose:
+                    cmd.append("--verbose")
                 print(f"  Running: {' '.join(cmd)}")
                 result = subprocess.run(cmd, check=True)
 
@@ -327,6 +337,8 @@ def main():
                 cmd = ["uv", "run", "recursive_train.py", "--generations", str(args.generations)]
                 if args.force:
                     cmd.append("--force")
+                if args.verbose:
+                    cmd.append("--verbose")
                 print(f"  Running: {' '.join(cmd)}")
                 result = subprocess.run(cmd, check=True)
 

@@ -53,7 +53,7 @@ def validate_initial_params(params_file: Path) -> dict:
     return params
 
 
-def run_pipeline(force: bool = False) -> tuple[bool, float]:
+def run_pipeline(force: bool = False, verbose: bool = False) -> tuple[bool, float]:
     """Execute sdpype pipeline, return (success, elapsed_time)"""
     start = time.time()
     try:
@@ -61,7 +61,9 @@ def run_pipeline(force: bool = False) -> tuple[bool, float]:
         if force:
             cmd.append("--force")
 
-        console.print(f"[dim]Running: {' '.join(cmd)}[/dim]")
+        if verbose:
+            console.print(f"[dim]Running: {' '.join(cmd)}[/dim]")
+
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -70,13 +72,14 @@ def run_pipeline(force: bool = False) -> tuple[bool, float]:
         )
         elapsed = time.time() - start
 
-        # Show pipeline output for debugging
-        if result.stdout:
-            console.print(f"[dim]Pipeline stdout:[/dim]")
-            console.print(result.stdout)
-        if result.stderr:
-            console.print(f"[dim]Pipeline stderr:[/dim]")
-            console.print(result.stderr)
+        # Show pipeline output only in verbose mode
+        if verbose:
+            if result.stdout:
+                console.print(f"[dim]Pipeline stdout:[/dim]")
+                console.print(result.stdout)
+            if result.stderr:
+                console.print(f"[dim]Pipeline stderr:[/dim]")
+                console.print(result.stderr)
 
         return True, elapsed
     except subprocess.CalledProcessError as e:
@@ -137,7 +140,7 @@ def get_synthetic_data_path(model_id: str) -> Path:
     return Path(f"experiments/data/synthetic/synthetic_data_{model_id}_decoded.csv")
 
 
-def read_metrics(model_id: str, generation: int) -> dict:
+def read_metrics(model_id: str, generation: int, verbose: bool = False) -> dict:
     """Read key metrics from generation's output"""
 
     # Extract components: last 2 parts are always config_hash and seed
@@ -151,11 +154,12 @@ def read_metrics(model_id: str, generation: int) -> dict:
     det_file = Path(f"experiments/metrics/detection_evaluation_{experiment_name}_{config_hash}_{seed}.json")
     halluc_file = Path(f"experiments/metrics/hallucination_{experiment_name}_{config_hash}_{seed}.json")
 
-    console.print(f"[dim]Looking for metrics:[/dim]")
-    console.print(f"[dim]  Stat: {stat_file} (exists: {stat_file.exists()})[/dim]")
-    console.print(f"[dim]  Det: {det_file} (exists: {det_file.exists()})[/dim]")
-    console.print(f"[dim]  Halluc: {halluc_file} (exists: {halluc_file.exists()})[/dim]")
-   
+    if verbose:
+        console.print(f"[dim]Looking for metrics:[/dim]")
+        console.print(f"[dim]  Stat: {stat_file} (exists: {stat_file.exists()})[/dim]")
+        console.print(f"[dim]  Det: {det_file} (exists: {det_file.exists()})[/dim]")
+        console.print(f"[dim]  Halluc: {halluc_file} (exists: {halluc_file.exists()})[/dim]")
+
     metrics = {}
 
     # Statistical similarity metrics
@@ -579,6 +583,7 @@ def run(
         help="Resume specific chain by MODEL_ID (e.g., sdv_gaussiancopula_..._gen_5_..._51)"
     ),
     force: bool = typer.Option(False, "--force", help="Force rerun all pipeline stages (passed to DVC)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging (show pipeline output and debug info)"),
 ):
     """
     Run recursive training for N generations.
@@ -676,7 +681,7 @@ def run(
         
         # Run pipeline with spinner
         with console.status(f"[bold green]Gen {gen}/{generations-1}...", spinner="dots"):
-            success, elapsed = run_pipeline(force)
+            success, elapsed = run_pipeline(force, verbose)
 
         if not success:
             console.print(f"[red]Generation {gen} failed[/red]")
@@ -714,7 +719,7 @@ def run(
         size_mb = synthetic_path.stat().st_size / (1024 * 1024)
         
         # Read metrics
-        metrics = read_metrics(model_id, gen)
+        metrics = read_metrics(model_id, gen, verbose)
         
         # Display progress line
         metrics_str = " ".join([
