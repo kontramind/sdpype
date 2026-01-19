@@ -334,6 +334,17 @@ def read_metrics(model_id: str, generation: int, experiments_root: str) -> Dict:
                 if 'Synthetic / Reference' in k_ratios:
                     metrics['k_ratio_synthetic_reference'] = k_ratios['Synthetic / Reference'].get('ratio', 0)
 
+    # Training time metrics (from training metrics file)
+    training_file = Path(experiments_root) / "metrics" / f"training_{experiment_name}_{config_hash}_{seed}.json"
+
+    if training_file.exists():
+        with training_file.open() as f:
+            data = json.load(f)
+            if 'training_time' in data:
+                metrics['training_time'] = data['training_time']
+    else:
+        raise FileNotFoundError(f"Training metrics file not found: {training_file}")
+
     return metrics
 
 
@@ -428,9 +439,16 @@ def trace_chain(model_id: str, max_generations: int = 100, experiments_root: str
             'model_exists': model_exists,
             'model_size_mb': model_size_mb
         })
-    
+
+    # Calculate cumulative training time
+    cumulative_time = 0.0
+    for r in results:
+        training_time = r['metrics'].get('training_time', 0.0)
+        cumulative_time += training_time
+        r['metrics']['training_time_cumulative'] = cumulative_time
+
     console.print(f"[green]Found {len(results)} generations[/green]")
-    
+
     return results
 
 
@@ -511,9 +529,9 @@ def export_csv(results: List[Dict]) -> str:
         CSV string with headers and data
     """
     if not results:
-        return "generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,k_anonymity_reference,k_anonymity_synthetic,k_ratio_synthetic_reference,model_size_mb\n"
+        return "generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,k_anonymity_reference,k_anonymity_synthetic,k_ratio_synthetic_reference,training_time,training_time_cumulative,model_size_mb\n"
 
-    lines = ["generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,k_anonymity_reference,k_anonymity_synthetic,k_ratio_synthetic_reference,model_size_mb"]
+    lines = ["generation,model_id,alpha_precision,alpha_delta_precision_OC,alpha_delta_coverage_OC,alpha_authenticity_OC,prdc_avg,prdc_precision,prdc_recall,prdc_density,prdc_coverage,tv_complement,ks_complement,wasserstein_dist,mmd,jsd_synthcity,jsd_syndat,jsd_nannyml,detection_avg,detection_gmm,detection_xgb,detection_mlp,detection_linear,new_row_synthesis,sdmetrics_column_shapes,sdmetrics_column_pair_trends,sdmetrics_overall,factual_total,ddr_novel_factual,plausible_total,plausible_novel,category_ddr,category_train_copy_valid,category_train_copy_prop,category_new_halluc,complexity_population,complexity_training,complexity_reference,complexity_synthetic,complexity_ratio_vs_population,complexity_ratio_vs_training,complexity_ratio_vs_reference,k_anonymity_reference,k_anonymity_synthetic,k_ratio_synthetic_reference,training_time,training_time_cumulative,model_size_mb"]
 
     for r in results:
         gen = r['generation']
@@ -572,9 +590,13 @@ def export_csv(results: List[Dict]) -> str:
         k_anon_synth = metrics.get('k_anonymity_synthetic', '')
         k_ratio = metrics.get('k_ratio_synthetic_reference', '')
 
+        # Training time metrics
+        train_time = metrics.get('training_time', '')
+        train_time_cumulative = metrics.get('training_time_cumulative', '')
+
         size = r['model_size_mb'] if r['model_exists'] else ''
 
-        lines.append(f"{gen},{model_id},{alpha},{alpha_delta_prec_oc},{alpha_delta_cov_oc},{alpha_auth_oc},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{det_gmm},{det_xgb},{det_mlp},{det_linear},{nrs},{sdm_shapes},{sdm_trends},{sdm_overall},{factual},{ddr},{plaus},{plaus_nov},{cat_ddr},{cat_train_valid},{cat_train_prop},{cat_halluc},{comp_pop},{comp_train},{comp_ref},{comp_synth},{comp_ratio_pop},{comp_ratio_train},{comp_ratio_ref},{k_anon_ref},{k_anon_synth},{k_ratio},{size}")
+        lines.append(f"{gen},{model_id},{alpha},{alpha_delta_prec_oc},{alpha_delta_cov_oc},{alpha_auth_oc},{prdc_avg},{prdc_p},{prdc_r},{prdc_d},{prdc_c},{tv},{ks},{wd},{mmd_val},{jsd_sc},{jsd_sd},{jsd_nm},{det},{det_gmm},{det_xgb},{det_mlp},{det_linear},{nrs},{sdm_shapes},{sdm_trends},{sdm_overall},{factual},{ddr},{plaus},{plaus_nov},{cat_ddr},{cat_train_valid},{cat_train_prop},{cat_halluc},{comp_pop},{comp_train},{comp_ref},{comp_synth},{comp_ratio_pop},{comp_ratio_train},{comp_ratio_ref},{k_anon_ref},{k_anon_synth},{k_ratio},{train_time},{train_time_cumulative},{size}")
 
     return "\n".join(lines)
 
@@ -1049,6 +1071,10 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     complexity_training = [r['metrics'].get('complexity_training', None) for r in results]
     complexity_reference = [r['metrics'].get('complexity_reference', None) for r in results]
     complexity_synthetic = [r['metrics'].get('complexity_synthetic', None) for r in results]
+
+    # Extract training time metrics for seventh plot
+    training_time = [r['metrics'].get('training_time', None) for r in results]
+    training_time_cumulative = [r['metrics'].get('training_time_cumulative', None) for r in results]
 
     # Color scheme
     colors = {
@@ -1785,7 +1811,98 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
     )
 
     # ========================================
-    # Save or show all six plots
+    # PLOT 7: Training Time (Per-Generation and Cumulative)
+    # ========================================
+    fig7 = make_subplots(specs=[[{"secondary_y": True}]])
+
+    if any(x is not None for x in training_time):
+        fig7.add_trace(
+            go.Scatter(
+                x=generations, y=training_time,
+                mode='lines+markers',
+                name='Training Time (per gen)',
+                line=dict(color='#1f77b4', width=2),
+                marker=dict(size=8, symbol='circle'),
+                hovertemplate='Gen %{x}<br>Time: %{y:.1f}s<extra></extra>'
+            ),
+            secondary_y=False
+        )
+
+    if any(x is not None for x in training_time_cumulative):
+        fig7.add_trace(
+            go.Scatter(
+                x=generations, y=training_time_cumulative,
+                mode='lines+markers',
+                name='Cumulative Time',
+                line=dict(color='#d62728', width=2, dash='dash'),
+                marker=dict(size=8, symbol='square'),
+                hovertemplate='Gen %{x}<br>Cumulative: %{y:.1f}s<extra></extra>'
+            ),
+            secondary_y=True
+        )
+
+    fig7.update_xaxes(
+        title_text="Generation",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    fig7.update_yaxes(
+        title_text="Training Time per Generation (seconds)",
+        secondary_y=False,
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+
+    fig7.update_yaxes(
+        title_text="Cumulative Training Time (seconds)",
+        secondary_y=True,
+        showgrid=False
+    )
+
+    # Layout for Plot 7
+    fig7.update_layout(
+        title={
+            'text': 'Training Time Across Generations',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'family': 'Arial, sans-serif'}
+        },
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="rgba(0, 0, 0, 0.3)",
+            borderwidth=1
+        ),
+        plot_bgcolor='white',
+        height=450,
+        width=1400,
+        margin=dict(r=250, l=80, t=80, b=60),
+        annotations=[
+            dict(
+                text="Blue = Per-generation training time<br>Red = Cumulative total time",
+                xref="paper", yref="paper",
+                x=0.02, y=0.98,
+                showarrow=False,
+                bgcolor="rgba(255, 248, 220, 0.8)",
+                bordercolor="rgba(0, 0, 0, 0.3)",
+                borderwidth=1,
+                font=dict(size=10),
+                xanchor='left',
+                yanchor='top'
+            )
+        ]
+    )
+
+    # ========================================
+    # Save or show all seven plots
     # ========================================
     if output_file:
         # Default to .html extension
@@ -1874,6 +1991,19 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
                 }
             ))
 
+            f.write('<br><hr style="margin: 40px auto; width: 80%; border: 1px solid #ddd;"><br>\n')
+
+            # Write seventh plot
+            f.write(fig7.to_html(
+                full_html=False,
+                include_plotlyjs=False,
+                config={
+                    'displayModeBar': True,
+                    'displaylogo': False,
+                    'modeBarButtonsToRemove': ['select2d', 'lasso2d']
+                }
+            ))
+
             f.write('</body></html>')
 
         console.print(f"[green]Interactive plots saved to: {output_file}[/green]")
@@ -1886,6 +2016,7 @@ def plot_chain_interactive(results: List[Dict], output_file: Optional[str] = Non
         fig4.show()
         fig5.show()
         fig6.show()
+        fig7.show()
 
 @app.command()
 def main(
